@@ -133,7 +133,9 @@ const SFX = {
   screech: () => { blip(900, 0.18, "sawtooth", 0.16, 1600); setTimeout(() => blip(1300, 0.16, "square", 0.12, 700), 80); },
   dig: () => noiseHit(0.07, 0.15),
   slam: () => { noiseHit(0.12, 0.3); blip(70, 0.2, "square", 0.18, 40); },
-  levelUp: () => { blip(523, 0.12, "square", 0.16); setTimeout(() => blip(659, 0.12, "square", 0.16), 90); setTimeout(() => blip(784, 0.16, "square", 0.16), 180); }
+  levelUp: () => { blip(523, 0.12, "square", 0.16); setTimeout(() => blip(659, 0.12, "square", 0.16), 90); setTimeout(() => blip(784, 0.16, "square", 0.16), 180); },
+  zap: () => { blip(1300, 0.07, "sawtooth", 0.2, 280); noiseHit(0.12, 0.22); setTimeout(() => blip(900, 0.06, "square", 0.12, 200), 50); },
+  power: () => { blip(440, 0.1, "triangle", 0.16, 660); setTimeout(() => blip(660, 0.12, "triangle", 0.16, 990), 80); }
 };
 function stepSound() {
   const b = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.1), Math.floor(player.pos.z));
@@ -192,14 +194,15 @@ function isOpaque(id) { return id !== AIR && id !== WATER && id !== PORTAL && BL
 function isSolidBlock(id) { return id !== AIR && id !== WATER && id !== PORTAL && BLOCKS[id] && BLOCKS[id].solid; }
 
 // ITEMS (tools/food), ids offset 100
-const I_HAND = 100, I_WPICK = 101, I_SPICK = 102, I_SWORD = 103, I_AXE = 104, I_FIRECHARM = 105, I_FIRESWORD = 106, I_APPLE = 110, I_STICK = 111;
+const I_HAND = 100, I_WPICK = 101, I_SPICK = 102, I_SWORD = 103, I_AXE = 104, I_FIRECHARM = 105, I_FIRESWORD = 106, I_LIGHTHAMMER = 107, I_APPLE = 110, I_STICK = 111;
 const ITEMS = {
   [I_WPICK]: { name: "Wood Pickaxe", tool: "pick", tier: 1, dmg: 2, icon: "⛏️" },
   [I_SPICK]: { name: "Stone Pickaxe", tool: "pick", tier: 2, dmg: 3, icon: "⛏️" },
   [I_SWORD]: { name: "Wood Sword", tool: "sword", tier: 1, dmg: 5, icon: "🗡️" },
   [I_AXE]:   { name: "Wood Axe", tool: "axe", tier: 1, dmg: 3, icon: "🪓" },
   [I_FIRECHARM]: { name: "Flame Charm", protect: "fire", icon: "🧿" },
-  [I_FIRESWORD]: { name: "Flame Sword", tool: "sword", tier: 3, dmg: 9, icon: "🗡️" },
+  [I_FIRESWORD]: { name: "Flame Sword", tool: "sword", tier: 3, dmg: 9, special: "fire", icon: "🗡️" },
+  [I_LIGHTHAMMER]: { name: "Lightning Hammer", tool: "hammer", tier: 2, dmg: 7, special: "lightning", icon: "🔨" },
   [I_APPLE]: { name: "Apple", food: 4, icon: "🍎" },
   [I_STICK]: { name: "Stick", icon: "➖" }
 };
@@ -576,7 +579,7 @@ function physics(dt) {
   const fwdKey = keys["KeyW"] || keys["ArrowUp"], backKey = keys["KeyS"] || keys["ArrowDown"];
   const moveKey = fwdKey || backKey || keys["KeyA"] || keys["KeyD"];
   let sprint = !crouch && (keys["ShiftLeft"] || keys["ShiftRight"] || touch.sprint || (isTouch && settings.sprintMode === "always" && touch.mag > 0.12)) && player.stam > 1 && (input.fwd !== 0 || input.str !== 0 || moveKey);
-  let sp = sprint ? 6.0 : 4.2; if (crouch) sp = 2.0;
+  let sp = sprint ? 6.0 : 4.2; if (powerActive("speed")) sp *= 1.5; if (crouch) sp = 2.0;
   const f = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
   const r = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
   const wish = new THREE.Vector3();
@@ -594,7 +597,7 @@ function physics(dt) {
   player.vel.y -= gravity * dt;
   // jump
   const wantJump = keys["Space"] || touch.jump;
-  if (wantJump && (player.onGround || player.coyote > 0)) { player.vel.y = jumpV; player.onGround = false; player.coyote = 0; SFX.jump(); }
+  if (wantJump && (player.onGround || player.coyote > 0)) { player.vel.y = jumpV * (powerActive("jump") ? 1.42 : 1); player.onGround = false; player.coyote = 0; SFX.jump(); }
   // substep to prevent tunneling
   player.onGround = false;
   const steps = Math.max(1, Math.ceil((Math.abs(player.vel.x) + Math.abs(player.vel.y) + Math.abs(player.vel.z)) * dt / 0.4));
@@ -820,7 +823,8 @@ const RECIPES = [
   { out: BRICK, n: 4, need: [[COBBLE, 4]] },
   { out: BED, n: 1, need: [[PLANKS, 3], [WOOD, 2]] },
   { out: I_FIRECHARM, n: 1, need: [[FIRE_CRYSTAL, 4], [I_STICK, 2]] },
-  { out: I_FIRESWORD, n: 1, need: [[FIRE_CRYSTAL, 3], [I_STICK, 1]] }
+  { out: I_FIRESWORD, n: 1, need: [[FIRE_CRYSTAL, 3], [I_STICK, 1]] },
+  { out: I_LIGHTHAMMER, n: 1, need: [[COBBLE, 5], [I_STICK, 2]] }
 ];
 function canCraft(r) { return r.need.every(([id, c]) => countItem(id) >= c); }
 function craft(r) { if (!canCraft(r)) return; r.need.forEach(([id, c]) => consumeItem(id, c)); addItem(r.out, r.n); SFX.craft(); renderCraft(); onCraft(r.out); }
@@ -894,6 +898,7 @@ function updateMonsters(dt) {
     if (!m.aggro && d < aggroR) { m.aggro = true; m.summon ? SFX.screech() : SFX.growl(); }
     else if (m.aggro && d > aggroR * 1.7) { m.aggro = false; }
     if (m.flash > 0) m.flash -= dt;
+    if (m.burn > 0) { m.burn -= dt; m.burnTick -= dt; if (m.burnTick <= 0) { m.burnTick = 0.5; m.hp -= 2; m.flash = 0.1; m.bar.up(Math.max(0, m.hp / m.max)); hitSpark(m.g.position, 0xff7a2a); if (m.hp <= 0 && !m.dead) { killMonster(m); continue; } } }
     if (m.touch > 0) m.touch -= dt;
     if (m.slamCd > 0) m.slamCd -= dt;
     if (m.summonCd > 0) m.summonCd -= dt;
@@ -971,6 +976,9 @@ let spawnTimer = 6;
 // ---------- ANIMALS (cats + mice) ----------
 let cats = [], mice = [];
 const CAT_COLORS = [{ n: "orange", c: 0xe8862a }, { n: "black", c: 0x2b2b2b }, { n: "white", c: 0xeeeeee }, { n: "gray", c: 0x8a8a8a }, { n: "tabby", c: 0xa9702f }];
+// each colour gives a tamed cat a passive ability: white heals, orange/tabby fight harder, black/gray scout for danger
+function catAbility(color) { if (color === "white") return "heal"; if (color === "orange" || color === "tabby") return "fury"; if (color === "black" || color === "gray") return "scout"; return "balanced"; }
+function catAbilityDesc(a) { return a === "heal" ? "heals Thomas" : a === "fury" ? "fights harder" : a === "scout" ? "senses danger" : "loyal helper"; }
 function bxm(w, h, d, col) { return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color: col })); }
 function spawnCat(x, z, opts) {
   opts = opts || {};
@@ -991,7 +999,7 @@ function spawnCat(x, z, opts) {
   for (const [lx, lz] of lp) { const leg = bxm(0.07, 0.2, 0.07, col); leg.geometry.translate(0, -0.1, 0); leg.position.set(lx, 0.24, lz); g.add(leg); legs.push(leg); }
   const tail = bxm(0.06, 0.06, 0.32, col); tail.geometry.translate(0, 0, -0.16); tail.position.set(0, 0.42, -0.25); tail.rotation.x = 0.6; g.add(tail);
   g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g);
-  cats.push({ g, dir: Math.random() * 6.28, tamed: !!opts.tamed, friendly: !!opts.friendly, name: opts.name || null, hp: 10, level: opts.level || 1, kills: 0, mode: opts.mode || "follow", stay: new THREE.Vector3(x + 0.5, 0, z + 0.5), meow: Math.random() * 6, warnCd: 0, legs, tail, walkT: 0, moved: false, color: pick.n });
+  cats.push({ g, dir: Math.random() * 6.28, tamed: !!opts.tamed, friendly: !!opts.friendly, name: opts.name || null, hp: 10, level: opts.level || 1, kills: 0, mode: opts.mode || "follow", stay: new THREE.Vector3(x + 0.5, 0, z + 0.5), meow: Math.random() * 6, warnCd: 0, healCd: 0, ability: catAbility(pick.n), legs, tail, walkT: 0, moved: false, color: pick.n });
 }
 function spawnMouse(x, z) {
   const golden = Math.random() < 0.08;
@@ -1027,8 +1035,10 @@ function updateAnimals(dt) {
     if (c.warnCd > 0) c.warnCd -= dt;
     c.moved = false;
     if (c.tamed) {
-      // danger warning: meow when a monster is near at night
-      if (c.warnCd <= 0 && isNight()) { for (const m of monsters) if (!m.dead && m.g.position.distanceTo(c.g.position) < 9) { SFX.meow(); toast(c.color + " cat senses danger nearby"); c.warnCd = 12; break; } }
+      // danger warning: scout cats sense monsters day or night, others at night
+      if (c.warnCd <= 0 && (isNight() || c.ability === "scout")) { for (const m of monsters) if (!m.dead && m.g.position.distanceTo(c.g.position) < 9) { SFX.meow(); toast((c.name || (c.color + " cat")) + " senses danger nearby"); c.warnCd = 12; break; } }
+      // healer cats slowly mend Thomas when close
+      if (c.ability === "heal") { c.healCd -= dt; if (c.healCd <= 0 && c.g.position.distanceTo(player.pos) < 6 && player.hp < player.maxHp) { c.healCd = 3; player.hp = Math.min(player.maxHp, player.hp + 1); updateVitals(); hitSpark(new THREE.Vector3(player.pos.x, player.pos.y + 1, player.pos.z), 0x7CF07C); } }
       if (c.mode === "stay") {                                   // hold position
         const sx = c.stay.x - c.g.position.x, sz = c.stay.z - c.g.position.z, sd = Math.hypot(sx, sz);
         if (sd > 0.6) { c.g.position.x += (sx / sd) * 2.2 * dt; c.g.position.z += (sz / sd) * 2.2 * dt; c.g.rotation.y = Math.atan2(sx, sz); c.moved = true; }
@@ -1039,7 +1049,7 @@ function updateAnimals(dt) {
       c.g.position.y = surfaceY(c.g.position.x, c.g.position.z);
       // fight nearest monster (damage scales with cat level)
       let nm = null, nmd = 8; for (const m of monsters) if (!m.dead) { const md = m.g.position.distanceTo(c.g.position); if (md < nmd) { nmd = md; nm = m; } }
-      if (nm && nmd < 1.3) { nm.hp -= 8 * dt * catMult * (1 + 0.25 * (c.level - 1)); nm.bar.up(Math.max(0, nm.hp / nm.max)); if (nm.hp <= 0 && !nm.dead) { nm.dead = true; addXP(Math.round((nm.xp || 8) * 0.5)); onKill(); c.kills++; if (c.kills % 3 === 0) { c.level++; toast(c.color + " cat reached level " + c.level); SFX.levelUp(); } } }
+      if (nm && nmd < 1.3) { nm.hp -= 8 * dt * catMult * (1 + 0.25 * (c.level - 1)) * (c.ability === "fury" ? 1.5 : 1); nm.bar.up(Math.max(0, nm.hp / nm.max)); if (nm.hp <= 0 && !nm.dead) { nm.dead = true; addXP(Math.round((nm.xp || 8) * 0.5)); onKill(); c.kills++; if (c.kills % 3 === 0) { c.level++; toast((c.name || (c.color + " cat")) + " reached level " + c.level); SFX.levelUp(); } } }
     } else if (c.friendly) {                                   // a friendly stray (Whiskers) trots over to Thomas
       const dx = player.pos.x - c.g.position.x, dz = player.pos.z - c.g.position.z, d = Math.hypot(dx, dz) || 1;
       if (d > 1.7) { c.g.position.x += (dx / d) * 3.4 * dt; c.g.position.z += (dz / d) * 3.4 * dt; c.g.rotation.y = Math.atan2(dx, dz); c.g.position.y = surfaceY(c.g.position.x, c.g.position.z); c.moved = true; }
@@ -1071,11 +1081,42 @@ function attackEntity(hit) {
   const crit = Math.random() < 0.15; if (crit) dmg *= 2;
   let o = hit.obj, ent = null; while (o) { if (o.userData.kind) { ent = o; break; } o = o.parent; }
   SFX.hit();
-  if (ent && ent.userData.kind === "monster") { const m = ent.userData.m; m.hp -= dmg; m.flash = 0.15; m.bar.up(Math.max(0, m.hp / m.max)); if (!m.ghost) knock(m.g, 0.5); hitSpark(hit.point, m.elite ? 0xff66ff : 0xff5577); dmgNumber(hit.point, dmg, crit); if (m.hp <= 0 && !m.dead) { m.dead = true; for (const [lid, lc, lp] of (m.loot || [])) if (Math.random() < (m.elite ? Math.min(1, lp + 0.3) : lp)) addItem(lid, lc); if (m.elite) addItem(I_APPLE, 1); addXP(m.xp || 10); onKill(); } }
+  if (ent && ent.userData.kind === "monster") {
+    const m = ent.userData.m; m.hp -= dmg; m.flash = 0.15; m.bar.up(Math.max(0, m.hp / m.max)); if (!m.ghost) knock(m.g, 0.5);
+    hitSpark(hit.point, m.elite ? 0xff66ff : 0xff5577); dmgNumber(hit.point, dmg, crit);
+    if (tool && tool.special === "fire") { m.burn = 3; m.burnTick = 0; }                       // Flame Sword: burn over time
+    if (tool && tool.special === "lightning" && hammerCd <= 0) { hammerCd = 2.2; lightningZap(); } // Lightning Hammer: chain shock
+    if (m.hp <= 0 && !m.dead) killMonster(m);
+  }
   else if (ent && ent.userData.kind === "crystal") { const c = ent.userData.c; c.hp -= dmg; hitSpark(hit.point, 0x22d3ee); dmgNumber(hit.point, dmg, crit); if (c.hp <= 0 && !c.dead) { c.dead = true; scene.remove(c.g); crystalsLeft--; updateBoss(); } }
   else if (ent && ent.userData.kind === "dragon") { if (crystalsLeft > 0) { hitSpark(hit.point, 0x888888); toast("Destroy the End Crystals first"); return; } dragon.hp -= dmg; updateBoss(); hitSpark(hit.point, 0xb026ff); dmgNumber(hit.point, dmg, crit); if (dragon.hp <= 0 && !dragon.dead) winDragon(); }
 }
 function knock(g, f) { const dx = g.position.x - player.pos.x, dz = g.position.z - player.pos.z, d = Math.hypot(dx, dz) || 1; g.position.x += dx / d * f; g.position.z += dz / d * f; }
+// central monster death: loot, xp, quest hook, and a power-up chance from elites
+function killMonster(m) {
+  if (m.dead) return; m.dead = true;
+  for (const [lid, lc, lp] of (m.loot || [])) if (Math.random() < (m.elite ? Math.min(1, lp + 0.3) : lp)) addItem(lid, lc);
+  if (m.elite) { addItem(I_APPLE, 1); if (Math.random() < 0.55) givePowerup(randPowerup()); }
+  addXP(m.xp || 10); onKill();
+}
+// Lightning Hammer chain shock: damages every monster near Thomas with a cooldown
+let hammerCd = 0;
+function lightningZap() {
+  let hits = 0;
+  for (const m of monsters) {
+    if (m.dead) continue;
+    if (m.g.position.distanceTo(player.pos) < 7.5) {
+      const d2 = 12 + swordBonus * 2; m.hp -= d2; m.flash = 0.15; m.bar.up(Math.max(0, m.hp / m.max));
+      hitSpark(m.g.position, 0x7afcff); dmgNumber(m.g.position, d2, false); lightningBolt(m.g.position); hits++;
+      if (m.hp <= 0 && !m.dead) killMonster(m);
+    }
+  }
+  SFX.zap(); addShake(0.22);
+  if (hits) toast("⚡ Lightning Hammer struck " + hits + (hits > 1 ? " monsters" : " monster"));
+}
+function lightningBolt(p) {
+  for (let i = 0; i < 5; i++) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.08), new THREE.MeshBasicMaterial({ color: 0x9fe8ff })); m.position.set(p.x + (Math.random() - .5) * 0.5, p.y + 0.5 + i * 0.4, p.z + (Math.random() - .5) * 0.5); scene.add(m); fxParts.push({ mesh: m, life: 0.25, vel: new THREE.Vector3((Math.random() - .5) * 2, 2, (Math.random() - .5) * 2) }); }
+}
 // floating damage numbers
 const _proj = new THREE.Vector3();
 function dmgNumber(pos, amount, crit) {
@@ -1117,7 +1158,8 @@ function buildViewItem() {
   if (viewItem) vScene.remove(viewItem);
   const g = new THREE.Group(); const it = hotbar[selSlot];
   if (it && isItem(it.id)) {
-    if (ITEMS[it.id].tool === "sword") { const blade = box(0.06, 0.5, 0.06, 0xd7dbe4); blade.position.y = 0.3; g.add(blade); const gu = box(0.2, 0.05, 0.08, 0xc9a227); gu.position.y = 0.05; g.add(gu); }
+    if (ITEMS[it.id].tool === "sword") { const blade = box(0.06, 0.5, 0.06, ITEMS[it.id].special === "fire" ? 0xff7a2a : 0xd7dbe4); blade.position.y = 0.3; g.add(blade); const gu = box(0.2, 0.05, 0.08, 0xc9a227); gu.position.y = 0.05; g.add(gu); }
+    else if (ITEMS[it.id].tool === "hammer") { const head = box(0.26, 0.2, 0.18, 0x6fb7ff); head.position.y = 0.36; g.add(head); const trim = box(0.28, 0.06, 0.2, 0xffe066); trim.position.y = 0.36; g.add(trim); const stick = box(0.05, 0.36, 0.05, 0x6e4a25); stick.position.y = 0.12; g.add(stick); }
     else { const head = box(0.18, 0.1, 0.06, 0x9b9b9b); head.position.y = 0.34; g.add(head); const stick = box(0.05, 0.34, 0.05, 0x6e4a25); stick.position.y = 0.12; g.add(stick); }
     g.position.set(0.42, -0.42, -0.75); g.rotation.set(-0.4, -0.3, 0.25);
   } else if (it) {
@@ -1150,7 +1192,7 @@ function interact() {
       if (!near.friendly) consumeItem(I_APPLE, 1);
       near.tamed = true; near.friendly = false; near.mode = "follow"; SFX.meow();
       const who = near.name ? near.name : ("The " + near.color + " cat");
-      toast(who + " is now your friend and will follow you.");
+      toast(who + " joined you and " + catAbilityDesc(near.ability) + ".");
       if (near.name) { showBanner(near.name + " joined Thomas!"); questComplete("New Companion. " + near.name); }
       onTame();
     } else toast("Need an Apple to tame the cat (you start with a few).");
@@ -1474,6 +1516,7 @@ function addToStore(arr, id, count) {  // arr is 9 slots; returns leftover
 function openChest(key) {
   openChestK = key; if (!chestStore.has(key)) chestStore.set(key, new Array(9).fill(null));
   if (story.active && key === story.starterKey && !story.chestOpened) { story.chestOpened = true; clearObjective(); addXP(20); showBanner("Supplies recovered. Now gather Wood from the trees."); }
+  if (story.active && key === story.secretKey && !story.secretOpened) { story.secretOpened = true; clearObjective(); showBanner("A buried secret! Cat Vision unlocked."); givePowerup("catvision"); }
   renderChest(); show("chest"); document.exitPointerLock();
 }
 function cellEl(s, onClick) {
@@ -1645,6 +1688,29 @@ $("contBtn").addEventListener("click", loadGame);
 $("saveBtn").addEventListener("click", () => saveGame(false));
 $("closeChestBtn").addEventListener("click", closeChest);
 
+// ---------- POWER-UPS (easy to read timed buffs) ----------
+const POWERUPS = {
+  speed:     { name: "Speed Boots", icon: "👢", dur: 30 },
+  jump:      { name: "Super Jump",  icon: "🦘", dur: 30 },
+  catvision: { name: "Cat Vision",  icon: "🐾", dur: 45 }
+};
+const powerups = { speed: 0, jump: 0, catvision: 0 };
+function powerActive(k) { return (powerups[k] || 0) > 0; }
+function randPowerup() { const ks = Object.keys(POWERUPS); return ks[Math.floor(Math.random() * ks.length)]; }
+function givePowerup(k) { const p = POWERUPS[k]; if (!p) return; powerups[k] = p.dur; toast(p.icon + " " + p.name + " activated!"); SFX.power(); renderPowerups(); if (k === "catvision") revealSecretsNow(); }
+function updatePowerups(dt) {
+  let changed = false;
+  for (const k in powerups) { if (powerups[k] > 0) { const was = Math.ceil(powerups[k]); powerups[k] = Math.max(0, powerups[k] - dt); if (powerups[k] === 0) { toast(POWERUPS[k].name + " wore off"); changed = true; } else if (Math.ceil(powerups[k]) !== was) changed = true; } }
+  if (changed) renderPowerups();
+}
+function renderPowerups() {
+  const el = $("powerups"); if (!el) return; el.innerHTML = "";
+  for (const k in powerups) if (powerups[k] > 0) { const d = document.createElement("div"); d.className = "pwr"; d.textContent = POWERUPS[k].icon + " " + Math.ceil(powerups[k]) + "s"; el.appendChild(d); }
+}
+function revealSecretsNow() {
+  if (story.secret && !story.secret.revealed && DIM === "overworld") { story.secret.revealed = true; setObjective(story.secret.x + 0.5, surfaceY(story.secret.x, story.secret.z), story.secret.z + 0.5); toast("Cat Vision reveals a buried secret nearby."); }
+}
+
 // ---------- OPENING STORY + OBJECTIVE MARKER (first 5 minutes) ----------
 // A short scripted intro: wake by a broken campfire, a friendly cat (Whiskers)
 // runs up, the sky flashes purple, then guided objectives with a glowing beacon,
@@ -1689,13 +1755,14 @@ function buildSpawnCamp() {
   // rebuild touched chunks now so the camp is visible immediately
   for (const k of touched) { const p = k.split(","); buildChunk(+p[0], +p[1]); }
   rebuildTorchCells();
-  return { chestX: chx, chestY: chy, chestZ: chz, catX: cx - 2, catZ: cz + 3, secret: { x: sx, y: sgy, z: sz, revealed: false } };
+  return { chestX: chx, chestY: chy, chestZ: chz, catX: cx - 2, catZ: cz + 3, secret: { x: sx, y: sgy, z: sz, revealed: false, key: chestKey(sx, sgy - 1, sz) } };
 }
 function spawnWhiskers(x, z) { spawnCat(x, z, { color: "orange", friendly: true, name: "Whiskers" }); SFX.meow(); }
 const story = { active: false, t: 0, step: 0, steps: [], firstMonster: false, secret: null, chestOpened: false };
 function startStory(camp) {
   story.active = true; story.t = 0; story.step = 0; story.firstMonster = false; story.secret = camp.secret; story.chestOpened = false;
   story.starterKey = chestKey(camp.chestX, camp.chestY, camp.chestZ);
+  story.secretKey = camp.secret.key; story.secretOpened = false;
   story.steps = [
     [0.3, () => cine("Thomas wakes beside a cold, broken campfire.")],
     [3.2, () => { cine("A small orange cat slips out of the ferns, meowing at Thomas."); spawnWhiskers(camp.catX, camp.catZ); }],
@@ -1781,7 +1848,7 @@ function loop() {
   requestAnimationFrame(loop);
   const now = performance.now(); let dt = (now - last) / 1000; last = now; if (dt > 0.05) dt = 0.05;
   if (running && !paused) {
-    if (attackCd > 0) attackCd -= dt; if (portalCd > 0) portalCd -= dt;
+    if (attackCd > 0) attackCd -= dt; if (portalCd > 0) portalCd -= dt; if (hammerCd > 0) hammerCd -= dt;
     physics(dt);
     tagMonsters();
     updateMining(dt);
@@ -1812,6 +1879,7 @@ function loop() {
     if (isNight()) { wasNight = true; if (!raidShown) { raidShown = true; showBanner("Night raid. Defend Thomas."); } }
     else { raidShown = false; if (wasNight && !survivedNight) { survivedNight = true; achieve("night", "First Night Survived"); } }
     updateStory(dt);
+    updatePowerups(dt);
     updateQuests();
     checkAchievements();
     updateMusic(dt);
