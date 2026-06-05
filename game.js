@@ -732,16 +732,19 @@ function openCharacter() { charView = true; charAngle = 0; renderSkinPick(); sho
 function closeCharacter() { charView = false; hide("skinpicker"); thomas.visible = false; if (!isTouch && running && !paused) canvas.requestPointerLock(); }
 
 // SKILL TREE
-const skills = { pts: 0, mine: 0, hp: 0, stam: 0, sword: 0, cat: 0 };
-let swordBonus = 0, catMult = 1;
+const skills = { pts: 0, mine: 0, hp: 0, stam: 0, sword: 0, cat: 0, armor: 0, swift: 0, luck: 0 };
+let swordBonus = 0, catMult = 1, armorReduce = 0, swiftMult = 1, luckBonus = 0;
 const SKILLDEF = [
-  { k: "mine", name: "Mining Speed", max: 5, desc: "+15% mine speed per point" },
-  { k: "hp", name: "Max Health", max: 5, desc: "+2 hearts per point" },
-  { k: "stam", name: "Max Stamina", max: 5, desc: "+20 stamina per point" },
-  { k: "sword", name: "Sword Damage", max: 5, desc: "+2 damage per point" },
-  { k: "cat", name: "Cat Damage", max: 5, desc: "+30% cat damage per point" }
+  { k: "mine", name: "Mining Speed", ic: "⛏️", max: 5, desc: "+15% mine speed per point" },
+  { k: "hp", name: "Max Health", ic: "❤️", max: 5, desc: "+2 hearts per point" },
+  { k: "stam", name: "Max Stamina", ic: "⚡", max: 5, desc: "+20 stamina per point" },
+  { k: "sword", name: "Sword Damage", ic: "🗡️", max: 5, desc: "+2 damage per point" },
+  { k: "cat", name: "Cat Damage", ic: "🐾", max: 5, desc: "+30% cat damage per point" },
+  { k: "armor", name: "Armor", ic: "🛡️", max: 5, desc: "-8% damage taken per point" },
+  { k: "swift", name: "Swiftness", ic: "👟", max: 5, desc: "+6% move speed per point" },
+  { k: "luck", name: "Luck", ic: "🍀", max: 5, desc: "+coins and better loot per point" }
 ];
-function applySkills() { miningMult = 1 + skills.mine * 0.15; player.maxHp = 20 + skills.hp * 4; player.maxStam = 100 + skills.stam * 20; swordBonus = skills.sword * 2; catMult = 1 + skills.cat * 0.3; }
+function applySkills() { miningMult = 1 + skills.mine * 0.15; player.maxHp = 20 + skills.hp * 4; player.maxStam = 100 + skills.stam * 20; swordBonus = skills.sword * 2; catMult = 1 + skills.cat * 0.3; armorReduce = Math.min(0.45, skills.armor * 0.08); swiftMult = 1 + skills.swift * 0.06; luckBonus = skills.luck; }
 function spendSkill(k) { const def = SKILLDEF.find(d => d.k === k); if (skills.pts <= 0 || skills[k] >= def.max) return; skills[k]++; skills.pts--; applySkills(); if (k === "hp") player.hp = Math.min(player.maxHp, player.hp + 4); SFX.craft(); updateVitals(); updateXPUI(); renderSkills(); }
 function aabbHit(px, py, pz) {
   const x0 = Math.floor(px - HW), x1 = Math.floor(px + HW), y0 = Math.floor(py), y1 = Math.floor(py + PH - 0.001), z0 = Math.floor(pz - HW), z1 = Math.floor(pz + HW);
@@ -769,7 +772,7 @@ function physics(dt) {
   const fwdKey = keys["KeyW"] || keys["ArrowUp"], backKey = keys["KeyS"] || keys["ArrowDown"];
   const moveKey = fwdKey || backKey || keys["KeyA"] || keys["KeyD"];
   let sprint = !crouch && (keys["ShiftLeft"] || keys["ShiftRight"] || touch.sprint || (isTouch && settings.sprintMode === "always" && touch.mag > 0.12)) && player.stam > 1 && (input.fwd !== 0 || input.str !== 0 || moveKey);
-  let sp = sprint ? 6.0 : 4.2; if (powerActive("speed")) sp *= 1.5; if (crouch) sp = 2.0;
+  let sp = sprint ? 6.0 : 4.2; if (powerActive("speed")) sp *= 1.5; sp *= swiftMult; if (crouch) sp = 2.0;
   const f = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
   const r = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
   const wish = new THREE.Vector3();
@@ -851,6 +854,7 @@ function damage(n) {
   if (!running) return;
   if (player.hurtCd > 0 && n < 1) return;
   if (powerActive("shield") && n >= 1) { hurtFlash(); player.hurtCd = 0.3; return; }   // Shield Bubble absorbs hits
+  n *= (1 - armorReduce);                                                               // Armor skill reduces damage
   player.hp -= n; if (n >= 1) { player.hurtCd = 0.6; hurtFlash(); SFX.hurt(); if (n >= 4) addShake(0.22); }
   if (player.hp <= 0) die();
   updateVitals();
@@ -1349,9 +1353,9 @@ function knock(g, f) { const dx = g.position.x - player.pos.x, dz = g.position.z
 // central monster death: loot, xp, quest hook, and a power-up chance from elites
 function killMonster(m) {
   if (m.dead) return; m.dead = true; discoverMob(m.type);
-  for (const [lid, lc, lp] of (m.loot || [])) if (Math.random() < (m.elite ? Math.min(1, lp + 0.3) : lp)) addItem(lid, lc);
+  for (const [lid, lc, lp] of (m.loot || [])) if (Math.random() < (m.elite ? Math.min(1, lp + 0.3) : lp) + luckBonus * 0.05) addItem(lid, lc);   // Luck improves loot
   if (m.elite) { addItem(I_APPLE, 1); if (Math.random() < 0.55) givePowerup(randPowerup()); }
-  addCoins(m.elite ? 3 + Math.floor(Math.random() * 4) : 1 + Math.floor(Math.random() * 2));
+  addCoins((m.elite ? 3 + Math.floor(Math.random() * 4) : 1 + Math.floor(Math.random() * 2)) + luckBonus);   // Luck adds coins
   if (!treasureKey && DIM === "overworld" && Math.random() < 0.03) { startTreasureHunt(); toast("A monster dropped a treasure map!"); }
   addXP(m.xp || 10); onKill();
 }
@@ -1879,7 +1883,7 @@ function renderSkills() {
   for (const d of SKILLDEF) {
     const can = skills.pts > 0 && skills[d.k] < d.max;
     const row = document.createElement("div"); row.className = "craftRow" + (can ? "" : " no");
-    row.innerHTML = "<span><b>" + d.name + "</b> " + skills[d.k] + "/" + d.max + "<br><span class='muted'>" + d.desc + "</span></span>";
+    row.innerHTML = "<span><b>" + (d.ic ? d.ic + " " : "") + d.name + "</b> " + skills[d.k] + "/" + d.max + "<br><span class='muted'>" + d.desc + "</span></span>";
     const b = document.createElement("button"); b.className = "mk"; b.textContent = skills[d.k] >= d.max ? "MAX" : "+";
     b.addEventListener("pointerdown", e => { e.preventDefault(); spendSkill(d.k); });
     row.appendChild(b); wrap.appendChild(row);
@@ -2070,7 +2074,7 @@ function saveGame(silent) {
     const data = { v: 2, dim: DIM, pos: [player.pos.x, player.pos.y, player.pos.z], yaw: player.yaw, pitch: player.pitch,
       hp: player.hp, food: player.food, stam: player.stam,
       xp: xp, level: level, xpNext: xpNext,
-      skills: { mine: skills.mine, hp: skills.hp, stam: skills.stam, sword: skills.sword, cat: skills.cat, pts: skills.pts },
+      skills: { mine: skills.mine, hp: skills.hp, stam: skills.stam, sword: skills.sword, cat: skills.cat, armor: skills.armor, swift: skills.swift, luck: skills.luck, pts: skills.pts },
       flags: { craftedPlanks, craftedPick, minedStone, survivedNight, tamedCat, kills, fireBossDown, tameCount, placedBlocks, movedDist },
       qi: qi, ach: [...ach], day: day, timeOfDay: timeOfDay, hotbar: hotbar, coins: coins,
       side: [...sideDone],
@@ -2371,7 +2375,7 @@ function drawMinimap() {
 function startGame() {
   initAudio(); hide("menu"); hide("win"); hide("death"); $("hud").classList.remove("hidden");
   if (isTouch) show("touch");
-  skills.pts = 0; skills.mine = skills.hp = skills.stam = skills.sword = skills.cat = 0; applySkills();
+  skills.pts = 0; skills.mine = skills.hp = skills.stam = skills.sword = skills.cat = skills.armor = skills.swift = skills.luck = 0; applySkills();
   player.hp = player.maxHp; player.food = 20; player.stam = player.maxStam; running = true; paused = false;
   // starter kit (TODO: true survival empty start)
   for (let i = 0; i < 9; i++) hotbar[i] = null;
