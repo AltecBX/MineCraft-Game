@@ -784,7 +784,7 @@ if (isTouch) {
   const setT = (dx, dy) => jt.style.transform = "translate(calc(-50% + " + dx + "px),calc(-50% + " + dy + "px))";
   function upJoy(x, y) { let dx = x - parseFloat(joy.style.left), dy = y - parseFloat(joy.style.top); const d = Math.hypot(dx, dy) || 1; if (d > JR) { dx = dx / d * JR; dy = dy / d * JR; } setT(dx, dy); input.str = dx / JR; input.fwd = -dy / JR; touch.mag = Math.min(1, d / JR); touch.sprint = touch.mag > 0.92; }
   function endJoy() { joy.style.display = "none"; setT(0, 0); input.fwd = input.str = 0; touch.mag = 0; touch.sprint = false; }
-  const onBtn = t => t.target && t.target.closest && t.target.closest(".tc,.slot,.btn,.seg,.cell,.craftRow,input");
+  const onBtn = t => t.target && t.target.closest && t.target.closest("#minimap,.tc,.slot,.btn,.seg,.cell,.craftRow,input");
   addEventListener("touchstart", e => { if (!running || paused) return; let used = false; for (const t of e.changedTouches) { if (onBtn(t)) continue; used = true; const x = t.clientX, y = t.clientY; if (x < innerWidth * 0.45 && mId === null) { mId = t.identifier; showJoy(x, y); upJoy(x, y); } else if (lId === null) { lId = t.identifier; lx = x; ly = y; } } if (used) e.preventDefault(); }, { passive: false });
   addEventListener("touchmove", e => { if (!running) return; for (const t of e.changedTouches) { if (t.identifier === mId) upJoy(t.clientX, t.clientY); else if (t.identifier === lId) { player.yaw -= (t.clientX - lx) * settings.sensM; player.pitch -= (t.clientY - ly) * settings.sensM; clampPitch(); lx = t.clientX; ly = t.clientY; } } e.preventDefault(); }, { passive: false });
   function endT(e) { for (const t of e.changedTouches) { if (t.identifier === mId) { mId = null; endJoy(); } else if (t.identifier === lId) lId = null; } }
@@ -1724,8 +1724,19 @@ $("pSkillBtn").addEventListener("click", () => { hide("pause"); paused = false; 
 $("closeSkillBtn").addEventListener("click", toggleSkills);
 $("pJournalBtn").addEventListener("click", () => { hide("pause"); paused = false; toggleJournal(); });
 $("closeJournalBtn").addEventListener("click", toggleJournal);
-$("respawnBtn").addEventListener("click", () => { hide("death"); player.hp = player.maxHp; player.food = 20; player.stam = player.maxStam; player.pos.copy(player.spawn); player.vel.set(0, 0, 0); updateVitals(); running = true; $("hud").classList.remove("hidden"); if (isTouch) show("touch"); else canvas.requestPointerLock(); });
-$("againBtn").addEventListener("click", () => { hide("win"); startGame(); });
+// touch-robust tap: fire on touchend (with preventDefault) and de-dupe the synthesized click,
+// so buttons that return to gameplay always work on iOS even with lingering game touch state
+function tapBtn(el, fn) { if (!el) return; let h = false; el.addEventListener("touchend", e => { e.preventDefault(); h = true; fn(); setTimeout(() => h = false, 500); }, { passive: false }); el.addEventListener("click", () => { if (h) { h = false; return; } fn(); }); }
+function clearInputState() { primaryHeld = false; if (typeof touch !== "undefined") { touch.jump = false; touch.sprint = false; touch.mag = 0; } input.fwd = 0; input.str = 0; if (typeof mineReset === "function") mineReset(); }
+function doRespawn() {
+  hide("death"); clearInputState();
+  player.hp = player.maxHp; player.food = 20; player.stam = player.maxStam;
+  player.pos.copy(player.spawn); player.vel.set(0, 0, 0); player.hurtCd = 2;   // brief grace so you do not instantly die again
+  updateVitals(); running = true; paused = false; $("hud").classList.remove("hidden");
+  if (isTouch) show("touch"); else canvas.requestPointerLock();
+}
+tapBtn($("respawnBtn"), doRespawn);
+tapBtn($("againBtn"), () => { hide("win"); startGame(); });
 canvas.addEventListener("click", () => { if (running && !paused && !pointerLocked && !isTouch) canvas.requestPointerLock(); });
 // settings controls
 $("sSensD").addEventListener("input", e => settings.sensD = 0.0001 * e.target.value);
@@ -2055,28 +2066,50 @@ function closeShop() { hide("shop"); if (!isTouch && running) canvas.requestPoin
 // ---------- GAME START ----------
 // ---------- MINIMAP (UISystem) ----------
 const mmCv = document.getElementById("minimap"), mmx = mmCv.getContext("2d");
-let mmT = 0;
+mmCv.width = 220; mmCv.height = 220;                 // crisp internal resolution (CSS controls display size)
+let mmT = 0, mmBig = false;
+mmCv.style.pointerEvents = "auto";
+mmCv.addEventListener("pointerdown", e => { e.preventDefault(); mmBig = !mmBig; mmCv.classList.toggle("big", mmBig); drawMinimap(); });
+function mmDot(W, span, cx, cz, ex, ez, color, r) {
+  const mx = ((ex - cx) / span + 0.5) * W, mz = ((ez - cz) / span + 0.5) * W;
+  if (mx < 2 || mx > W - 2 || mz < 2 || mz > W - 2) return;
+  mmx.fillStyle = color; mmx.strokeStyle = "rgba(0,0,0,.55)"; mmx.lineWidth = 1.5;
+  mmx.beginPath(); mmx.arc(mx, mz, r || 3.2, 0, 6.2832); mmx.fill(); mmx.stroke();
+}
 function drawMinimap() {
-  const N = 30, span = 100, step = span / N, px = mmCv.width / N, cx = player.pos.x, cz = player.pos.z;
-  mmx.clearRect(0, 0, mmCv.width, mmCv.height);
-  if (DIM !== "overworld") { mmx.fillStyle = DIM === "fire" ? "#3a0d0d" : "#0c0c14"; mmx.fillRect(0, 0, mmCv.width, mmCv.height); }
+  const W = mmCv.width, span = mmBig ? 160 : 96, N = mmBig ? 64 : 52, step = span / N, px = W / N, cx = player.pos.x, cz = player.pos.z;
+  mmx.clearRect(0, 0, W, W);
+  if (DIM !== "overworld") { mmx.fillStyle = DIM === "fire" ? "#3a0d0d" : "#0c0c14"; mmx.fillRect(0, 0, W, W); }
   else {
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const wx = cx + (i - N / 2) * step, wz = cz + (j - N / 2) * step;   // j=0 north (-z), i=0 west (-x)
       const h = heightAt(wx, wz), b = biomeAt(wx, wz);
-      const peak = h > SEA + 16, desert = b.t > 0.66 && !peak && h > SEA, forest = b.m > 0.58 && !desert && !peak;
+      const peak = h > SEA + 16, snow = b.t < 0.28 && h > SEA + 6, desert = b.t > 0.66 && !peak && h > SEA, forest = b.m > 0.58 && !desert && !peak;
+      const beach = h > SEA && h <= SEA + 1;
       let col;
-      if (h <= SEA) col = [44, 96, 180]; else if (peak) col = [228, 236, 243]; else if (desert) col = [212, 196, 128]; else if (forest) col = [54, 120, 52]; else col = [108, 170, 90];
-      const s = 0.7 + (h - SEA) / 40;
-      mmx.fillStyle = "rgb(" + ((col[0] * s) | 0) + "," + ((col[1] * s) | 0) + "," + ((col[2] * s) | 0) + ")";
-      mmx.fillRect(i * px, j * px, px + 1, px + 1);
+      if (h <= SEA - 3) col = [38, 84, 168]; else if (h <= SEA) col = [60, 120, 200]; else if (beach) col = [222, 208, 150];
+      else if (peak) col = [236, 242, 248]; else if (snow) col = [206, 224, 236]; else if (desert) col = [212, 196, 128]; else if (forest) col = [48, 116, 50]; else col = [108, 170, 90];
+      const s = 0.74 + Math.max(-0.2, (h - SEA) / 38);
+      mmx.fillStyle = "rgb(" + Math.min(255, (col[0] * s) | 0) + "," + Math.min(255, (col[1] * s) | 0) + "," + Math.min(255, (col[2] * s) | 0) + ")";
+      mmx.fillRect(i * px, j * px, px + 1.2, px + 1.2);
     }
   }
-  const c = mmCv.width / 2;
+  // live entity dots
+  if (typeof mice !== "undefined") for (const m of mice) mmDot(W, span, cx, cz, m.g.position.x, m.g.position.z, m.golden ? "#ffd24a" : "#d8d8d8", 2);
+  if (typeof monsters !== "undefined") for (const m of monsters) if (!m.dead) mmDot(W, span, cx, cz, m.g.position.x, m.g.position.z, m.elite ? "#ff66ff" : "#ff4444", 3);
+  if (typeof cats !== "undefined") for (const c of cats) mmDot(W, span, cx, cz, c.g.position.x, c.g.position.z, c.tamed ? "#6cff6c" : "#bfffbf", 3);
+  if (typeof merchant !== "undefined" && merchant) mmDot(W, span, cx, cz, merchant.g.position.x, merchant.g.position.z, "#ffe066", 3.5);
+  if (typeof objMarker !== "undefined" && objMarker && objMarker.visible) mmDot(W, span, cx, cz, objMarker.position.x, objMarker.position.z, "#fff14a", 4);
+  // player arrow at centre, pointing where Thomas faces
+  const c = W / 2;
   mmx.save(); mmx.translate(c, c); mmx.rotate(-player.yaw);
-  mmx.fillStyle = "#fff"; mmx.strokeStyle = "rgba(0,0,0,.6)"; mmx.lineWidth = 1.5;
-  mmx.beginPath(); mmx.moveTo(0, -7); mmx.lineTo(5, 6); mmx.lineTo(0, 3); mmx.lineTo(-5, 6); mmx.closePath(); mmx.fill(); mmx.stroke();
+  mmx.fillStyle = "#fff"; mmx.strokeStyle = "rgba(0,0,0,.7)"; mmx.lineWidth = 2;
+  const a = W / 18;
+  mmx.beginPath(); mmx.moveTo(0, -a * 1.3); mmx.lineTo(a, a); mmx.lineTo(0, a * 0.5); mmx.lineTo(-a, a); mmx.closePath(); mmx.fill(); mmx.stroke();
   mmx.restore();
+  // north marker
+  mmx.fillStyle = "rgba(255,255,255,.85)"; mmx.font = "bold " + (W / 16) + "px ui-monospace,monospace"; mmx.textAlign = "center"; mmx.textBaseline = "top";
+  mmx.fillText("N", c, 3);
 }
 
 function startGame() {
@@ -2101,7 +2134,7 @@ function startGame() {
   camera.fov = settings.fov; camera.updateProjectionMatrix();
   if (!isTouch) canvas.requestPointerLock();
 }
-function die() { running = false; document.exitPointerLock(); hide("touch"); $("hud").classList.add("hidden"); show("death"); }
+function die() { running = false; clearInputState(); document.exitPointerLock(); hide("touch"); $("hud").classList.add("hidden"); show("death"); }
 
 // ---------- MAIN LOOP ----------
 let last = performance.now(); let hungerT = 0, heatT = 0, droneT = 3;
