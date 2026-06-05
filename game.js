@@ -149,7 +149,7 @@ function stepSound() {
 }
 // generative background music: a slow per-dimension pad, no asset files
 let musicGain = null, musicT = 0, musicIdx = 0;
-const SCALES = { overworld: [220, 247, 294, 330, 392, 440], night: [165, 196, 220, 247, 196, 147], cave: [110, 131, 147, 110, 98, 87], fire: [110, 131, 147, 175, 131, 98], end: [330, 392, 494, 587, 392, 247] };
+const SCALES = { overworld: [220, 247, 294, 330, 392, 440], night: [165, 196, 220, 247, 196, 147], cave: [110, 131, 147, 110, 98, 87], fire: [110, 131, 147, 175, 131, 98], sky: [392, 440, 523, 587, 659, 784], end: [330, 392, 494, 587, 392, 247] };
 function playPad(freq, dur) {
   if (!settings.music || settings.muted || !actx) return;
   if (!musicGain) { musicGain = actx.createGain(); musicGain.connect(actx.destination); applyAudioGains(); }
@@ -167,7 +167,7 @@ function updateMusic(dt) {
   if (DIM === "overworld") key = isNight() ? "night" : (player.pos.y < SEA - 3 ? "cave" : "overworld");
   const sc = SCALES[key] || SCALES.overworld, note = sc[musicIdx % sc.length]; musicIdx++;
   const boss = bossActive();
-  const dur = boss ? 1.1 : key === "night" ? 2.4 : key === "cave" ? 3.1 : DIM === "fire" ? 2.2 : DIM === "end" ? 2.9 : 1.8;
+  const dur = boss ? 1.1 : key === "night" ? 2.4 : key === "cave" ? 3.1 : DIM === "fire" ? 2.2 : DIM === "sky" ? 1.7 : DIM === "end" ? 2.9 : 1.8;
   playPad(note * (boss ? (Math.random() < 0.5 ? 0.5 : 1) : (Math.random() < 0.18 ? 2 : 1)), dur);
   musicT = dur * (boss ? 0.45 : 0.66);
 }
@@ -324,6 +324,21 @@ function genChunk(cx, cz) {
       else if (hsh(x * 13 + 2, z * 17 + 5) > 0.985) setRaw(x, h + 1, z, FIRE_CRYSTAL);              // surface crystal clusters
       if (hsh(x * 7 + 1, z * 9 + 3) > 0.987) { for (let y = h + 1; y < h + 4; y++) setRaw(x, y, z, WOOD); setRaw(x, h + 4, z, FIRE_CRYSTAL); }  // burning tree with ember
     }
+  } else if (DIM === "sky") { // sky islands: a central spawn island plus scattered floating islands and clouds
+    for (let x = x0; x < x0 + CH; x++) for (let z = z0; z < z0 + CH; z++) {
+      const d = Math.hypot(x, z);
+      if (d < 11) { for (let y = 31; y <= 34; y++) setRaw(x, y, z, y === 34 ? GRASS : STONE); if (d < 8 && hsh(x * 3 + 1, z * 3 + 2) > 0.93) tree(x, 35, z); }   // spawn island
+      const fi = vn(x * 0.06 + 300, z * 0.06 + 300);
+      if (d > 11 && fi > 0.72) {                                                          // floating islands
+        const fy = 28 + Math.floor((fi - 0.72) * 50) + Math.floor(hsh((x / 5) | 0, (z / 5) | 0) * 10);
+        const thick = 2 + Math.floor(fi * 3);
+        for (let y = fy - thick; y <= fy; y++) setRaw(x, y, z, y === fy ? GRASS : STONE);
+        if (hsh(x * 3 + 1, z * 3 + 1) > 0.985) tree(x, fy + 1, z);
+        else if (hsh(x * 2 + 5, z * 2 + 5) > 0.99) setRaw(x, fy + 1, z, FIRE_CRYSTAL);     // a shiny loot block
+      }
+      const cl = vn(x * 0.08 + 50, z * 0.08 + 50);
+      if (cl > 0.88) setRaw(x, 46 + Math.floor(hsh(x, z) * 4), z, SNOW);                   // decorative clouds up high
+    }
   } else { // end: large central island, floating islands, ruined pillars; void elsewhere
     for (let x = x0; x < x0 + CH; x++) for (let z = z0; z < z0 + CH; z++) {
       const d = Math.hypot(x, z);
@@ -426,12 +441,13 @@ function loadChunks() {
 }
 function clearWorld() {
   for (const c of chunks.values()) { if (c.opaque) { scene.remove(c.opaque); c.opaque.geometry.dispose(); } if (c.water) { scene.remove(c.water); c.water.geometry.dispose(); } }
-  chunks.clear(); dirty.clear(); generated.clear(); W.clear(); portalCells.length = 0; if (portalMesh) { scene.remove(portalMesh); portalMesh = null; }
+  chunks.clear(); dirty.clear(); generated.clear(); W.clear(); portalCells.length = 0; portalDest = {}; if (portalMesh) { scene.remove(portalMesh); portalMesh = null; }
   torchCells.length = 0; if (torchMesh) { scene.remove(torchMesh); torchMesh = null; }
 }
 
 // portal blocks rendered separately (animated)
 const portalCells = [];
+let portalDest = {};                 // "x,y,z" -> destination dimension for that portal block
 let portalMesh = null;
 const portalMat = new THREE.MeshLambertMaterial({ color: 0x9b30ff, emissive: 0x7a16d8, emissiveIntensity: 1.1, transparent: true, opacity: 0.82 });
 const portalGeo = new THREE.BoxGeometry(1, 1, 1);
@@ -486,7 +502,7 @@ function rebuildFredaLabels() {
 
 // chest storage (per dimension + position) and player block edits (for save/load)
 let chestStore = new Map();           // "dim:x,y,z" -> [9 stacks]
-const editsByDim = { overworld: new Map(), fire: new Map(), end: new Map() };
+const editsByDim = { overworld: new Map(), fire: new Map(), end: new Map(), sky: new Map() };
 function chestKey(x, y, z) { return DIM + ":" + bk(x, y, z); }
 function recordEdit(x, y, z, id) { const m = editsByDim[DIM]; if (m) m.set(bk(x, y, z), id); }
 // player axis-aligned box: HW half width, PH total height, EYE eye height (feet at pos.y)
@@ -621,6 +637,7 @@ const ACHDEFS = [
   { id: "charm", label: "Fireproof", desc: "Hold a Flame Charm", test: () => countItem(I_FIRECHARM) > 0 },
   { id: "fireboss", label: "Guardian Slayer", desc: "Defeat the Fire Guardian", test: () => fireBossDown },
   { id: "endin", label: "The End", desc: "Reach the End", test: () => DIM === "end" },
+  { id: "skyboss", label: "Sky Beast Slain", desc: "Defeat the Sky Serpent", test: () => ach.has("skyboss") },
   { id: "treasure", label: "Treasure Hunter", desc: "Dig up buried treasure", test: () => ach.has("treasure") },
   { id: "cheeseking", label: "Cheese King Caught", desc: "Catch the Cheese King mouse", test: () => ach.has("cheeseking") },
   { id: "ninja", label: "Ninja Catcher", desc: "Catch a ninja mouse", test: () => ach.has("ninja") },
@@ -1129,6 +1146,13 @@ function updateMonsters(dt) {
         if (Math.hypot(sxp, szp) > 42) { sxp = Math.floor(player.pos.x); szp = Math.floor(player.pos.z); }  // keep on the island
         spawnMonster(sxp, szp, Math.random() < 0.5 ? "shadowknight" : "endstalker");
       }
+    } else if (DIM === "sky") {
+      spawnTimer = 7;
+      if (monsters.length < 4) {
+        const a = Math.random() * Math.PI * 2, r = 7 + Math.random() * 6;
+        const sxp = Math.floor(player.pos.x + Math.cos(a) * r), szp = Math.floor(player.pos.z + Math.sin(a) * r);
+        spawnMonster(sxp, szp, Math.random() < 0.6 ? "ghost" : "crawler");
+      }
     }
   }
   // alarm bells ring when monsters raid the base at night
@@ -1500,10 +1524,11 @@ function updateDayNight(dt) {
 
 // ---------- PORTALS + DIMENSIONS ----------
 let dragon = null, crystals = [], crystalsLeft = 0;
-function buildPortalFrame(cx, baseY, z, dir) { // dir: 'x' plane
+function buildPortalFrame(cx, baseY, z, dir, dest) { // dir: 'x' plane; dest: dimension this portal leads to
   for (let dx = -1; dx <= 2; dx++) for (let dy = -1; dy <= 4; dy++) {
     const edge = dx === -1 || dx === 2 || dy === -1 || dy === 4;
     setRaw(cx + dx, baseY + dy, z, edge ? COBBLE : PORTAL);
+    if (!edge && dest) portalDest[bk(cx + dx, baseY + dy, z)] = dest;
   }
   rebuildPortalCells();
   for (let i = -2; i <= 3; i++) markDirty(cx + i, z);
@@ -1511,11 +1536,12 @@ function buildPortalFrame(cx, baseY, z, dir) { // dir: 'x' plane
 let portalCd = 0;
 function checkPortal() {
   if (portalCd > 0) return;
-  const at = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y), Math.floor(player.pos.z));
-  const at2 = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + 1), Math.floor(player.pos.z));
+  const fx = Math.floor(player.pos.x), fy = Math.floor(player.pos.y), fz = Math.floor(player.pos.z);
+  const at = getBlock(fx, fy, fz), at2 = getBlock(fx, fy + 1, fz);
   if (at === PORTAL || at2 === PORTAL) {
     portalCd = 2;
-    const next = DIM === "overworld" ? "fire" : DIM === "fire" ? "end" : "overworld";
+    const dest = portalDest[bk(fx, fy, fz)] || portalDest[bk(fx, fy + 1, fz)];
+    const next = dest || (DIM === "overworld" ? "fire" : DIM === "fire" ? "end" : "overworld");
     transitionTo(next);
   }
 }
@@ -1523,19 +1549,20 @@ function transitionTo(name) {
   SFX.portal(); const fade = document.getElementById("fade"); fade.style.opacity = "1";
   setTimeout(() => { loadDimension(name); fade.style.opacity = "0"; }, 520);
 }
-function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (merchant) { scene.remove(merchant.g); merchant = null; } if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
+function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } if (typeof skyBoss !== "undefined" && skyBoss) { scene.remove(skyBoss.g); skyBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (merchant) { scene.remove(merchant.g); merchant = null; } if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
 function loadDimension(name, fromSave) {
   DIM = name; clearWorld(); clearEntities();
   if (name === "fire") achieve("firep", "Fire Portal Opened");
   if (name === "end") achieve("endp", "End Portal Opened");
   player.pos.set(0.5, 50, 0.5); player.vel.set(0, 0, 0);
-  gravity = name === "end" ? 16 : 28; jumpV = name === "end" ? 8.4 : 9.2;     // low gravity end
+  gravity = (name === "end" || name === "sky") ? 16 : 28; jumpV = (name === "end" || name === "sky") ? 8.4 : 9.2;     // low gravity end + sky
   if (name === "overworld") { for (let i = 0; i < 3; i++) spawnCat((Math.random() * 20 - 10) | 0, (Math.random() * 20 - 10) | 0); for (let i = 0; i < 8; i++) spawnMouse((Math.random() * 30 - 15) | 0, (Math.random() * 30 - 15) | 0); }
   for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) buildChunk(dx, dz);
   if (!fromSave) { player.pos.y = surfaceY(0, 0) + 1; player.spawn.copy(player.pos); }
   // dimension setup
-  if (name === "overworld") { scene.fog = new THREE.Fog(0x9fd2ff, 20, GFX[settings.gfx].dist * CH); hemi.color.set(0xbfe3ff); sun.color.set(0xffffff); showBanner("Overworld"); buildPortalFrame(8, surfaceY(8, 0), 0, "x"); setQuest("Step through the purple portal to the Fire Dimension"); }
-  else if (name === "fire") { scene.background = new THREE.Color(0x2a0808); scene.fog = new THREE.Fog(0x551111, 8, 40); hemi.color.set(0xff7a3a); hemi.intensity = 0.6; sun.intensity = 0.5; sun.color.set(0xff8a4a); showBanner("Fire Dimension"); clearFirePad(0, 0); if (fireBossDown) { buildPortalFrame(0, surfaceY(0, -8), -8, "x"); setRaw(0, surfaceY(0, -8) + 1, -8, PORTAL); setQuest("Enter the portal to reach the End"); } else { spawnFireBoss(); setQuest("Defeat the Fire Guardian. A Flame Charm will protect you from the heat"); } }
+  if (name === "overworld") { scene.fog = new THREE.Fog(0x9fd2ff, 20, GFX[settings.gfx].dist * CH); hemi.color.set(0xbfe3ff); sun.color.set(0xffffff); showBanner("Overworld"); buildPortalFrame(8, surfaceY(8, 0), 0, "x", "fire"); if (fireBossDown) { buildPortalFrame(-10, surfaceY(-10, 0), 0, "x", "sky"); } setQuest("Step through the purple portal to the Fire Dimension"); }
+  else if (name === "fire") { scene.background = new THREE.Color(0x2a0808); scene.fog = new THREE.Fog(0x551111, 8, 40); hemi.color.set(0xff7a3a); hemi.intensity = 0.6; sun.intensity = 0.5; sun.color.set(0xff8a4a); showBanner("Fire Dimension"); clearFirePad(0, 0); if (fireBossDown) { buildPortalFrame(0, surfaceY(0, -8), -8, "x", "end"); setRaw(0, surfaceY(0, -8) + 1, -8, PORTAL); setQuest("Enter the portal to reach the End"); } else { spawnFireBoss(); setQuest("Defeat the Fire Guardian. A Flame Charm will protect you from the heat"); } }
+  else if (name === "sky") { scene.background = new THREE.Color(0x8fd0ff); scene.fog = new THREE.Fog(0xbfe3ff, 36, 150); hemi.color.set(0xdff1ff); hemi.intensity = 0.95; sun.intensity = 0.9; sun.color.set(0xffffff); showBanner("Sky Islands"); buildPortalFrame(6, surfaceY(6, 0), 0, "x", "overworld"); spawnSkySerpent(); setQuest("Glide the Sky Islands and defeat the Sky Serpent"); }
   else { scene.background = new THREE.Color(0x000000); scene.fog = new THREE.Fog(0x000000, 30, 120); hemi.color.set(0xffffff); hemi.intensity = 0.9; sun.intensity = 0.7; sun.color.set(0xeae6ff); showBanner("The End"); buildEndDragon(); setQuest("Destroy the End Crystals, then slay the Black Dragon"); }
   // replay player block edits, then rebuild special blocks
   const ed = editsByDim[name]; if (ed) for (const [k, id] of ed) { const p = k.split(",").map(Number); setRaw(p[0], p[1], p[2], id); }
@@ -1606,8 +1633,59 @@ function updateFireBoss(dt) {
     scene.remove(fb.g); fireBoss = null; hideBoss(); SFX.victory();
     toast("Fire Guardian defeated. The path to the End opens.");
     addItem(FIRE_CRYSTAL, 6); addItem(I_FIRECHARM, 1); addXP(120);
-    buildPortalFrame(0, surfaceY(0, -8), -8, "x"); setRaw(0, surfaceY(0, -8) + 1, -8, PORTAL); rebuildPortalCells();
+    buildPortalFrame(0, surfaceY(0, -8), -8, "x", "end"); setRaw(0, surfaceY(0, -8) + 1, -8, PORTAL); rebuildPortalCells();
     setQuest("Enter the portal to reach the End"); onFireBoss();
+  }
+}
+// ---------- SKY ISLANDS: the Sky Serpent boss (flying, 3 phases, dive telegraphs) ----------
+let skyBoss = null;
+function spawnSkySerpent() {
+  const g = new THREE.Group();
+  const mat = (c, em) => new THREE.MeshLambertMaterial({ color: c, emissive: em != null ? em : 0x103a5a, emissiveIntensity: 0.45 });
+  const segs = [];
+  for (let i = 0; i < 6; i++) { const s = new THREE.Mesh(new THREE.BoxGeometry(0.82 - i * 0.07, 0.82 - i * 0.07, 0.9), mat(i % 2 ? 0x3fa9f5 : 0x6fc7ff)); s.position.set(0, 0, -i * 0.85); g.add(s); segs.push(s); }
+  const head = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.9, 1.1), mat(0x2f8fe0)); head.position.set(0, 0.1, 0.95); g.add(head);
+  const eyeMat = new THREE.MeshLambertMaterial({ color: 0xffe14d, emissive: 0xffe14d });
+  const e1 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.18, 0.1), eyeMat); e1.position.set(-0.28, 0.28, 1.45); g.add(e1); const e2 = e1.clone(); e2.position.x = 0.28; g.add(e2);
+  const wMat = mat(0xcfeaff, 0x2a5a8a);
+  const wL = new THREE.Group(); const mem = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.1, 1.7), wMat); mem.position.set(-1.5, 0, 0); wL.add(mem); wL.position.set(-0.4, 0.3, 0.2); g.add(wL);
+  const wR = new THREE.Group(); const mem2 = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.1, 1.7), wMat); mem2.position.set(1.5, 0, 0); wR.add(mem2); wR.position.set(0.4, 0.3, 0.2); g.add(wR);
+  g.position.set(0, surfaceY(0, 0) + 9, -10); scene.add(g);
+  const maxHp = 200;
+  skyBoss = { g, hp: maxHp, max: maxHp, t: 0, touch: 0, atkCd: 2.5, phase: 1, intro: 2.6, wL, wR, segs, head, flash: 0, swoop: 0 };
+  g.traverse(o => { o.userData.kind = "monster"; o.userData.m = { get hp() { return skyBoss.hp; }, set hp(v) { skyBoss.hp = v; }, get max() { return skyBoss.max; }, set flash(v) { if (skyBoss) skyBoss.flash = v; }, get flash() { return skyBoss ? skyBoss.flash : 0; }, bar: { up: () => {} }, get dead() { return !skyBoss || skyBoss.hp <= 0; }, get ghost() { return false; }, g } });
+  bossIntro("SKY SERPENT", "It circles the islands. Strike when it dives.");
+  showBoss("SKY SERPENT", 1);
+}
+function updateSkyBoss(dt) {
+  if (!skyBoss) return;
+  const fb = skyBoss; fb.t += dt;
+  if (fb.flash > 0) fb.flash -= dt;
+  const frac = fb.hp / fb.max, phase = frac > 0.66 ? 1 : frac > 0.33 ? 2 : 3;
+  if (phase !== fb.phase) { fb.phase = phase; SFX.growl(); toast(phase === 3 ? "The Sky Serpent shrieks in fury" : "The Sky Serpent grows fiercer"); }
+  showBoss("SKY SERPENT" + (phase === 3 ? " (FURIOUS)" : ""), Math.max(0, frac));
+  const flap = Math.sin(fb.t * 6) * 0.5; fb.wL.rotation.z = -flap; fb.wR.rotation.z = flap;
+  for (let i = 0; i < fb.segs.length; i++) fb.segs[i].rotation.y = Math.sin(fb.t * 3 - i * 0.5) * 0.25;
+  const dx = player.pos.x - fb.g.position.x, dz = player.pos.z - fb.g.position.z, d = Math.hypot(dx, dz) || 0.001;
+  fb.g.rotation.y = Math.atan2(dx, dz);
+  if (fb.intro > 0 && fb.hp > 0) { fb.intro -= dt; return; }
+  const spd = phase === 3 ? 3.0 : 2.0, base = surfaceY(0, 0) + 9;
+  fb.swoop -= dt;
+  let tx, tz, ty;
+  if (fb.swoop > 0) { tx = player.pos.x; tz = player.pos.z; ty = player.pos.y + 2.2; }     // dive at Thomas
+  else { tx = Math.cos(fb.t * 0.6) * 12; tz = Math.sin(fb.t * 0.6) * 12; ty = base + Math.sin(fb.t * 0.8) * 2; }
+  fb.g.position.x += (tx - fb.g.position.x) * Math.min(1, dt * spd);
+  fb.g.position.z += (tz - fb.g.position.z) * Math.min(1, dt * spd);
+  fb.g.position.y += (ty - fb.g.position.y) * Math.min(1, dt * 1.8);
+  fb.touch -= dt; if (fb.g.position.distanceTo(player.pos) < 3 && fb.touch <= 0) { damage(phase >= 3 ? 7 : 5); fb.touch = 1; addShake(0.2); }
+  if (fb.swoop <= 0 && Math.random() < (phase >= 3 ? 0.02 : 0.01)) { fb.swoop = 2.2; spawnTelegraph(player.pos.x, player.pos.z, 3, 0.9, 0x7afcff); }
+  fb.atkCd -= dt; if (fb.atkCd <= 0) { fb.atkCd = phase >= 3 ? 1.2 : 2.4; const volley = phase >= 3 ? 3 : 1; for (let i = 0; i < volley; i++) { const off = (i - (volley - 1) / 2) * 2; spawnProjectile(fb.g.position, { x: player.pos.x + off, y: player.pos.y, z: player.pos.z }); } }
+  if (fb.hp <= 0) {
+    for (let i = 0; i < 10; i++) hitSpark({ x: fb.g.position.x + (Math.random() - .5) * 3, y: fb.g.position.y + (Math.random() - .5) * 2, z: fb.g.position.z + (Math.random() - .5) * 3 }, 0x7afcff);
+    scene.remove(fb.g); skyBoss = null; hideBoss(); SFX.victory(); addShake(0.5);
+    toast("Sky Serpent defeated! Glide Cape unlocked."); showBanner("Sky Beast Slain!");
+    addXP(140); addCoins(20); givePowerup("glide"); achieve("skyboss", "Sky Beast Slain");
+    setQuest("Return through the portal to the Overworld");
   }
 }
 // End dim: dragon + crystals
@@ -1666,7 +1744,7 @@ function winDragon() {
 }
 
 // ---------- BOSS POLISH (cinematic intro, telegraph warning zones, music cue) ----------
-function bossActive() { return (typeof fireBoss !== "undefined" && fireBoss) || (typeof dragon !== "undefined" && dragon && !dragon.dead); }
+function bossActive() { return (typeof fireBoss !== "undefined" && fireBoss) || (typeof skyBoss !== "undefined" && skyBoss) || (typeof dragon !== "undefined" && dragon && !dragon.dead); }
 function bossIntro(name, sub) {
   cine(name); showBanner(name); addShake(0.3); SFX.screech();
   setTimeout(() => { const cap = $("cineCap"); if (cap && sub) { cap.textContent = sub; cap.classList.remove("show"); void cap.offsetWidth; cap.classList.add("show"); } }, 1200);
@@ -1954,7 +2032,7 @@ function saveGame(silent) {
       qi: qi, ach: [...ach], day: day, timeOfDay: timeOfDay, hotbar: hotbar, coins: coins,
       side: [...sideDone],
       cats: cats.filter(c => c.tamed).map(c => ({ x: Math.round(c.g.position.x), z: Math.round(c.g.position.z), color: c.color, level: c.level, mode: c.mode })),
-      edits: { overworld: [...editsByDim.overworld], fire: [...editsByDim.fire], end: [...editsByDim.end] },
+      edits: { overworld: [...editsByDim.overworld], fire: [...editsByDim.fire], end: [...editsByDim.end], sky: [...editsByDim.sky] },
       chests: [...chestStore] };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     if (!silent) toast("Game saved");
@@ -1976,6 +2054,7 @@ function loadGame() {
   editsByDim.overworld = new Map((data.edits && data.edits.overworld) || []);
   editsByDim.fire = new Map((data.edits && data.edits.fire) || []);
   editsByDim.end = new Map((data.edits && data.edits.end) || []);
+  editsByDim.sky = new Map((data.edits && data.edits.sky) || []);
   chestStore = new Map(data.chests || []);
   running = true; paused = false; wasNight = false; raidShown = false; dodge.t = 0; dodge.cd = 0; openChestK = null;
   story.active = false; clearObjective(); endCine();
@@ -2213,7 +2292,7 @@ function mmDot(W, span, cx, cz, ex, ez, color, r) {
 function drawMinimap() {
   const W = mmCv.width, span = mmBig ? 160 : 96, N = mmBig ? 64 : 52, step = span / N, px = W / N, cx = player.pos.x, cz = player.pos.z;
   mmx.clearRect(0, 0, W, W);
-  if (DIM !== "overworld") { mmx.fillStyle = DIM === "fire" ? "#3a0d0d" : "#0c0c14"; mmx.fillRect(0, 0, W, W); }
+  if (DIM !== "overworld") { mmx.fillStyle = DIM === "fire" ? "#3a0d0d" : DIM === "sky" ? "#5aa0e0" : "#0c0c14"; mmx.fillRect(0, 0, W, W); }
   else {
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const wx = cx + (i - N / 2) * step, wz = cz + (j - N / 2) * step;   // j=0 north (-z), i=0 west (-x)
@@ -2259,7 +2338,7 @@ function startGame() {
   loadDimension("overworld");
   setQuest(quests[0].text); qi = 0; kills = 0; minedStone = 0; survivedNight = false; tamedCat = false; craftedPick = false; craftedPlanks = false; fireBossDown = false;
   xp = 0; level = 1; xpNext = 50; placedBlocks = 0; movedDist = 0; tameCount = 0; ach.clear(); loadAch(); dodge.t = 0; dodge.cd = 0; wasNight = false; raidShown = false; updateXPUI(); renderSkills();
-  editsByDim.overworld = new Map(); editsByDim.fire = new Map(); editsByDim.end = new Map(); chestStore = new Map(); openChestK = null; day = 1; timeOfDay = 0.28;
+  editsByDim.overworld = new Map(); editsByDim.fire = new Map(); editsByDim.end = new Map(); editsByDim.sky = new Map(); chestStore = new Map(); openChestK = null; day = 1; timeOfDay = 0.28;
   clearObjective(); story.active = false;
   eventCd = 180; activeEvent = null; xpMult = 1; setEventTint(null);
   coins = 0; updateCoinUI(); spawnMerchant(7, 5); treasureKey = null;   // a friendly trader near camp
@@ -2301,6 +2380,7 @@ function loop() {
     updateMonsters(dt);
     updateAnimals(dt);
     updateFireBoss(dt);
+    updateSkyBoss(dt);
     updateProjectiles(dt);
     updatePlayerShots(dt);
     updateDragon(dt);
