@@ -196,7 +196,7 @@ function isOpaque(id) { return id !== AIR && id !== WATER && id !== PORTAL && BL
 function isSolidBlock(id) { return id !== AIR && id !== WATER && id !== PORTAL && BLOCKS[id] && BLOCKS[id].solid; }
 
 // ITEMS (tools/food), ids offset 100
-const I_HAND = 100, I_WPICK = 101, I_SPICK = 102, I_SWORD = 103, I_AXE = 104, I_FIRECHARM = 105, I_FIRESWORD = 106, I_LIGHTHAMMER = 107, I_APPLE = 110, I_STICK = 111;
+const I_HAND = 100, I_WPICK = 101, I_SPICK = 102, I_SWORD = 103, I_AXE = 104, I_FIRECHARM = 105, I_FIRESWORD = 106, I_LIGHTHAMMER = 107, I_BOOMPICK = 108, I_ICEBOW = 109, I_APPLE = 110, I_STICK = 111, I_SLIMELAUNCH = 112;
 const ITEMS = {
   [I_WPICK]: { name: "Wood Pickaxe", tool: "pick", tier: 1, dmg: 2, icon: "⛏️" },
   [I_SPICK]: { name: "Stone Pickaxe", tool: "pick", tier: 2, dmg: 3, icon: "⛏️" },
@@ -205,6 +205,9 @@ const ITEMS = {
   [I_FIRECHARM]: { name: "Flame Charm", protect: "fire", icon: "🧿" },
   [I_FIRESWORD]: { name: "Flame Sword", tool: "sword", tier: 3, dmg: 9, special: "fire", icon: "🗡️" },
   [I_LIGHTHAMMER]: { name: "Lightning Hammer", tool: "hammer", tier: 2, dmg: 7, special: "lightning", icon: "🔨" },
+  [I_BOOMPICK]: { name: "Boom Pickaxe", tool: "pick", tier: 2, dmg: 3, special: "boom", icon: "⛏️" },
+  [I_ICEBOW]: { name: "Ice Bow", tool: "bow", dmg: 1, special: "ice", icon: "🏹" },
+  [I_SLIMELAUNCH]: { name: "Slime Launcher", tool: "bow", dmg: 1, special: "slime", icon: "🟢" },
   [I_APPLE]: { name: "Apple", food: 4, icon: "🍎" },
   [I_STICK]: { name: "Stick", icon: "➖" }
 };
@@ -632,7 +635,10 @@ function physics(dt) {
   player.vel.y -= gravity * dt;
   // jump
   const wantJump = keys["Space"] || touch.jump;
-  if (wantJump && (player.onGround || player.coyote > 0)) { player.vel.y = jumpV * (powerActive("jump") ? 1.42 : 1); player.onGround = false; player.coyote = 0; SFX.jump(); }
+  const jumpEdge = wantJump && !player._jumpHeld; player._jumpHeld = wantJump;
+  if (wantJump && (player.onGround || player.coyote > 0)) { player.vel.y = jumpV * (powerActive("jump") ? 1.42 : 1); player.onGround = false; player.coyote = 0; player.djUsed = false; SFX.jump(); }
+  else if (jumpEdge && powerActive("doublejump") && !player.onGround && !player.djUsed) { player.vel.y = jumpV * 1.1; player.djUsed = true; SFX.jump(); for (let i = 0; i < 4; i++) hitSpark({ x: player.pos.x, y: player.pos.y + 0.2, z: player.pos.z }, 0xbff0ff); }
+  if (powerActive("glide") && !player.onGround && wantJump && player.vel.y < -2.5) player.vel.y = -2.5;   // Glide Cape: slow descent
   // substep to prevent tunneling
   player.onGround = false;
   const steps = Math.max(1, Math.ceil((Math.abs(player.vel.x) + Math.abs(player.vel.y) + Math.abs(player.vel.z)) * dt / 0.4));
@@ -642,7 +648,7 @@ function physics(dt) {
     if (moveAxis("z", player.vel.z * sdt)) hitZ = true;
     moveAxis("y", player.vel.y * sdt);
   }
-  if (player.onGround) player.coyote = 0.12; else if (player.coyote > 0) player.coyote -= dt;
+  if (player.onGround) { player.coyote = 0.12; player.djUsed = false; } else if (player.coyote > 0) player.coyote -= dt;
   // bounce block: landing on slime launches Thomas high (trampoline toy)
   if (player.onGround) { const below = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.1), Math.floor(player.pos.z)); if (BLOCKS[below] && BLOCKS[below].bouncy) { player.vel.y = 13; player.onGround = false; player.coyote = 0; SFX.jump(); addShake(0.05); } }
   // auto jump (mobile/option): bumped a wall while moving on ground -> hop
@@ -690,6 +696,7 @@ function physics(dt) {
 function damage(n) {
   if (!running) return;
   if (player.hurtCd > 0 && n < 1) return;
+  if (powerActive("shield") && n >= 1) { hurtFlash(); player.hurtCd = 0.3; return; }   // Shield Bubble absorbs hits
   player.hp -= n; if (n >= 1) { player.hurtCd = 0.6; hurtFlash(); SFX.hurt(); if (n >= 4) addShake(0.22); }
   if (player.hp <= 0) die();
   updateVitals();
@@ -787,6 +794,9 @@ function breakTime(id) {
 }
 function updateMining(dt) {
   if (!primaryHeld) return;
+  // ranged weapons fire instead of mining/meleeing
+  const tBow = currentTool();
+  if (tBow && tBow.tool === "bow") { if (bowCd <= 0) { bowCd = 0.55; firePlayerShot(tBow.special); } return; }
   // attack entities first
   const hit = aimEntity();
   if (hit) { attackEntity(hit); return; }
@@ -808,6 +818,7 @@ function updateMining(dt) {
     markDirty(r.x, r.z); markDirty(r.x + 1, r.z); markDirty(r.x - 1, r.z); markDirty(r.x, r.z + 1); markDirty(r.x, r.z - 1);
     blockParticles(r.x, r.y, r.z, BLOCKS[r.id].top);
     if (drop !== undefined) addItem(drop, 1);
+    const tBoom = currentTool(); if (tBoom && tBoom.special === "boom") boomBreak(r.x, r.y, r.z);
     SFX.place();
     mineReset(); onMine(r.id);
   }
@@ -862,6 +873,9 @@ const RECIPES = [
   { out: I_FIRECHARM, n: 1, need: [[FIRE_CRYSTAL, 4], [I_STICK, 2]] },
   { out: I_FIRESWORD, n: 1, need: [[FIRE_CRYSTAL, 3], [I_STICK, 1]] },
   { out: I_LIGHTHAMMER, n: 1, need: [[COBBLE, 5], [I_STICK, 2]] },
+  { out: I_BOOMPICK, n: 1, need: [[COBBLE, 8], [I_STICK, 3]] },
+  { out: I_ICEBOW, n: 1, need: [[PLANKS, 3], [I_STICK, 3]] },
+  { out: I_SLIMELAUNCH, n: 1, need: [[BOUNCE, 2], [I_STICK, 2]] },
   { out: BOUNCE, n: 2, need: [[LEAVES, 4], [PLANKS, 1]] }
 ];
 function canCraft(r) { return r.need.every(([id, c]) => countItem(id) >= c); }
@@ -936,6 +950,7 @@ function updateMonsters(dt) {
     if (!m.aggro && d < aggroR) { m.aggro = true; m.summon ? SFX.screech() : SFX.growl(); }
     else if (m.aggro && d > aggroR * 1.7) { m.aggro = false; }
     if (m.flash > 0) m.flash -= dt;
+    if (m.slow > 0) { m.slow -= dt; if (m.slow <= 0 && m._bspd) m.speed = m._bspd; }   // ice slow wears off
     if (m.burn > 0) { m.burn -= dt; m.burnTick -= dt; if (m.burnTick <= 0) { m.burnTick = 0.5; m.hp -= 2; m.flash = 0.1; m.bar.up(Math.max(0, m.hp / m.max)); hitSpark(m.g.position, 0xff7a2a); if (m.hp <= 0 && !m.dead) { killMonster(m); continue; } } }
     if (m.touch > 0) m.touch -= dt;
     if (m.slamCd > 0) m.slamCd -= dt;
@@ -1156,6 +1171,45 @@ function lightningBolt(p) {
   if (fxParts.length > FX_CAP) return;
   for (let i = 0; i < 5; i++) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.08), new THREE.MeshBasicMaterial({ color: 0x9fe8ff })); m.position.set(p.x + (Math.random() - .5) * 0.5, p.y + 0.5 + i * 0.4, p.z + (Math.random() - .5) * 0.5); scene.add(m); fxParts.push({ mesh: m, life: 0.25, vel: new THREE.Vector3((Math.random() - .5) * 2, 2, (Math.random() - .5) * 2) }); }
 }
+// Boom Pickaxe: shatter a 3x3x3 pocket of soft blocks around the mined cell
+function boomBreak(cx, cy, cz) {
+  for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+    if (dx === 0 && dy === 0 && dz === 0) continue;
+    const x = cx + dx, y = cy + dy, z = cz + dz, id = getBlock(x, y, z);
+    if (id === AIR || id === WATER || id === PORTAL || id === CHEST || id === LAVA) continue;
+    const b = BLOCKS[id]; if (!b || b.hard <= 0 || b.hard > 2) continue;
+    const drop = b.drop; setRaw(x, y, z, AIR); recordEdit(x, y, z, AIR); if (drop !== undefined) addItem(drop, 1);
+    if (id === TORCH) rebuildTorchCells();
+    markDirty(x, z); markDirty(x + 1, z); markDirty(x - 1, z); markDirty(x, z + 1); markDirty(x, z - 1);
+  }
+  blockParticles(cx, cy, cz, [0.8, 0.8, 0.8]); SFX.slam(); addShake(0.18);
+}
+// player ranged shots: Ice Bow (slow) and Slime Launcher (knockback)
+let bowCd = 0;
+const playerShots = [];
+const pshotGeo = new THREE.SphereGeometry(0.16, 8, 8);
+function firePlayerShot(kind) {
+  const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+  const m = new THREE.Mesh(pshotGeo, new THREE.MeshBasicMaterial({ color: kind === "slime" ? 0x6fe06a : 0x9fe8ff }));
+  m.position.set(camera.position.x + dir.x, camera.position.y + dir.y, camera.position.z + dir.z); scene.add(m);
+  playerShots.push({ mesh: m, vel: dir.clone().multiplyScalar(24), life: 2, kind });
+  SFX.zap();
+}
+function updatePlayerShots(dt) {
+  for (let i = playerShots.length - 1; i >= 0; i--) {
+    const p = playerShots[i]; p.life -= dt; p.mesh.position.addScaledVector(p.vel, dt);
+    let hitM = null; for (const m of monsters) { if (m.dead) continue; if (m.g.position.distanceTo(p.mesh.position) < 1.2) { hitM = m; break; } }
+    const ground = isSolidBlock(getBlock(Math.floor(p.mesh.position.x), Math.floor(p.mesh.position.y), Math.floor(p.mesh.position.z)));
+    if (hitM) {
+      const dmg = 6 + swordBonus; hitM.hp -= dmg; hitM.flash = 0.15; hitM.bar.up(Math.max(0, hitM.hp / hitM.max));
+      hitSpark(p.mesh.position, p.kind === "slime" ? 0x6fe06a : 0x9fe8ff); dmgNumber(p.mesh.position, dmg, false);
+      if (p.kind === "ice") { if (!hitM._bspd) hitM._bspd = hitM.speed; hitM.speed = hitM._bspd * 0.4; hitM.slow = 2.8; }
+      else { knock(hitM.g, 1.6); }
+      if (hitM.hp <= 0 && !hitM.dead) killMonster(hitM);
+    }
+    if (hitM || ground || p.life <= 0) { scene.remove(p.mesh); playerShots.splice(i, 1); }
+  }
+}
 // floating damage numbers
 const _proj = new THREE.Vector3();
 function dmgNumber(pos, amount, crit) {
@@ -1200,6 +1254,7 @@ function buildViewItem() {
   if (it && isItem(it.id)) {
     if (ITEMS[it.id].tool === "sword") { const blade = box(0.06, 0.5, 0.06, ITEMS[it.id].special === "fire" ? 0xff7a2a : 0xd7dbe4); blade.position.y = 0.3; g.add(blade); const gu = box(0.2, 0.05, 0.08, 0xc9a227); gu.position.y = 0.05; g.add(gu); }
     else if (ITEMS[it.id].tool === "hammer") { const head = box(0.26, 0.2, 0.18, 0x6fb7ff); head.position.y = 0.36; g.add(head); const trim = box(0.28, 0.06, 0.2, 0xffe066); trim.position.y = 0.36; g.add(trim); const stick = box(0.05, 0.36, 0.05, 0x6e4a25); stick.position.y = 0.12; g.add(stick); }
+    else if (ITEMS[it.id].tool === "bow") { const col = ITEMS[it.id].special === "slime" ? 0x49e06a : 0x9fe8ff; const arc = box(0.06, 0.5, 0.06, col); arc.position.y = 0.25; g.add(arc); const tip1 = box(0.05, 0.12, 0.05, 0xcfcfe0); tip1.position.set(0, 0.48, 0.04); tip1.rotation.x = 0.5; g.add(tip1); const tip2 = box(0.05, 0.12, 0.05, 0xcfcfe0); tip2.position.set(0, 0.02, 0.04); tip2.rotation.x = -0.5; g.add(tip2); }
     else { const head = box(0.18, 0.1, 0.06, 0x9b9b9b); head.position.y = 0.34; g.add(head); const stick = box(0.05, 0.34, 0.05, 0x6e4a25); stick.position.y = 0.12; g.add(stick); }
     g.position.set(0.42, -0.42, -0.75); g.rotation.set(-0.4, -0.3, 0.25);
   } else if (it) {
@@ -1309,7 +1364,7 @@ function transitionTo(name) {
   SFX.portal(); const fade = document.getElementById("fade"); fade.style.opacity = "1";
   setTimeout(() => { loadDimension(name); fade.style.opacity = "0"; }, 520);
 }
-function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
+function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
 function loadDimension(name, fromSave) {
   DIM = name; clearWorld(); clearEntities();
   if (name === "fire") achieve("firep", "Fire Portal Opened");
@@ -1761,11 +1816,14 @@ $("closeChestBtn").addEventListener("click", closeChest);
 
 // ---------- POWER-UPS (easy to read timed buffs) ----------
 const POWERUPS = {
-  speed:     { name: "Speed Boots", icon: "👢", dur: 30 },
-  jump:      { name: "Super Jump",  icon: "🦘", dur: 30 },
-  catvision: { name: "Cat Vision",  icon: "🐾", dur: 45 }
+  speed:      { name: "Speed Boots",  icon: "👢", dur: 30 },
+  jump:       { name: "Super Jump",   icon: "🦘", dur: 30 },
+  catvision:  { name: "Cat Vision",   icon: "🐾", dur: 45 },
+  doublejump: { name: "Double Jump",  icon: "⏫", dur: 30 },
+  glide:      { name: "Glide Cape",   icon: "🪂", dur: 30 },
+  shield:     { name: "Shield Bubble", icon: "🛡️", dur: 8 }
 };
-const powerups = { speed: 0, jump: 0, catvision: 0 };
+const powerups = { speed: 0, jump: 0, catvision: 0, doublejump: 0, glide: 0, shield: 0 };
 function powerActive(k) { return (powerups[k] || 0) > 0; }
 function randPowerup() { const ks = Object.keys(POWERUPS); return ks[Math.floor(Math.random() * ks.length)]; }
 function givePowerup(k) { const p = POWERUPS[k]; if (!p) return; powerups[k] = p.dur; toast(p.icon + " " + p.name + " activated!"); SFX.power(); renderPowerups(); if (k === "catvision") revealSecretsNow(); }
@@ -1957,7 +2015,7 @@ function loop() {
   requestAnimationFrame(loop);
   const now = performance.now(); let dt = (now - last) / 1000; last = now; if (dt > 0.05) dt = 0.05;
   if (running && !paused) {
-    if (attackCd > 0) attackCd -= dt; if (portalCd > 0) portalCd -= dt; if (hammerCd > 0) hammerCd -= dt;
+    if (attackCd > 0) attackCd -= dt; if (portalCd > 0) portalCd -= dt; if (hammerCd > 0) hammerCd -= dt; if (bowCd > 0) bowCd -= dt;
     physics(dt);
     tagMonsters();
     updateMining(dt);
@@ -1965,6 +2023,7 @@ function loop() {
     updateAnimals(dt);
     updateFireBoss(dt);
     updateProjectiles(dt);
+    updatePlayerShots(dt);
     updateDragon(dt);
     updateFx(dt);
     updateTelegraphs(dt);
