@@ -610,6 +610,9 @@ const ACHDEFS = [
   { id: "charm", label: "Fireproof", desc: "Hold a Flame Charm", test: () => countItem(I_FIRECHARM) > 0 },
   { id: "fireboss", label: "Guardian Slayer", desc: "Defeat the Fire Guardian", test: () => fireBossDown },
   { id: "endin", label: "The End", desc: "Reach the End", test: () => DIM === "end" },
+  { id: "treasure", label: "Treasure Hunter", desc: "Dig up buried treasure", test: () => ach.has("treasure") },
+  { id: "cheeseking", label: "Cheese King Caught", desc: "Catch the Cheese King mouse", test: () => ach.has("cheeseking") },
+  { id: "ninja", label: "Ninja Catcher", desc: "Catch a ninja mouse", test: () => ach.has("ninja") },
   { id: "dragon", label: "Dragon Defeated", desc: "Slay the Black Dragon", test: () => false }
 ];
 function checkAchievements() { for (const a of ACHDEFS) if (!ach.has(a.id)) { try { if (a.test()) achieve(a.id, a.label); } catch (e) {} } }
@@ -1143,14 +1146,22 @@ function spawnCat(x, z, opts) {
   const lp = [[-0.09, 0.28], [0.09, 0.28], [-0.09, -0.18], [0.09, -0.18]];
   for (const [lx, lz] of lp) { const leg = bxm(0.07, 0.2, 0.07, col); leg.geometry.translate(0, -0.1, 0); leg.position.set(lx, 0.24, lz); g.add(leg); legs.push(leg); }
   const tail = bxm(0.06, 0.06, 0.32, col); tail.geometry.translate(0, 0, -0.16); tail.position.set(0, 0.42, -0.25); tail.rotation.x = 0.6; g.add(tail);
+  const ability = catAbility(pick.n);
+  const wild = !opts.tamed && !opts.name;
+  const rare = wild && Math.random() < 0.12;                  // rare named cats with a glowing collar
+  const RARE_NAMES = { heal: "Snowball", fury: "Sparky", scout: "Shadow", balanced: "Patches" };
+  const name = opts.name || (rare ? RARE_NAMES[ability] : null);
+  if (rare) { const collar = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(120,220,255,0.9)", "rgba(60,140,255,0)"), depthWrite: false, transparent: true, fog: false })); collar.scale.set(0.85, 0.85, 1); collar.position.set(0, 0.5, 0.12); g.add(collar); }
   g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g);
-  cats.push({ g, dir: Math.random() * 6.28, tamed: !!opts.tamed, friendly: !!opts.friendly, name: opts.name || null, hp: 10, level: opts.level || 1, kills: 0, mode: opts.mode || "follow", stay: new THREE.Vector3(x + 0.5, 0, z + 0.5), meow: Math.random() * 6, warnCd: 0, healCd: 0, ability: catAbility(pick.n), legs, tail, walkT: 0, moved: false, color: pick.n });
+  cats.push({ g, dir: Math.random() * 6.28, tamed: !!opts.tamed, friendly: !!opts.friendly, name: name, rare: rare, hp: 10, level: opts.level || (rare ? 2 : 1), kills: 0, mode: opts.mode || "follow", stay: new THREE.Vector3(x + 0.5, 0, z + 0.5), meow: Math.random() * 6, warnCd: 0, healCd: 0, ability: ability, legs, tail, walkT: 0, moved: false, color: pick.n });
 }
 function spawnMouse(x, z) {
-  const golden = Math.random() < 0.08;
-  const col = golden ? 0xe8c23a : [0xb9b9c2, 0x8a6a4a, 0xeeeeee][Math.floor(Math.random() * 3)];
+  const cheese = Math.random() < 0.02;                        // Cheese King: a rare, big golden mouse
+  const golden = !cheese && Math.random() < 0.08;
+  const ninja = !cheese && !golden && Math.random() < 0.06;   // ninja mouse: darts in, steals coins, flees
+  const col = cheese ? 0xffcf3a : golden ? 0xe8c23a : ninja ? 0x35363d : [0xb9b9c2, 0x8a6a4a, 0xeeeeee][Math.floor(Math.random() * 3)];
   const g = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ color: col, emissive: golden ? 0x7a5a00 : 0x000000, emissiveIntensity: golden ? 0.5 : 0 });
+  const mat = new THREE.MeshLambertMaterial({ color: col, emissive: (golden || cheese) ? 0x7a5a00 : ninja ? 0x3a0000 : 0x000000, emissiveIntensity: (golden || cheese) ? 0.5 : ninja ? 0.4 : 0 });
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.24), mat); body.position.set(0, 0.09, 0); g.add(body);
   const head = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.11, 0.12), mat); head.position.set(0, 0.1, 0.16); g.add(head);
   const earL = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.02), mat); earL.position.set(-0.06, 0.16, 0.15); g.add(earL);
@@ -1159,19 +1170,37 @@ function spawnMouse(x, z) {
   const eL = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.02), eMat); eL.position.set(-0.04, 0.11, 0.22); g.add(eL);
   const eR = eL.clone(); eR.position.x = 0.04; g.add(eR);
   const tail = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.025, 0.26), mat); tail.geometry.translate(0, 0, -0.13); tail.position.set(0, 0.09, -0.12); tail.rotation.x = -0.2; g.add(tail);
+  if (cheese) { const crown = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.07, 0.14), new THREE.MeshLambertMaterial({ color: 0xffd23d, emissive: 0x8a6f1a, emissiveIntensity: 0.6 })); crown.position.set(0, 0.22, 0.12); g.add(crown); g.scale.setScalar(1.8); }
+  if (ninja) { const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(255,70,70,0.85)", "rgba(150,0,0,0)"), depthWrite: false, transparent: true, fog: false })); glow.scale.set(0.5, 0.5, 1); glow.position.set(0, 0.18, 0); g.add(glow); }
   g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g);
-  mice.push({ g, dir: Math.random() * 6.28, tail, golden, t: Math.random() * 6 });
+  mice.push({ g, dir: Math.random() * 6.28, tail, golden, cheese, ninja, stolen: false, steal: 0, t: Math.random() * 6 });
 }
 function wander(o, dt, sp) { if (Math.random() < 0.012) o.dir += (Math.random() - .5) * 1.6; o.g.position.x += Math.sin(o.dir) * sp * dt; o.g.position.z += Math.cos(o.dir) * sp * dt; o.g.rotation.y = o.dir; o.g.position.y = surfaceY(o.g.position.x, o.g.position.z); }
+function removeMouse(ms) { scene.remove(ms.g); mice = mice.filter(x => x !== ms); spawnMouse((player.pos.x + (Math.random() - .5) * 30) | 0, (player.pos.z + (Math.random() - .5) * 30) | 0); }
+function mouseCaught(ms) {
+  if (ms.cheese) { addCoins(25); addXP(60); addItem(I_APPLE, 3); toast("You caught the Cheese King! Huge reward."); SFX.treasure(); achieve("cheeseking", "Cheese King Caught"); }
+  else if (ms.ninja) { addCoins((ms.steal || 0) + 5); addXP(15); toast("Ninja mouse caught. Coins recovered plus a bonus."); SFX.pickup(); achieve("ninja", "Caught a Ninja Mouse"); }
+  else if (ms.golden) { addXP(20); addItem(I_APPLE, 1); toast("A golden mouse. Lucky find."); SFX.pickup(); }
+  else { SFX.squeak(); }
+  removeMouse(ms);
+}
 function updateAnimals(dt) {
   if (DIM !== "overworld") return;
-  for (const ms of mice) {
+  for (const ms of mice.slice()) {                            // slice so catching a mouse mid-loop is safe
     let nd = 999, near = null; for (const c of cats) { const d = c.g.position.distanceTo(ms.g.position); if (d < nd) { nd = d; near = c; } }
     const dpm = ms.g.position.distanceTo(player.pos);
-    const fleeing = (near && nd < 6) || dpm < 4;
-    if (near && nd < 6) ms.dir = Math.atan2(ms.g.position.x - near.g.position.x, ms.g.position.z - near.g.position.z);
-    else if (dpm < 4) ms.dir = Math.atan2(ms.g.position.x - player.pos.x, ms.g.position.z - player.pos.z);
-    wander(ms, dt, fleeing ? 3.8 : 1.9);
+    if (dpm < 0.75) { mouseCaught(ms); continue; }            // Thomas catches a mouse by touching it
+    if (ms.ninja && !ms.stolen) {                             // ninja darts straight at Thomas to grab coins
+      const dx = player.pos.x - ms.g.position.x, dz = player.pos.z - ms.g.position.z, dd = Math.hypot(dx, dz) || 1;
+      ms.g.position.x += (dx / dd) * 4.2 * dt; ms.g.position.z += (dz / dd) * 4.2 * dt; ms.g.rotation.y = Math.atan2(dx, dz); ms.g.position.y = surfaceY(ms.g.position.x, ms.g.position.z);
+      if (dpm < 1.1) { if (coins > 0) { const steal = Math.min(coins, 3); coins -= steal; updateCoinUI(); ms.steal = steal; toast("A ninja mouse stole " + steal + " coins. Catch it!"); SFX.squeak(); } ms.stolen = true; }
+    } else {                                                   // flee from cats and Thomas (ninja flees fastest after stealing)
+      const fleeing = (near && nd < 6) || dpm < 5 || (ms.ninja && ms.stolen);
+      if (ms.ninja && ms.stolen) ms.dir = Math.atan2(ms.g.position.x - player.pos.x, ms.g.position.z - player.pos.z);
+      else if (near && nd < 6) ms.dir = Math.atan2(ms.g.position.x - near.g.position.x, ms.g.position.z - near.g.position.z);
+      else if (dpm < 4) ms.dir = Math.atan2(ms.g.position.x - player.pos.x, ms.g.position.z - player.pos.z);
+      wander(ms, dt, (ms.ninja && ms.stolen) ? 4.8 : (fleeing ? 3.8 : 1.9));
+    }
     ms.t += dt * 12; ms.tail.rotation.y = Math.sin(ms.t) * 0.6;
     if (Math.random() < 0.002) SFX.squeak();
   }
@@ -1201,7 +1230,7 @@ function updateAnimals(dt) {
       else { c.g.rotation.y = Math.atan2(dx, dz); if (c.meow <= 0.05) { c.meow = 2.5 + Math.random() * 2; } }
     } else {
       let nd = 999, near = null; for (const ms of mice) { const d = ms.g.position.distanceTo(c.g.position); if (d < nd) { nd = d; near = ms; } }
-      if (near && nd < 12) { const dx = near.g.position.x - c.g.position.x, dz = near.g.position.z - c.g.position.z, d = Math.hypot(dx, dz) || 1; c.g.position.x += (dx / d) * 3 * dt; c.g.position.z += (dz / d) * 3 * dt; c.g.rotation.y = Math.atan2(dx, dz); c.g.position.y = surfaceY(c.g.position.x, c.g.position.z); c.moved = true; if (nd < 0.6) { if (near.golden) { addXP(20); addItem(I_APPLE, 1); toast("A golden mouse. Lucky find."); SFX.pickup(); } scene.remove(near.g); mice = mice.filter(x => x !== near); spawnMouse((player.pos.x + (Math.random() - .5) * 30) | 0, (player.pos.z + (Math.random() - .5) * 30) | 0); } }
+      if (near && nd < 12) { const dx = near.g.position.x - c.g.position.x, dz = near.g.position.z - c.g.position.z, d = Math.hypot(dx, dz) || 1; c.g.position.x += (dx / d) * 3 * dt; c.g.position.z += (dz / d) * 3 * dt; c.g.rotation.y = Math.atan2(dx, dz); c.g.position.y = surfaceY(c.g.position.x, c.g.position.z); c.moved = true; if (nd < 0.6) { mouseCaught(near); } }
       else { wander(c, dt, 1.6); c.moved = true; }
     }
     if (c.moved) { c.walkT += dt * 10; const s = Math.sin(c.walkT) * 0.6; c.legs[0].rotation.x = s; c.legs[1].rotation.x = -s; c.legs[2].rotation.x = -s; c.legs[3].rotation.x = s; }
