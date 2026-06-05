@@ -28,6 +28,7 @@
   <div id="bossbar"><div class="l" id="bossName">BOSS</div><div class="t"><div class="f" id="bossFill"></div></div></div>
   <div id="questPop"></div>
   <div id="xpwrap"><div id="lvl">LV 1</div><div id="xpbar"><div id="xpfill"></div></div></div>
+  <div id="coins">🪙 0</div>
   <div id="powerups"></div>
   <div id="hotbar"></div>
   <div id="fps"></div>
@@ -122,6 +123,16 @@
     <h2>Achievements <span id="achCount" style="font-size:14px;opacity:.7"></span></h2>
     <div id="achList" class="achlist"></div>
     <button class="btn" id="closeAchBtn">Done</button>
+  </div>
+</div>
+
+<!-- Shop -->
+<div id="shop" class="overlay hidden">
+  <div class="panel">
+    <h2>Traveling Merchant <span id="shopCoins" style="font-size:14px;opacity:.8"></span></h2>
+    <p class="muted">Coins drop from monsters. Tap Buy to trade.</p>
+    <div class="craftList" id="shopList"></div>
+    <button class="btn" id="closeShopBtn">Leave</button>
   </div>
 </div>
 
