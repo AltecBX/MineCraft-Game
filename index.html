@@ -83,6 +83,7 @@
     <button class="btn ghost" id="pJournalBtn">Quest journal</button>
     <button class="btn ghost" id="pAchBtn">Achievements</button>
     <button class="btn ghost" id="pCollBtn">Collections</button>
+    <button class="btn ghost" id="pTrophyBtn">Trophy Hall</button>
     <button class="btn ghost" id="pSkinsBtn">Character (Thomas)</button>
     <button class="btn ghost" id="pSettBtn">Settings</button>
     <button class="btn ghost" id="quitBtn">Main menu</button>
@@ -152,6 +153,16 @@
     <p class="muted">Coins drop from monsters. Tap Buy to trade.</p>
     <div class="craftList" id="shopList"></div>
     <button class="btn" id="closeShopBtn">Leave</button>
+  </div>
+</div>
+
+<!-- Trophy Hall -->
+<div id="trophies" class="overlay hidden">
+  <div class="panel">
+    <h2>Trophy Hall <span id="trophyCount" style="font-size:14px;opacity:.8"></span></h2>
+    <p class="muted">Trophies for big victories and milestones. Keep playing to fill the hall.</p>
+    <div id="trophyList" class="trophyGrid"></div>
+    <button class="btn" id="closeTrophyBtn">Done</button>
   </div>
 </div>
 

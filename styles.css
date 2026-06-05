@@ -166,5 +166,12 @@
 .controlsHelp{display:flex;flex-direction:column;gap:3px;margin:4px 0 6px}
 .controlsHelp .row{margin:3px 0;font-size:13px}
 .controlsHelp .row b{color:#cfe0ff;font-weight:700;text-align:right}
+.trophyGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;max-height:56vh;overflow-y:auto;margin:8px 0}
+.trophy{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:10px 6px;text-align:center;opacity:.6}
+.trophy.got{background:linear-gradient(180deg,rgba(255,210,80,.18),rgba(255,170,40,.06));border-color:rgba(255,210,80,.55);opacity:1;box-shadow:0 2px 12px rgba(255,180,40,.2)}
+.trophy .ti{font-size:30px;line-height:1.1}
+.trophy .tn{font-size:12px;font-weight:800;margin-top:3px}
+.trophy.got .tn{color:#ffe9a8}
+.trophy .td{font-size:10px;opacity:.7;margin-top:2px;line-height:1.25}
 .kb{min-width:74px;padding:5px 10px;border-radius:7px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:#fff;font:600 13px ui-monospace,monospace;cursor:pointer}
 .kb:hover{background:rgba(255,255,255,.14)}

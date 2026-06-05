@@ -676,6 +676,27 @@ function renderColl() {
   const h = $("collCount"); if (h) h.textContent = found + " / " + tot + " (" + Math.round(100 * found / tot) + "%)";
 }
 function toggleColl() { const o = $("collections"); const open = !o.classList.contains("hidden"); if (open) o.classList.add("hidden"); else { renderColl(); o.classList.remove("hidden"); } }
+// ---------- TROPHY HALL (big victories + milestones, earned from achievements) ----------
+const TROPHIES = [
+  { ic: "🐱", name: "First Friend", desc: "Tame your first cat", id: "cat" },
+  { ic: "🌙", name: "Night Survivor", desc: "Survive a night", id: "night" },
+  { ic: "🗡️", name: "Beast Slayer", desc: "Defeat 10 monsters", id: "slayer" },
+  { ic: "🏗️", name: "Builder", desc: "Build a shelter", id: "shelter" },
+  { ic: "💰", name: "Treasure Hunter", desc: "Dig up buried treasure", id: "treasure" },
+  { ic: "🐭", name: "Ninja Catcher", desc: "Catch a ninja mouse", id: "ninja" },
+  { ic: "🧀", name: "Cheese Champion", desc: "Catch the Cheese King", id: "cheeseking" },
+  { ic: "🐈", name: "Cat Collector", desc: "Befriend every cat", id: "catcollector" },
+  { ic: "📖", name: "Monster Hunter", desc: "Defeat every monster", id: "bestiary" },
+  { ic: "🔥", name: "Fire Guardian", desc: "Defeat the Fire Guardian", id: "fireboss" },
+  { ic: "🏝️", name: "Sky Serpent", desc: "Defeat the Sky Serpent", id: "skyboss" },
+  { ic: "🐲", name: "Dragon Slayer", desc: "Defeat the Black Dragon", id: "dragon" }
+];
+function renderTrophies() {
+  const el = $("trophyList"); if (!el) return; el.innerHTML = ""; let n = 0;
+  for (const t of TROPHIES) { const got = ach.has(t.id); if (got) n++; const d = document.createElement("div"); d.className = "trophy" + (got ? " got" : ""); d.innerHTML = "<div class='ti'>" + (got ? t.ic : "❔") + "</div><div class='tn'>" + (got ? t.name : "???") + "</div><div class='td'>" + t.desc + "</div>"; el.appendChild(d); }
+  const h = $("trophyCount"); if (h) h.textContent = n + " / " + TROPHIES.length;
+}
+function toggleTrophies() { const o = $("trophies"); const open = !o.classList.contains("hidden"); if (open) o.classList.add("hidden"); else { renderTrophies(); o.classList.remove("hidden"); } }
 function renderSkinPick() {
   const l = $("skinList"); if (!l) return; l.innerHTML = "";
   for (const s of SKINS) {
@@ -1960,6 +1981,8 @@ $("pAchBtn").addEventListener("click", () => { hide("pause"); paused = false; to
 $("closeAchBtn").addEventListener("click", () => hide("ach"));
 $("pCollBtn").addEventListener("click", () => { hide("pause"); paused = false; toggleColl(); });
 $("closeCollBtn").addEventListener("click", () => hide("collections"));
+$("pTrophyBtn").addEventListener("click", () => { hide("pause"); paused = false; toggleTrophies(); });
+$("closeTrophyBtn").addEventListener("click", () => hide("trophies"));
 $("pSkinsBtn").addEventListener("click", () => { hide("pause"); paused = false; openCharacter(); });
 $("closeSkinBtn").addEventListener("click", closeCharacter);
 $("sSfx").addEventListener("input", e => { settings.sfxVol = e.target.value / 100; applyAudioGains(); });
@@ -2348,7 +2371,7 @@ function startGame() {
   if (!isTouch) canvas.requestPointerLock();
 }
 // panels that open during play; while any is open the world freezes so you cannot be killed in a menu
-const GAME_PANELS = ["inv", "skills", "journal", "chest", "shop", "ach", "collections", "skinpicker", "settings"];
+const GAME_PANELS = ["inv", "skills", "journal", "chest", "shop", "ach", "collections", "trophies", "skinpicker", "settings"];
 function anyPanelOpen() { for (const id of GAME_PANELS) { const e = document.getElementById(id); if (e && !e.classList.contains("hidden")) return true; } return false; }
 function hideAllPanels() { for (const id of GAME_PANELS) { const e = document.getElementById(id); if (e) e.classList.add("hidden"); } }
 let deathT = 0;
