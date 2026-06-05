@@ -503,9 +503,30 @@ const thomas = new THREE.Group();
   const armR = armL.clone(); armR.position.x = 0.33; thomas.add(armR);
   const legL = bx(0.18, 0.55, 0.2, pant); legL.geometry.translate(0, -0.27, 0); legL.position.set(-0.13, 0.55, 0); thomas.add(legL);
   const legR = legL.clone(); legR.position.x = 0.13; thomas.add(legR);
-  thomas.userData = { armL, armR, legL, legR };
+  thomas.userData = { armL, armR, legL, legR, body, hairTop };
 })();
 thomas.visible = false; scene.add(thomas);
+// ---------- THOMAS SKINS (cosmetic recolor of the third-person avatar) ----------
+const SKINS = [
+  { id: "explorer", name: "Explorer Thomas", shirt: 0x2f6fe0, pant: 0x374151, hair: 0x4a2f1a },
+  { id: "knight", name: "Knight Thomas", shirt: 0xb8c0cc, pant: 0x4a4f57, hair: 0x4a2f1a },
+  { id: "ninja", name: "Ninja Thomas", shirt: 0x1b1b22, pant: 0x111114, hair: 0x111114 },
+  { id: "fire", name: "Fire Armor Thomas", shirt: 0xff5a1e, pant: 0x7a1d05, hair: 0x4a2f1a },
+  { id: "dragon", name: "Dragon Armor Thomas", shirt: 0x6a2ca0, pant: 0x1b1030, hair: 0x120a22 },
+  { id: "golden", name: "Golden Thomas", shirt: 0xf0c419, pant: 0xc9a227, hair: 0x8a6f1a },
+  { id: "builder", name: "Builder Thomas", shirt: 0xe8862a, pant: 0x6e4a25, hair: 0x4a2f1a },
+  { id: "shadow", name: "Shadow Thomas", shirt: 0x141420, pant: 0x0c0c14, hair: 0x0c0c14 }
+];
+let currentSkin = "explorer";
+function applySkin(id) {
+  const s = SKINS.find(x => x.id === id) || SKINS[0]; currentSkin = s.id; const u = thomas.userData; if (!u) return;
+  if (u.body && u.body.material.color) u.body.material.color.setHex(s.shirt);
+  if (u.legL && u.legL.material.color) u.legL.material.color.setHex(s.pant);   // legR shares this material
+  if (u.legR && u.legR.material.color) u.legR.material.color.setHex(s.pant);
+  if (u.hairTop && u.hairTop.material.color) u.hairTop.material.color.setHex(s.hair);
+  try { localStorage.setItem("thomas_voxel_skin", id); } catch (e) {}
+}
+function loadSkin() { try { const id = localStorage.getItem("thomas_voxel_skin"); if (id) applySkin(id); } catch (e) {} }
 
 function startDodge() {
   if (dodge.cd > 0 || player.stam < 18 || !player.onGround) return;
@@ -586,6 +607,17 @@ function renderColl() {
   const h = $("collCount"); if (h) h.textContent = found + " / " + tot + " (" + Math.round(100 * found / tot) + "%)";
 }
 function toggleColl() { const o = $("collections"); const open = !o.classList.contains("hidden"); if (open) o.classList.add("hidden"); else { renderColl(); o.classList.remove("hidden"); } }
+function renderSkinPick() {
+  const l = $("skinList"); if (!l) return; l.innerHTML = "";
+  for (const s of SKINS) {
+    const on = s.id === currentSkin; const row = document.createElement("div"); row.className = "craftRow" + (on ? "" : " no");
+    row.innerHTML = "<span><b>" + s.name + "</b>" + (on ? " <span class='muted'>(equipped)</span>" : "") + "</span>";
+    const b = document.createElement("button"); b.className = "mk"; b.textContent = on ? "On" : "Wear";
+    b.addEventListener("pointerdown", e => { e.preventDefault(); applySkin(s.id); SFX.pickup(); renderSkinPick(); });
+    row.appendChild(b); l.appendChild(row);
+  }
+}
+function toggleSkinPick() { const o = $("skinpicker"); const open = !o.classList.contains("hidden"); if (open) o.classList.add("hidden"); else { renderSkinPick(); o.classList.remove("hidden"); } }
 
 // SKILL TREE
 const skills = { pts: 0, mine: 0, hp: 0, stam: 0, sword: 0, cat: 0 };
@@ -1721,6 +1753,8 @@ $("pAchBtn").addEventListener("click", () => { hide("pause"); paused = false; to
 $("closeAchBtn").addEventListener("click", () => hide("ach"));
 $("pCollBtn").addEventListener("click", () => { hide("pause"); paused = false; toggleColl(); });
 $("closeCollBtn").addEventListener("click", () => hide("collections"));
+$("pSkinsBtn").addEventListener("click", () => { hide("pause"); paused = false; toggleSkinPick(); });
+$("closeSkinBtn").addEventListener("click", () => hide("skinpicker"));
 $("sSfx").addEventListener("input", e => { settings.sfxVol = e.target.value / 100; applyAudioGains(); });
 $("sMusV").addEventListener("input", e => { settings.musicVol = e.target.value / 100; applyAudioGains(); });
 $("sMute0").addEventListener("click", () => { settings.muted = false; applyAudioGains(); segOn("sMute1", "sMute0", false); });
@@ -2126,6 +2160,7 @@ addEventListener("orientationchange", () => setTimeout(() => { camera.aspect = i
 scene.background = new THREE.Color(0x9fd2ff);
 loadAch();
 loadColl();
+loadSkin();
 loadSettings();
 syncSettingsUI();
 applyGfx();
