@@ -1,0 +1,11 @@
+{
+  "name": "voxel-world",
+  "version": "1.0.0",
+  "description": "Thomas and the Block World, a browser voxel survival game",
+  "private": true,
+  "scripts": {
+    "dev": "npx --yes serve .",
+    "test": "node test/harness.cjs",
+    "check": "node --check game.js"
+  }
+}
