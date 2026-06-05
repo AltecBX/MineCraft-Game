@@ -508,8 +508,9 @@ function startDodge() {
 }
 
 // XP / Level
+let xpMult = 1;                                      // boosted during a Golden Day event
 function addXP(n) {
-  xp += n;
+  xp += Math.round(n * xpMult);
   while (xp >= xpNext) { xp -= xpNext; level++; xpNext = Math.floor(xpNext * 1.35); levelUp(); }
   updateXPUI();
 }
@@ -1742,6 +1743,7 @@ function loadGame() {
   chestStore = new Map(data.chests || []);
   running = true; paused = false; wasNight = false; raidShown = false; dodge.t = 0; dodge.cd = 0; openChestK = null;
   story.active = false; clearObjective(); endCine();
+  eventCd = 180; activeEvent = null; xpMult = 1; setEventTint(null);
   applyGfx();
   loadDimension(data.dim || "overworld", true);
   if (data.pos) { player.pos.set(data.pos[0], data.pos[1], data.pos[2]); player.spawn.copy(player.pos); }
@@ -1862,6 +1864,43 @@ function updateStory(dt) {
   }
 }
 
+// ---------- RANDOM WORLD EVENTS (surprises with a warning, effect, and reward) ----------
+let eventCd = 180, activeEvent = null, eventLeft = 0;
+function setEventTint(css) { const el = $("eventTint"); if (!el) return; if (css) { el.style.background = "radial-gradient(circle, " + css + " 0%, rgba(0,0,0,0) 80%)"; el.style.opacity = "1"; } else { el.style.opacity = "0"; } }
+function reward(msg, fn) { toast(msg); if (fn) fn(); SFX.levelUp(); }
+function spawnRingMonster(r, type) { const a = Math.random() * 6.28; spawnMonster(Math.floor(player.pos.x + Math.cos(a) * r), Math.floor(player.pos.z + Math.sin(a) * r), type); }
+function dropChestNear(loot, label) {
+  const a = Math.random() * 6.28, r = 6 + Math.random() * 4;
+  const x = Math.floor(player.pos.x + Math.cos(a) * r), z = Math.floor(player.pos.z + Math.sin(a) * r), y = surfaceY(x, z);
+  setRaw(x, y, z, CHEST); recordEdit(x, y, z, CHEST);
+  const arr = loot.slice(0, 9); while (arr.length < 9) arr.push(null);
+  chestStore.set(chestKey(x, y, z), arr);
+  buildChunk(Math.floor(x / CH), Math.floor(z / CH));
+  setObjective(x + 0.5, y, z + 0.5);
+  if (label) toast(label);
+  return { x, y, z };
+}
+function meteorShower() {
+  for (let i = 0; i < 10; i++) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), new THREE.MeshBasicMaterial({ color: 0xffd27a })); m.position.set(player.pos.x + (Math.random() - .5) * 30, player.pos.y + 18 + Math.random() * 8, player.pos.z + (Math.random() - .5) * 30); scene.add(m); fxParts.push({ mesh: m, life: 1.6, vel: new THREE.Vector3((Math.random() - .5) * 3, -12, (Math.random() - .5) * 3) }); }
+  addShake(0.25);
+  dropChestNear([{ id: COBBLE, count: 12 }, { id: BOUNCE, count: 2 }, { id: I_APPLE, count: 2 }, { id: BRICK, count: 6 }], "A meteor crashed nearby. Find the crash site.");
+}
+const EVENTS = [
+  { id: "meteor", name: "Meteor Shower", warn: "Meteors streak across the sky. Find the crash site.", dur: 25, tint: null, start() { meteorShower(); }, end() {} },
+  { id: "bloodmoon", name: "Blood Moon", warn: "A Blood Moon rises. Survive the horde.", dur: 40, tint: "rgba(180,0,0,.30)", night: true, start() { for (let i = 0; i < 5; i++) spawnRingMonster(16 + Math.random() * 6); }, end() { reward("You survived the Blood Moon.", () => { addXP(80); addItem(I_APPLE, 3); }); } },
+  { id: "storm", name: "Purple Storm", warn: "A corruption storm sweeps in. Hold out.", dur: 30, tint: "rgba(140,40,210,.24)", start() { for (let i = 0; i < 3; i++) spawnRingMonster(15 + Math.random() * 6); }, end() { reward("The storm passes.", () => { addXP(50); }); } },
+  { id: "golden", name: "Golden Forest Day", warn: "A Golden Day. Double XP while it lasts.", dur: 35, tint: "rgba(255,210,80,.18)", start() { xpMult = 2; }, end() { xpMult = 1; toast("The golden glow fades."); } },
+  { id: "merchant", name: "Traveling Merchant", warn: "A traveling merchant left a care package nearby.", dur: 20, tint: null, start() { dropChestNear([{ id: I_APPLE, count: 2 }, { id: PLANKS, count: 6 }, { id: TORCH, count: 4 }, { id: I_STICK, count: 4 }], "A care package was left nearby."); }, end() {} }
+];
+function startEvent(e) { activeEvent = e; eventLeft = e.dur; showBanner(e.name); toast(e.warn); SFX.screech(); if (e.tint) setEventTint(e.tint); if (e.start) e.start(); }
+function endEvent() { if (!activeEvent) return; const e = activeEvent; activeEvent = null; setEventTint(null); if (e.end) e.end(); }
+function updateEvents(dt) {
+  if (DIM !== "overworld") { if (activeEvent) endEvent(); return; }
+  if (activeEvent) { eventLeft -= dt; if (eventLeft <= 0) endEvent(); return; }
+  eventCd -= dt;
+  if (eventCd <= 0) { eventCd = 110 + Math.random() * 90; const pool = EVENTS.filter(e => !e.night || isNight()); if (pool.length) startEvent(pool[Math.floor(Math.random() * pool.length)]); }
+}
+
 // ---------- GAME START ----------
 // ---------- MINIMAP (UISystem) ----------
 const mmCv = document.getElementById("minimap"), mmx = mmCv.getContext("2d");
@@ -1904,6 +1943,7 @@ function startGame() {
   xp = 0; level = 1; xpNext = 50; placedBlocks = 0; movedDist = 0; tameCount = 0; ach.clear(); loadAch(); dodge.t = 0; dodge.cd = 0; wasNight = false; raidShown = false; updateXPUI(); renderSkills();
   editsByDim.overworld = new Map(); editsByDim.fire = new Map(); editsByDim.end = new Map(); chestStore = new Map(); openChestK = null; day = 1; timeOfDay = 0.28;
   clearObjective(); story.active = false;
+  eventCd = 180; activeEvent = null; xpMult = 1; setEventTint(null);
   const camp = buildSpawnCamp(); startStory(camp);            // opening cinematic + guided first 5 minutes
   renderHotbar(); updateVitals(); buildViewItem();
   camera.fov = settings.fov; camera.updateProjectionMatrix();
@@ -1950,6 +1990,7 @@ function loop() {
     else { raidShown = false; if (wasNight && !survivedNight) { survivedNight = true; achieve("night", "First Night Survived"); } }
     updateStory(dt);
     updatePowerups(dt);
+    updateEvents(dt);
     updateQuests();
     checkAchievements();
     updateMusic(dt);

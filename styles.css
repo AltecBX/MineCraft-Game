@@ -117,6 +117,7 @@
   #fade { position:fixed; inset:0; z-index:25; pointer-events:none; background:#000; opacity:0; transition:opacity .5s; }
   #flash { position:fixed; inset:0; z-index:26; pointer-events:none; opacity:0; transition:opacity .3s;
     background:radial-gradient(circle at 68% 28%, rgba(176,38,255,.6), rgba(120,0,200,.15) 45%, rgba(60,0,110,0) 70%); }
+  #eventTint { position:fixed; inset:0; z-index:8; pointer-events:none; opacity:0; transition:opacity 1.2s; background:transparent; }
   #cine { position:fixed; inset:0; z-index:60; pointer-events:none; display:flex; align-items:flex-end; justify-content:center; }
   #cine.hidden { display:none; }
   #cine::before,#cine::after { content:""; position:absolute; left:0; right:0; height:13vh; background:#000;
