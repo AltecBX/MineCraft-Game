@@ -513,7 +513,13 @@ function addXP(n) {
   while (xp >= xpNext) { xp -= xpNext; level++; xpNext = Math.floor(xpNext * 1.35); levelUp(); }
   updateXPUI();
 }
-function levelUp() { skills.pts++; player.hp = Math.min(player.maxHp, player.hp + 4); SFX.levelUp(); toast("Level up. Skill point earned"); addShake(0.12); updateVitals(); renderSkills(); }
+function levelUp() {
+  skills.pts++; player.hp = Math.min(player.maxHp, player.hp + 4); SFX.levelUp();
+  showBanner("Level " + level + "! Skill point earned"); toast("Level up. Spend your point in Skills.");
+  addShake(settings.reduceMotion ? 0.06 : 0.18);
+  for (let i = 0; i < 3; i++) hitSpark({ x: player.pos.x + (Math.random() - .5) * 1.2, y: player.pos.y + 1 + Math.random() * 1.2, z: player.pos.z + (Math.random() - .5) * 1.2 }, 0xffe066);
+  updateVitals(); renderSkills();
+}
 function updateXPUI() { const l = document.getElementById("lvl"); if (l) l.textContent = "LV " + level + (skills.pts ? "  +" + skills.pts + "sp" : ""); const f = document.getElementById("xpfill"); if (f) f.style.width = (100 * xp / xpNext) + "%"; }
 function achieve(id, label) { if (ach.has(id)) return; ach.add(id); saveAch(); toast("Achievement. " + label); SFX.pickup(); addXP(15); if (typeof renderAch === "function") renderAch(); }
 const ACH_KEY = "thomas_voxel_ach";
@@ -1146,6 +1152,7 @@ function lightningZap() {
   if (hits) toast("⚡ Lightning Hammer struck " + hits + (hits > 1 ? " monsters" : " monster"));
 }
 function lightningBolt(p) {
+  if (fxParts.length > FX_CAP) return;
   for (let i = 0; i < 5; i++) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.08), new THREE.MeshBasicMaterial({ color: 0x9fe8ff })); m.position.set(p.x + (Math.random() - .5) * 0.5, p.y + 0.5 + i * 0.4, p.z + (Math.random() - .5) * 0.5); scene.add(m); fxParts.push({ mesh: m, life: 0.25, vel: new THREE.Vector3((Math.random() - .5) * 2, 2, (Math.random() - .5) * 2) }); }
 }
 // floating damage numbers
@@ -1178,7 +1185,8 @@ function updateProjectiles(dt) {
   }
 }
 const fxParts = [];
-function hitSpark(p, col) { for (let i = 0; i < 6; i++) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), new THREE.MeshBasicMaterial({ color: col })); m.position.copy(p); scene.add(m); fxParts.push({ mesh: m, life: 0.3, vel: new THREE.Vector3((Math.random() - .5) * 4, Math.random() * 4, (Math.random() - .5) * 4) }); } }
+const FX_CAP = 150;                                  // keep particle count bounded so mobile stays smooth
+function hitSpark(p, col) { if (fxParts.length > FX_CAP) return; for (let i = 0; i < 6; i++) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), new THREE.MeshBasicMaterial({ color: col })); m.position.copy(p); scene.add(m); fxParts.push({ mesh: m, life: 0.3, vel: new THREE.Vector3((Math.random() - .5) * 4, Math.random() * 4, (Math.random() - .5) * 4) }); } }
 function updateFx(dt) { for (let i = fxParts.length - 1; i >= 0; i--) { const p = fxParts[i]; p.life -= dt; p.vel.y -= 9 * dt; p.mesh.position.addScaledVector(p.vel, dt); p.mesh.scale.multiplyScalar(1 - dt * 2.5); if (p.life <= 0) { scene.remove(p.mesh); fxParts.splice(i, 1); } } }
 // tag entity meshes after spawn (so raycast finds kind)
 function tagMonsters() { for (const m of monsters) m.g.traverse(o => { o.userData.kind = "monster"; o.userData.m = m; }); }
