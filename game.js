@@ -989,10 +989,10 @@ function applyCbMarkers() { for (const m of monsters) if (m.mark) m.mark.visible
 function spawnMonster(x, z, type) {
   if (!type) { const rl = Math.random();
     type = isNight()
-      ? (rl < 0.26 ? "crawler" : rl < 0.44 ? "brute" : rl < 0.62 ? "spitter" : rl < 0.76 ? "ghost" : rl < 0.9 ? "screamer" : "miner")
-      : (rl < 0.5 ? "crawler" : rl < 0.8 ? "brute" : "miner"); }
-  const cfg = MTYPE[type], elite = Math.random() < 0.08, sc = cfg.sc * (elite ? 1.5 : 1), col = cfg.col;
-  const dayMul = Math.min(2.2, 1 + 0.05 * (day - 1));
+      ? (rl < 0.5 ? "crawler" : rl < 0.68 ? "brute" : rl < 0.82 ? "spitter" : rl < 0.92 ? "ghost" : rl < 0.97 ? "screamer" : "miner")  // mostly crawlers, fewer elites types
+      : (rl < 0.55 ? "crawler" : rl < 0.82 ? "brute" : "miner"); }
+  const cfg = MTYPE[type], elite = Math.random() < 0.05, sc = cfg.sc * (elite ? 1.5 : 1), col = cfg.col;
+  const dayMul = Math.min(1.8, 1 + 0.035 * (day - 1));   // gentler growth over days
   const g = new THREE.Group();
   const mat = c => new THREE.MeshLambertMaterial({ color: c, transparent: !!(cfg.ghost || cfg.shadow), opacity: cfg.ghost ? 0.55 : cfg.shadow ? 0.82 : 1 });
   const headY = (cfg.tall ? 1.95 : 1.55) * sc;
@@ -1030,7 +1030,7 @@ function updateMonsters(dt) {
     const m = monsters[i];
     if (m.dead) { m.dt += dt; m.g.scale.multiplyScalar(Math.max(0.0001, 1 - dt * 3)); m.g.rotation.z += dt * 6; m.g.position.y -= dt * 1.5; if (m.dt > 0.5) { scene.remove(m.g); monsters.splice(i, 1); } continue; }
     const dx = player.pos.x - m.g.position.x, dz = player.pos.z - m.g.position.z, d = Math.hypot(dx, dz) || 0.0001;
-    const aggroR = (night ? 22 : 14) + (m.summon ? 6 : 0) + (m.elite ? 4 : 0);
+    const aggroR = (night ? 17 : 13) + (m.summon ? 5 : 0) + (m.elite ? 4 : 0);
     if (!m.aggro && d < aggroR) { m.aggro = true; m.summon ? SFX.screech() : SFX.growl(); }
     else if (m.aggro && d > aggroR * 1.7) { m.aggro = false; }
     if (m.flash > 0) m.flash -= dt;
@@ -1084,8 +1084,8 @@ function updateMonsters(dt) {
   spawnTimer -= dt;
   if (spawnTimer <= 0) {
     if (DIM === "overworld") {
-      spawnTimer = isNight() ? 3 : 12;
-      const cap = isNight() ? 14 : 4;
+      spawnTimer = isNight() ? 4.6 : 12;
+      const cap = isNight() ? 8 : 4;             // gentler night raid: fewer monsters, slower spawns
       if (monsters.length < cap) {
         const a = Math.random() * Math.PI * 2, r = 16 + Math.random() * 8;
         const sxp = Math.floor(player.pos.x + Math.cos(a) * r), szp = Math.floor(player.pos.z + Math.sin(a) * r);
@@ -1777,6 +1777,8 @@ function doRespawn() {
 }
 tapBtn($("respawnBtn"), doRespawn);
 tapBtn($("againBtn"), () => { hide("win"); startGame(); });
+// bulletproof mobile respawn: a tap anywhere on the death screen (after a short grace) respawns
+$("death").addEventListener("pointerdown", e => { if (e.target && e.target.closest && e.target.closest("#respawnBtn")) return; if (performance.now() - deathT > 600) doRespawn(); });
 canvas.addEventListener("click", () => { if (running && !paused && !pointerLocked && !isTouch) canvas.requestPointerLock(); });
 // settings controls
 $("sSensD").addEventListener("input", e => settings.sensD = 0.0001 * e.target.value);
@@ -2050,7 +2052,7 @@ function meteorShower() {
 }
 const EVENTS = [
   { id: "meteor", name: "Meteor Shower", warn: "Meteors streak across the sky. Find the crash site.", dur: 25, tint: null, start() { meteorShower(); }, end() {} },
-  { id: "bloodmoon", name: "Blood Moon", warn: "A Blood Moon rises. Survive the horde.", dur: 40, tint: "rgba(180,0,0,.30)", night: true, start() { for (let i = 0; i < 5; i++) spawnRingMonster(16 + Math.random() * 6); }, end() { reward("You survived the Blood Moon.", () => { addXP(80); addItem(I_APPLE, 3); }); } },
+  { id: "bloodmoon", name: "Blood Moon", warn: "A Blood Moon rises. Survive the horde.", dur: 36, tint: "rgba(180,0,0,.30)", night: true, start() { for (let i = 0; i < 4; i++) spawnRingMonster(18 + Math.random() * 6); }, end() { reward("You survived the Blood Moon.", () => { addXP(80); addItem(I_APPLE, 3); }); } },
   { id: "storm", name: "Purple Storm", warn: "A corruption storm sweeps in. Hold out.", dur: 30, tint: "rgba(140,40,210,.24)", start() { for (let i = 0; i < 3; i++) spawnRingMonster(15 + Math.random() * 6); }, end() { reward("The storm passes.", () => { addXP(50); }); } },
   { id: "golden", name: "Golden Forest Day", warn: "A Golden Day. Double XP while it lasts.", dur: 35, tint: "rgba(255,210,80,.18)", start() { xpMult = 2; }, end() { xpMult = 1; toast("The golden glow fades."); } },
   { id: "merchant", name: "Traveling Merchant", warn: "A traveling merchant left a care package nearby.", dur: 20, tint: null, start() { dropChestNear([{ id: I_APPLE, count: 2 }, { id: PLANKS, count: 6 }, { id: TORCH, count: 4 }, { id: I_STICK, count: 4 }], "A care package was left nearby."); }, end() {} }
@@ -2174,7 +2176,17 @@ function startGame() {
   camera.fov = settings.fov; camera.updateProjectionMatrix();
   if (!isTouch) canvas.requestPointerLock();
 }
-function die() { running = false; clearInputState(); document.exitPointerLock(); hide("touch"); $("hud").classList.add("hidden"); show("death"); }
+// panels that open during play; while any is open the world freezes so you cannot be killed in a menu
+const GAME_PANELS = ["inv", "skills", "journal", "chest", "shop", "ach", "collections", "skinpicker", "settings"];
+function anyPanelOpen() { for (const id of GAME_PANELS) { const e = document.getElementById(id); if (e && !e.classList.contains("hidden")) return true; } return false; }
+function hideAllPanels() { for (const id of GAME_PANELS) { const e = document.getElementById(id); if (e) e.classList.add("hidden"); } }
+let deathT = 0;
+function die() {
+  if (!running) return;
+  running = false; paused = false; charView = false; clearInputState(); hideAllPanels();
+  document.exitPointerLock(); hide("touch"); $("hud").classList.add("hidden");
+  deathT = performance.now(); show("death");
+}
 
 // ---------- MAIN LOOP ----------
 let last = performance.now(); let hungerT = 0, heatT = 0, droneT = 3;
@@ -2189,7 +2201,7 @@ function loop() {
     if (camera.lookAt) camera.lookAt(player.pos.x, player.pos.y + 1.0, player.pos.z);
     renderer.render(scene, camera); return;
   }
-  if (running && !paused) {
+  if (running && !paused && !anyPanelOpen()) {
     if (attackCd > 0) attackCd -= dt; if (portalCd > 0) portalCd -= dt; if (hammerCd > 0) hammerCd -= dt; if (bowCd > 0) bowCd -= dt;
     physics(dt);
     tagMonsters();

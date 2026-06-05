@@ -60,7 +60,10 @@ if(name==='HemisphereLight')return ctor({color:new Col(),groundColor:new Col(),i
 }});
 
 // ---- DOM / window stubs ----
-function el(){return new Proxy({style:{setProperty(){},},classList:{add(){},remove(){},toggle(){},contains(){return false;}},
+// overlays/panels that carry class="hidden" in index.html start hidden so anyPanelOpen() reads correctly
+const HIDDEN_IDS=new Set(['hud','touch','intro','pause','settings','ach','collections','skinpicker','shop','inv','skills','journal','chest','death','win','cine']);
+function el(id){const cls=new Set(); if(id && HIDDEN_IDS.has(id)) cls.add('hidden');
+ return new Proxy({style:{setProperty(){},},classList:{add(c){cls.add(c);},remove(c){cls.delete(c);},toggle(c,f){const on=f===undefined?!cls.has(c):!!f; on?cls.add(c):cls.delete(c); return on;},contains(c){return cls.has(c);}},
  children:[],dataset:{},textContent:'',value:'85',width:64,height:8,
  appendChild(){},removeChild(){},addEventListener(){},removeEventListener(){},
  getContext(){return new Proxy({},{get(){return function(){return {addColorStop(){}}}}})},
@@ -68,7 +71,7 @@ function el(){return new Proxy({style:{setProperty(){},},classList:{add(){},remo
  querySelectorAll(){return[];},querySelector(){return el();},setAttribute(){},getAttribute(){return null;},
  focus(){},click(){},remove(){}},{get(t,p){ if(p in t) return t[p]; if(['firstElementChild','lastElementChild','parentElement','parentNode','nextElementSibling','previousElementSibling'].includes(p)) return el(); return el; }});}
 const elements={};
-const document={getElementById(id){return elements[id]||(elements[id]=el());},
+const document={getElementById(id){return elements[id]||(elements[id]=el(id));},
  createElement(){return el();},body:el(),documentElement:el(),
  addEventListener(){},exitPointerLock(){},querySelector(){return el();},querySelectorAll(){return[];},
  pointerLockElement:null,hidden:false};
