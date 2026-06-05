@@ -715,6 +715,19 @@ function renderTrophies() {
   const h = $("trophyCount"); if (h) h.textContent = n + " / " + TROPHIES.length;
 }
 function toggleTrophies() { const o = $("trophies"); const open = !o.classList.contains("hidden"); if (open) o.classList.add("hidden"); else { renderTrophies(); o.classList.remove("hidden"); } }
+function renderWardrobe() {
+  const l = $("catCosList"); if (!l) return; l.innerHTML = "";
+  const tamed = cats.filter(c => c.tamed).length;
+  for (const c of COSMETICS) {
+    const on = catCosmetic === c.id; const row = document.createElement("div"); row.className = "craftRow" + (on ? "" : " no");
+    row.innerHTML = "<span><b>" + c.ic + " " + c.name + "</b>" + (on ? " <span class='muted'>(worn)</span>" : "") + "</span>";
+    const b = document.createElement("button"); b.className = "mk"; b.textContent = on ? "On" : "Wear";
+    b.addEventListener("pointerdown", e => { e.preventDefault(); setCatCosmetic(c.id); });
+    row.appendChild(b); l.appendChild(row);
+  }
+  if (!tamed) { const note = document.createElement("div"); note.className = "muted"; note.style.cssText = "font-size:12px;margin-top:6px"; note.textContent = "Tame a cat to see the accessory."; l.appendChild(note); }
+}
+function toggleWardrobe() { const o = $("catwardrobe"); const open = !o.classList.contains("hidden"); if (open) o.classList.add("hidden"); else { renderWardrobe(); o.classList.remove("hidden"); } }
 function renderSkinPick() {
   const l = $("skinList"); if (!l) return; l.innerHTML = "";
   for (const s of SKINS) {
@@ -1211,6 +1224,31 @@ const CAT_COLORS = [{ n: "orange", c: 0xe8862a }, { n: "black", c: 0x2b2b2b }, {
 function catAbility(color) { if (color === "white") return "heal"; if (color === "orange" || color === "tabby") return "fury"; if (color === "black" || color === "gray") return "scout"; return "balanced"; }
 function catAbilityDesc(a) { return a === "heal" ? "heals Thomas" : a === "fury" ? "fights harder" : a === "scout" ? "senses danger" : "loyal helper"; }
 function bxm(w, h, d, col) { return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color: col })); }
+// ---------- CAT COSMETICS (collars, hats, crowns worn by your tamed cats) ----------
+const COSMETICS = [
+  { id: "none", name: "None", ic: "🚫" },
+  { id: "collar", name: "Collar", ic: "📿" },
+  { id: "bowtie", name: "Bow Tie", ic: "🎀" },
+  { id: "tophat", name: "Top Hat", ic: "🎩" },
+  { id: "crown", name: "Crown", ic: "👑" },
+  { id: "shades", name: "Sunglasses", ic: "🕶️" },
+  { id: "wings", name: "Tiny Wings", ic: "🪽" }
+];
+let catCosmetic = "none";
+function buildCatCosmetic(id) {
+  if (!id || id === "none") return null;
+  const g = new THREE.Group();
+  if (id === "collar") { const c = bxm(0.3, 0.07, 0.22, 0xff3b6b); c.position.set(0, 0.36, 0.26); g.add(c); const tag = bxm(0.06, 0.06, 0.03, 0xffd23d); tag.position.set(0, 0.31, 0.37); g.add(tag); }
+  else if (id === "bowtie") { const c = bxm(0.16, 0.1, 0.05, 0x9b1c2e); c.position.set(0, 0.36, 0.5); g.add(c); }
+  else if (id === "tophat") { const brim = bxm(0.34, 0.04, 0.34, 0x16181d); brim.position.set(0, 0.62, 0.36); g.add(brim); const top = bxm(0.22, 0.2, 0.22, 0x16181d); top.position.set(0, 0.74, 0.36); g.add(top); }
+  else if (id === "crown") { const band = bxm(0.3, 0.1, 0.3, 0xffd23d); band.position.set(0, 0.66, 0.36); g.add(band); for (const px of [-0.1, 0, 0.1]) { const sp = bxm(0.05, 0.1, 0.05, 0xffe98a); sp.position.set(px, 0.74, 0.36); g.add(sp); } }
+  else if (id === "shades") { const bar = bxm(0.3, 0.08, 0.03, 0x111114); bar.position.set(0, 0.49, 0.5); g.add(bar); }
+  else if (id === "wings") { const wl = bxm(0.05, 0.18, 0.3, 0xbfe3ff); wl.position.set(-0.16, 0.42, -0.05); wl.rotation.y = 0.4; g.add(wl); const wr = bxm(0.05, 0.18, 0.3, 0xbfe3ff); wr.position.set(0.16, 0.42, -0.05); wr.rotation.y = -0.4; g.add(wr); }
+  return g;
+}
+function applyCatCosmetic(cat) { if (cat.cosmeticMesh) { cat.g.remove(cat.cosmeticMesh); cat.cosmeticMesh = null; } const m = buildCatCosmetic(catCosmetic); if (m) { cat.g.add(m); cat.cosmeticMesh = m; } }
+function setCatCosmetic(id) { catCosmetic = id; try { localStorage.setItem("thomas_voxel_catcos", id); } catch (e) {} for (const c of cats) if (c.tamed) applyCatCosmetic(c); if (typeof renderWardrobe === "function") renderWardrobe(); SFX.meow(); }
+function loadCatCosmetic() { try { const id = localStorage.getItem("thomas_voxel_catcos"); if (id) catCosmetic = id; } catch (e) {} }
 function spawnCat(x, z, opts) {
   opts = opts || {};
   const pick = opts.color ? (CAT_COLORS.find(c => c.n === opts.color) || CAT_COLORS[0]) : CAT_COLORS[Math.floor(Math.random() * CAT_COLORS.length)];
@@ -1237,6 +1275,7 @@ function spawnCat(x, z, opts) {
   if (rare) { const collar = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(120,220,255,0.9)", "rgba(60,140,255,0)"), depthWrite: false, transparent: true, fog: false })); collar.scale.set(0.85, 0.85, 1); collar.position.set(0, 0.5, 0.12); g.add(collar); }
   g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g);
   cats.push({ g, dir: Math.random() * 6.28, tamed: !!opts.tamed, friendly: !!opts.friendly, name: name, rare: rare, hp: 10, level: opts.level || (rare ? 2 : 1), kills: 0, mode: opts.mode || "follow", stay: new THREE.Vector3(x + 0.5, 0, z + 0.5), meow: Math.random() * 6, warnCd: 0, healCd: 0, ability: ability, legs, tail, walkT: 0, moved: false, color: pick.n });
+  if (opts.tamed) applyCatCosmetic(cats[cats.length - 1]);
 }
 function spawnMouse(x, z) {
   const cheese = Math.random() < 0.02;                        // Cheese King: a rare, big golden mouse
@@ -1513,7 +1552,7 @@ function interact() {
   if (near && !near.tamed) {
     if (near.friendly || countItem(I_APPLE) > 0) {
       if (!near.friendly) consumeItem(I_APPLE, 1);
-      near.tamed = true; near.friendly = false; near.mode = "follow"; SFX.meow(); discoverCat(near.color);
+      near.tamed = true; near.friendly = false; near.mode = "follow"; SFX.meow(); discoverCat(near.color); applyCatCosmetic(near);
       const who = near.name ? near.name : ("The " + near.color + " cat");
       toast(who + " joined you and " + catAbilityDesc(near.ability) + ".");
       if (near.name) { showBanner(near.name + " joined Thomas!"); questComplete("New Companion. " + near.name); }
@@ -2007,6 +2046,8 @@ $("pCollBtn").addEventListener("click", () => { hide("pause"); paused = false; t
 $("closeCollBtn").addEventListener("click", () => hide("collections"));
 $("pTrophyBtn").addEventListener("click", () => { hide("pause"); paused = false; toggleTrophies(); });
 $("closeTrophyBtn").addEventListener("click", () => hide("trophies"));
+$("pCatsBtn").addEventListener("click", () => { hide("pause"); paused = false; toggleWardrobe(); });
+$("closeCatsBtn").addEventListener("click", () => hide("catwardrobe"));
 $("pSkinsBtn").addEventListener("click", () => { hide("pause"); paused = false; openCharacter(); });
 $("closeSkinBtn").addEventListener("click", closeCharacter);
 $("sSfx").addEventListener("input", e => { settings.sfxVol = e.target.value / 100; applyAudioGains(); });
@@ -2395,7 +2436,7 @@ function startGame() {
   if (!isTouch) canvas.requestPointerLock();
 }
 // panels that open during play; while any is open the world freezes so you cannot be killed in a menu
-const GAME_PANELS = ["inv", "skills", "journal", "chest", "shop", "ach", "collections", "trophies", "skinpicker", "settings"];
+const GAME_PANELS = ["inv", "skills", "journal", "chest", "shop", "ach", "collections", "trophies", "catwardrobe", "skinpicker", "settings"];
 function anyPanelOpen() { for (const id of GAME_PANELS) { const e = document.getElementById(id); if (e && !e.classList.contains("hidden")) return true; } return false; }
 function hideAllPanels() { for (const id of GAME_PANELS) { const e = document.getElementById(id); if (e) e.classList.add("hidden"); } }
 let deathT = 0;
@@ -2473,6 +2514,7 @@ scene.background = new THREE.Color(0x9fd2ff);
 loadAch();
 loadColl();
 loadSkin();
+loadCatCosmetic();
 loadSettings();
 syncSettingsUI();
 applyGfx();
