@@ -174,7 +174,7 @@ function updateMusic(dt) {
 
 // ---------- BLOCKS ----------
 const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, LEAVES = 5, SAND = 6, WATER = 7, LAVA = 8,
-      FIRESTONE = 9, ENDSTONE = 10, PORTAL = 11, PLANKS = 12, COBBLE = 13, TORCH = 14, CHEST = 15, SNOW = 16, BRICK = 17, BED = 18, FIRE_CRYSTAL = 19, BOUNCE = 20, SPIKE = 21, ALARM = 22;
+      FIRESTONE = 9, ENDSTONE = 10, PORTAL = 11, PLANKS = 12, COBBLE = 13, TORCH = 14, CHEST = 15, SNOW = 16, BRICK = 17, BED = 18, FIRE_CRYSTAL = 19, BOUNCE = 20, SPIKE = 21, ALARM = 22, FREDA = 23;
 function C(hex) { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; }
 const BLOCKS = {
   [GRASS]:    { name: "Grass", solid: 1, opaque: 1, hard: 0.45, top: C(0x6cc24a), side: C(0x5aa83e), bot: C(0x8a5a2b), drop: DIRT, icon: "🟩" },
@@ -197,7 +197,8 @@ const BLOCKS = {
   [FIRE_CRYSTAL]: { name: "Fire Crystal", solid: 1, opaque: 1, hard: 1.4, top: C(0xff8a1e), side: C(0xff5a14), bot: C(0xd23c08), drop: FIRE_CRYSTAL, tool: "pick", glow: 1, icon: "🔶" },
   [BOUNCE]:   { name: "Bounce Block", solid: 1, opaque: 1, hard: 0.3, top: C(0x49e06a), side: C(0x36c456), bot: C(0x2aa345), drop: BOUNCE, bouncy: 1, icon: "🟢" },
   [SPIKE]:    { name: "Spike Trap", solid: 1, opaque: 1, hard: 0.5, top: C(0xb8c0cc), side: C(0x8a929e), bot: C(0x6f7782), drop: SPIKE, spike: 1, icon: "🔺" },
-  [ALARM]:    { name: "Alarm Bell", solid: 1, opaque: 1, hard: 0.6, top: C(0xffd24a), side: C(0xc9a227), bot: C(0x8a6f1a), drop: ALARM, alarm: 1, icon: "🔔" }
+  [ALARM]:    { name: "Alarm Bell", solid: 1, opaque: 1, hard: 0.6, top: C(0xffd24a), side: C(0xc9a227), bot: C(0x8a6f1a), drop: ALARM, alarm: 1, icon: "🔔" },
+  [FREDA]:    { name: "Freda Block", solid: 1, opaque: 1, hard: 0.35, top: C(0xe23b2e), side: C(0xc62c22), bot: C(0x8a1c16), drop: FREDA, freda: 1, icon: "💥" }
 };
 function isOpaque(id) { return id !== AIR && id !== WATER && id !== PORTAL && BLOCKS[id] && BLOCKS[id].opaque; }
 function isSolidBlock(id) { return id !== AIR && id !== WATER && id !== PORTAL && BLOCKS[id] && BLOCKS[id].solid; }
@@ -471,6 +472,16 @@ const spikeCells = [], alarmCells = [];
 function rebuildDefenseCells() {
   spikeCells.length = 0; alarmCells.length = 0;
   for (const [k, id] of W) { if (id === SPIKE) { const p = k.split(","); spikeCells.push([+p[0], +p[1], +p[2]]); } else if (id === ALARM) { const p = k.split(","); alarmCells.push([+p[0], +p[1], +p[2]]); } }
+}
+// floating "Freda" name plates over the explosive blocks
+let fredaLabelGroup = null;
+function rebuildFredaLabels() {
+  if (fredaLabelGroup) { scene.remove(fredaLabelGroup); fredaLabelGroup = null; }
+  const cells = []; for (const [k, id] of W) if (id === FREDA) { const p = k.split(","); cells.push([+p[0], +p[1], +p[2]]); }
+  if (!cells.length) return;
+  fredaLabelGroup = new THREE.Group();
+  for (const c of cells) { const s = makeTag("Freda"); s.scale.set(1.0, 0.26, 1); s.position.set(c[0] + 0.5, c[1] + 1.15, c[2] + 0.5); fredaLabelGroup.add(s); }
+  scene.add(fredaLabelGroup);
 }
 
 // chest storage (per dimension + position) and player block edits (for save/load)
@@ -899,11 +910,13 @@ function updateMining(dt) {
   document.querySelector("#mineRing .fg").style.strokeDashoffset = (2 * Math.PI * 22 * (1 - frac)).toFixed(1);
   if (mineProg >= need) {
     const drop = BLOCKS[r.id].drop;
-    if (r.id === CHEST) chestStore.delete(chestKey(r.x, r.y, r.z));
+    if (r.id === CHEST) collectChest(chestKey(r.x, r.y, r.z));
+    if (r.id === FREDA) { explode(r.x, r.y, r.z, 2); }
     setRaw(r.x, r.y, r.z, AIR); recordEdit(r.x, r.y, r.z, AIR);
     if (r.id === PORTAL) rebuildPortalCells();
     if (r.id === TORCH) rebuildTorchCells();
     if (r.id === SPIKE || r.id === ALARM) rebuildDefenseCells();
+    if (r.id === FREDA) rebuildFredaLabels();
     markDirty(r.x, r.z); markDirty(r.x + 1, r.z); markDirty(r.x - 1, r.z); markDirty(r.x, r.z + 1); markDirty(r.x, r.z - 1);
     blockParticles(r.x, r.y, r.z, BLOCKS[r.id].top);
     if (drop !== undefined) addItem(drop, 1);
@@ -926,6 +939,7 @@ function placeBlock() {
   markDirty(tx, tz); markDirty(tx + 1, tz); markDirty(tx - 1, tz); markDirty(tx, tz + 1); markDirty(tx, tz - 1);
   if (it.id === TORCH) rebuildTorchCells();
   if (it.id === SPIKE || it.id === ALARM) rebuildDefenseCells();
+  if (it.id === FREDA) rebuildFredaLabels();
   if (it.id === CHEST && !chestStore.has(chestKey(tx, ty, tz))) chestStore.set(chestKey(tx, ty, tz), new Array(9).fill(null));
   removeItem(selSlot, 1); SFX.place(); placedBlocks++;
 }
@@ -968,7 +982,8 @@ const RECIPES = [
   { out: I_SLIMELAUNCH, n: 1, need: [[BOUNCE, 2], [I_STICK, 2]] },
   { out: BOUNCE, n: 2, need: [[LEAVES, 4], [PLANKS, 1]] },
   { out: SPIKE, n: 2, need: [[COBBLE, 2], [I_STICK, 1]] },
-  { out: ALARM, n: 1, need: [[COBBLE, 3], [I_STICK, 1]] }
+  { out: ALARM, n: 1, need: [[COBBLE, 3], [I_STICK, 1]] },
+  { out: FREDA, n: 1, need: [[COBBLE, 3], [FIRE_CRYSTAL, 1]] }
 ];
 function canCraft(r) { return r.need.every(([id, c]) => countItem(id) >= c); }
 function craft(r) { if (!canCraft(r)) return; r.need.forEach(([id, c]) => consumeItem(id, c)); addItem(r.out, r.n); SFX.craft(); renderCraft(); onCraft(r.out); }
@@ -1025,8 +1040,8 @@ function spawnMonster(x, z, type) {
   const bar = makeBar(); bar.sprite.position.y = (cfg.tall ? 2.6 : 2.25) * sc; g.add(bar.sprite);
   const mark = makeTag(monsterLabel(cfg, type) + (elite ? "+" : "")); mark.position.y = (cfg.tall ? 2.95 : 2.6) * sc; mark.visible = settings.cbMarkers; g.add(mark);
   g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g);
-  const hp = Math.round(cfg.hp * (elite ? 2 : 1) * dayMul);
-  monsters.push({ g, type, hp, max: hp, speed: cfg.speed, dmg: Math.round(cfg.dmg * (elite ? 1.5 : 1) * dayMul), xp: Math.round(cfg.xp * (elite ? 2.5 : 1)),
+  const hp = Math.max(1, Math.round(cfg.hp * (elite ? 2 : 1) * dayMul * 0.66));   // easier: less monster health
+  monsters.push({ g, type, hp, max: hp, speed: cfg.speed, dmg: Math.max(1, Math.round(cfg.dmg * (elite ? 1.5 : 1) * dayMul * 0.7)), xp: Math.round(cfg.xp * (elite ? 2.5 : 1)),
     ranged: !!cfg.ranged, ghost: !!cfg.ghost, slam: !!cfg.slam, summon: !!cfg.summon, digger: !!cfg.digger, flee: !!cfg.flee, elite,
     loot: cfg.loot || [], emBase, shootCd: 1.6, summonCd: 4 + Math.random() * 4, digCd: 1.5, touch: 0, flash: 0, windup: 0, slamCd: 0,
     bar, mark, body, legL, legR, armL, armR, moveT: 0, dir: Math.random() * 6.28, state: "idle", aggro: false, dead: false, dt: 0 });
@@ -1307,6 +1322,23 @@ function boomBreak(cx, cy, cz) {
   }
   blockParticles(cx, cy, cz, [0.8, 0.8, 0.8]); SFX.slam(); addShake(0.18);
 }
+// Freda blocks explode when hit: clear a sphere of blocks, hurt nearby monsters, fling debris
+function explode(cx, cy, cz, power) {
+  power = power || 2;
+  for (let dx = -power; dx <= power; dx++) for (let dy = -power; dy <= power; dy++) for (let dz = -power; dz <= power; dz++) {
+    if (dx * dx + dy * dy + dz * dz > power * power + 1) continue;
+    const x = cx + dx, y = cy + dy, z = cz + dz, id = getBlock(x, y, z);
+    if (id === AIR || id === WATER || id === PORTAL || id === CHEST || id === BED || id === FREDA) continue;   // spare chests; chained Freda removed by the mining loop
+    const b = BLOCKS[id]; if (!b || b.hard <= 0 || b.hard > 2.2) continue;
+    setRaw(x, y, z, AIR); recordEdit(x, y, z, AIR);
+    markDirty(x, z); markDirty(x + 1, z); markDirty(x - 1, z); markDirty(x, z + 1); markDirty(x, z - 1);
+  }
+  rebuildTorchCells(); rebuildDefenseCells();
+  for (let i = 0; i < 16; i++) { if (fxParts.length > FX_CAP) break; const m = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), new THREE.MeshBasicMaterial({ color: i % 2 ? 0xff8a2a : 0xffd23d })); m.position.set(cx + 0.5, cy + 0.5, cz + 0.5); scene.add(m); fxParts.push({ mesh: m, life: 0.5, vel: new THREE.Vector3((Math.random() - .5) * 9, Math.random() * 7, (Math.random() - .5) * 9) }); }
+  for (const mo of monsters) { if (mo.dead) continue; const d = Math.hypot(mo.g.position.x - (cx + 0.5), mo.g.position.z - (cz + 0.5)); if (d < 4.8) { mo.hp -= 20; mo.flash = 0.2; mo.bar.up(Math.max(0, mo.hp / mo.max)); knock(mo.g, 2.2); if (mo.hp <= 0 && !mo.dead) killMonster(mo); } }
+  const pd = Math.hypot(player.pos.x - (cx + 0.5), player.pos.z - (cz + 0.5)); if (pd < 2.8 && !powerActive("shield")) damage(4);
+  SFX.slam(); SFX.zap(); addShake(0.5);
+}
 // player ranged shots: Ice Bow (slow) and Slime Launcher (knockback)
 let bowCd = 0;
 const playerShots = [];
@@ -1405,6 +1437,8 @@ function interact() {
   if (it && isItem(it.id) && ITEMS[it.id].food) { if (player.food < 20) { player.food = Math.min(20, player.food + ITEMS[it.id].food); removeItem(selSlot, 1); updateVitals(); toast("Ate " + ITEMS[it.id].name); } return; }
   // open the merchant shop when standing next to it
   if (merchant && merchant.g.position.distanceTo(player.pos) < 3) { openShop(); return; }
+  // open the nearest chest within reach even if not perfectly aimed (mobile friendly)
+  { let bc = null, bd = 3.2; for (let oy = -1; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) for (let oz = -2; oz <= 2; oz++) { const cxn = Math.floor(player.pos.x) + ox, cyn = Math.floor(player.pos.y) + oy, czn = Math.floor(player.pos.z) + oz; if (getBlock(cxn, cyn, czn) === CHEST) { const d = Math.hypot(cxn + 0.5 - player.pos.x, czn + 0.5 - player.pos.z); if (d < bd) { bd = d; bc = [cxn, cyn, czn]; } } } if (bc) { openChest(chestKey(bc[0], bc[1], bc[2])); return; } }
   // tame nearby cat by feeding apple
   let near = null, nd = 3; for (const c of cats) { const d = c.g.position.distanceTo(player.pos); if (d < nd) { nd = d; near = c; } }
   if (near && !near.tamed) {
@@ -1505,7 +1539,7 @@ function loadDimension(name, fromSave) {
   else { scene.background = new THREE.Color(0x000000); scene.fog = new THREE.Fog(0x000000, 30, 120); hemi.color.set(0xffffff); hemi.intensity = 0.9; sun.intensity = 0.7; sun.color.set(0xeae6ff); showBanner("The End"); buildEndDragon(); setQuest("Destroy the End Crystals, then slay the Black Dragon"); }
   // replay player block edits, then rebuild special blocks
   const ed = editsByDim[name]; if (ed) for (const [k, id] of ed) { const p = k.split(",").map(Number); setRaw(p[0], p[1], p[2], id); }
-  remeshAll(); rebuildPortalCells(); rebuildTorchCells(); rebuildDefenseCells();
+  remeshAll(); rebuildPortalCells(); rebuildTorchCells(); rebuildDefenseCells(); rebuildFredaLabels();
   loadChunks(); updateVitals(); renderHotbar();
 }
 // Fire dim: a teal portal to the End plus a simple fire guardian mini boss (TODO full fire boss with phases)
@@ -1760,6 +1794,12 @@ function addToStore(arr, id, count) {  // arr is 9 slots; returns leftover
   for (let i = 0; i < 9 && count > 0; i++) { const s = arr[i]; if (s && s.id === id && s.count < stack) { const add = Math.min(count, stack - s.count); s.count += add; count -= add; } }
   for (let i = 0; i < 9 && count > 0; i++) { if (!arr[i]) { const add = Math.min(count, stack); arr[i] = { id, count: add }; count -= add; } }
   return count;
+}
+// breaking a chest hands its prizes straight to Thomas (so loot is never lost)
+function collectChest(key) {
+  const st = chestStore.get(key);
+  if (st) { let got = 0; for (const s of st) if (s) { addItem(s.id, s.count); got++; } if (got) { toast("Collected the chest's prizes!"); SFX.treasure(); } }
+  chestStore.delete(key);
 }
 function openChest(key) {
   openChestK = key; if (!chestStore.has(key)) chestStore.set(key, new Array(9).fill(null));
@@ -2024,9 +2064,11 @@ function buildSpawnCamp() {
   const sx = -4, sz = 4; const sgy = surfaceY(sx, sz);
   put(sx, sgy - 1, sz, CHEST); put(sx, sgy, sz, DIRT);          // chest one below the surface, capped by dirt
   chestStore.set(chestKey(sx, sgy - 1, sz), [{ id: I_APPLE, count: 4 }, { id: PLANKS, count: 12 }, { id: BRICK, count: 8 }, { id: I_STICK, count: 6 }, null, null, null, null, null]);
+  // a couple of explosive Freda blocks to discover near camp
+  for (const [fx, fz] of [[-3, -3], [6, -2]]) { const fy = surfaceY(fx, fz); put(fx, fy, fz, FREDA); }
   // rebuild touched chunks now so the camp is visible immediately
   for (const k of touched) { const p = k.split(","); buildChunk(+p[0], +p[1]); }
-  rebuildTorchCells();
+  rebuildTorchCells(); rebuildFredaLabels();
   return { chestX: chx, chestY: chy, chestZ: chz, catX: cx - 2, catZ: cz + 3, secret: { x: sx, y: sgy, z: sz, revealed: false, key: chestKey(sx, sgy - 1, sz) } };
 }
 function spawnWhiskers(x, z) { spawnCat(x, z, { color: "orange", friendly: true, name: "Whiskers" }); SFX.meow(); }
