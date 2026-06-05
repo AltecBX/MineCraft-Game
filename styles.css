@@ -115,6 +115,21 @@
   #hurt { position:fixed; inset:0; z-index:9; pointer-events:none; opacity:0; transition:opacity .12s;
     background:radial-gradient(ellipse at center,transparent 38%,rgba(200,0,0,.6) 100%); }
   #fade { position:fixed; inset:0; z-index:25; pointer-events:none; background:#000; opacity:0; transition:opacity .5s; }
+  #flash { position:fixed; inset:0; z-index:26; pointer-events:none; opacity:0; transition:opacity .3s;
+    background:radial-gradient(circle at 68% 28%, rgba(176,38,255,.6), rgba(120,0,200,.15) 45%, rgba(60,0,110,0) 70%); }
+  #cine { position:fixed; inset:0; z-index:60; pointer-events:none; display:flex; align-items:flex-end; justify-content:center; }
+  #cine.hidden { display:none; }
+  #cine::before,#cine::after { content:""; position:absolute; left:0; right:0; height:13vh; background:#000;
+    box-shadow:0 0 40px 10px #000; animation:cineBar .6s ease both; }
+  #cine::before { top:0; } #cine::after { bottom:0; }
+  @keyframes cineBar { from { transform:translateY(-100%); } to { transform:translateY(0); } }
+  #cine::after { animation-name:cineBarB; }
+  @keyframes cineBarB { from { transform:translateY(100%); } to { transform:translateY(0); } }
+  #cineCap { position:relative; margin-bottom:17vh; padding:0 6vw; max-width:90%; text-align:center;
+    font-size:clamp(18px,3.4vw,30px); font-weight:700; letter-spacing:1px; line-height:1.35; color:#fff;
+    text-shadow:0 2px 14px #000, 0 0 26px rgba(176,38,255,.65); opacity:0; transform:translateY(8px);
+    transition:opacity .5s, transform .5s; }
+  #cineCap.show { opacity:1; transform:translateY(0); }
   kbd { background:rgba(255,255,255,.12); border-radius:6px; padding:2px 7px; font-weight:700; font-family:inherit; }
   #bDodge { left:calc(16px + env(safe-area-inset-left)); bottom:calc(96px + env(safe-area-inset-bottom)); width:58px; height:58px; background:rgba(34,211,238,.32); }
   #xpwrap { position:absolute; left:50%; bottom:calc(72px + env(safe-area-inset-bottom)); transform:translateX(-50%); width:240px; max-width:60vw; text-align:center; pointer-events:none; }

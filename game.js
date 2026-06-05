@@ -991,7 +991,7 @@ function spawnCat(x, z, opts) {
   for (const [lx, lz] of lp) { const leg = bxm(0.07, 0.2, 0.07, col); leg.geometry.translate(0, -0.1, 0); leg.position.set(lx, 0.24, lz); g.add(leg); legs.push(leg); }
   const tail = bxm(0.06, 0.06, 0.32, col); tail.geometry.translate(0, 0, -0.16); tail.position.set(0, 0.42, -0.25); tail.rotation.x = 0.6; g.add(tail);
   g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g);
-  cats.push({ g, dir: Math.random() * 6.28, tamed: !!opts.tamed, hp: 10, level: opts.level || 1, kills: 0, mode: opts.mode || "follow", stay: new THREE.Vector3(x + 0.5, 0, z + 0.5), meow: Math.random() * 6, warnCd: 0, legs, tail, walkT: 0, moved: false, color: pick.n });
+  cats.push({ g, dir: Math.random() * 6.28, tamed: !!opts.tamed, friendly: !!opts.friendly, name: opts.name || null, hp: 10, level: opts.level || 1, kills: 0, mode: opts.mode || "follow", stay: new THREE.Vector3(x + 0.5, 0, z + 0.5), meow: Math.random() * 6, warnCd: 0, legs, tail, walkT: 0, moved: false, color: pick.n });
 }
 function spawnMouse(x, z) {
   const golden = Math.random() < 0.08;
@@ -1040,6 +1040,10 @@ function updateAnimals(dt) {
       // fight nearest monster (damage scales with cat level)
       let nm = null, nmd = 8; for (const m of monsters) if (!m.dead) { const md = m.g.position.distanceTo(c.g.position); if (md < nmd) { nmd = md; nm = m; } }
       if (nm && nmd < 1.3) { nm.hp -= 8 * dt * catMult * (1 + 0.25 * (c.level - 1)); nm.bar.up(Math.max(0, nm.hp / nm.max)); if (nm.hp <= 0 && !nm.dead) { nm.dead = true; addXP(Math.round((nm.xp || 8) * 0.5)); onKill(); c.kills++; if (c.kills % 3 === 0) { c.level++; toast(c.color + " cat reached level " + c.level); SFX.levelUp(); } } }
+    } else if (c.friendly) {                                   // a friendly stray (Whiskers) trots over to Thomas
+      const dx = player.pos.x - c.g.position.x, dz = player.pos.z - c.g.position.z, d = Math.hypot(dx, dz) || 1;
+      if (d > 1.7) { c.g.position.x += (dx / d) * 3.4 * dt; c.g.position.z += (dz / d) * 3.4 * dt; c.g.rotation.y = Math.atan2(dx, dz); c.g.position.y = surfaceY(c.g.position.x, c.g.position.z); c.moved = true; }
+      else { c.g.rotation.y = Math.atan2(dx, dz); if (c.meow <= 0.05) { c.meow = 2.5 + Math.random() * 2; } }
     } else {
       let nd = 999, near = null; for (const ms of mice) { const d = ms.g.position.distanceTo(c.g.position); if (d < nd) { nd = d; near = ms; } }
       if (near && nd < 12) { const dx = near.g.position.x - c.g.position.x, dz = near.g.position.z - c.g.position.z, d = Math.hypot(dx, dz) || 1; c.g.position.x += (dx / d) * 3 * dt; c.g.position.z += (dz / d) * 3 * dt; c.g.rotation.y = Math.atan2(dx, dz); c.g.position.y = surfaceY(c.g.position.x, c.g.position.z); c.moved = true; if (nd < 0.6) { if (near.golden) { addXP(20); addItem(I_APPLE, 1); toast("A golden mouse. Lucky find."); SFX.pickup(); } scene.remove(near.g); mice = mice.filter(x => x !== near); spawnMouse((player.pos.x + (Math.random() - .5) * 30) | 0, (player.pos.z + (Math.random() - .5) * 30) | 0); } }
@@ -1141,7 +1145,17 @@ function interact() {
   if (it && isItem(it.id) && ITEMS[it.id].food) { if (player.food < 20) { player.food = Math.min(20, player.food + ITEMS[it.id].food); removeItem(selSlot, 1); updateVitals(); toast("Ate " + ITEMS[it.id].name); } return; }
   // tame nearby cat by feeding apple
   let near = null, nd = 3; for (const c of cats) { const d = c.g.position.distanceTo(player.pos); if (d < nd) { nd = d; near = c; } }
-  if (near && !near.tamed) { if (countItem(I_APPLE) > 0) { consumeItem(I_APPLE, 1); near.tamed = true; SFX.meow(); toast("Cat tamed. It will follow you."); onTame(); } else toast("Need an Apple to tame the cat"); return; }
+  if (near && !near.tamed) {
+    if (near.friendly || countItem(I_APPLE) > 0) {
+      if (!near.friendly) consumeItem(I_APPLE, 1);
+      near.tamed = true; near.friendly = false; near.mode = "follow"; SFX.meow();
+      const who = near.name ? near.name : ("The " + near.color + " cat");
+      toast(who + " is now your friend and will follow you.");
+      if (near.name) { showBanner(near.name + " joined Thomas!"); questComplete("New Companion. " + near.name); }
+      onTame();
+    } else toast("Need an Apple to tame the cat (you start with a few).");
+    return;
+  }
   // set respawn at current spot
   player.spawn.copy(player.pos); toast("Respawn point set");
 }
@@ -1459,6 +1473,7 @@ function addToStore(arr, id, count) {  // arr is 9 slots; returns leftover
 }
 function openChest(key) {
   openChestK = key; if (!chestStore.has(key)) chestStore.set(key, new Array(9).fill(null));
+  if (story.active && key === story.starterKey && !story.chestOpened) { story.chestOpened = true; clearObjective(); addXP(20); showBanner("Supplies recovered. Now gather Wood from the trees."); }
   renderChest(); show("chest"); document.exitPointerLock();
 }
 function cellEl(s, onClick) {
@@ -1487,7 +1502,7 @@ $("settBtn").addEventListener("click", () => show("settings"));
 $("closeSettBtn").addEventListener("click", () => hide("settings"));
 $("resumeBtn").addEventListener("click", togglePause);
 $("pSettBtn").addEventListener("click", () => { renderKeybinds(); show("settings"); });
-$("quitBtn").addEventListener("click", () => { saveGame(true); running = false; paused = false; hide("pause"); hide("touch"); $("hud").classList.add("hidden"); show("menu"); refreshContinue(); });
+$("quitBtn").addEventListener("click", () => { saveGame(true); running = false; paused = false; story.active = false; clearObjective(); endCine(); hide("pause"); hide("touch"); $("hud").classList.add("hidden"); show("menu"); refreshContinue(); });
 $("closeInvBtn").addEventListener("click", toggleInv);
 $("pSkillBtn").addEventListener("click", () => { hide("pause"); paused = false; toggleSkills(); });
 $("closeSkillBtn").addEventListener("click", toggleSkills);
@@ -1614,6 +1629,7 @@ function loadGame() {
   editsByDim.end = new Map((data.edits && data.edits.end) || []);
   chestStore = new Map(data.chests || []);
   running = true; paused = false; wasNight = false; raidShown = false; dodge.t = 0; dodge.cd = 0; openChestK = null;
+  story.active = false; clearObjective(); endCine();
   applyGfx();
   loadDimension(data.dim || "overworld", true);
   if (data.pos) { player.pos.set(data.pos[0], data.pos[1], data.pos[2]); player.spawn.copy(player.pos); }
@@ -1628,6 +1644,87 @@ function loadGame() {
 $("contBtn").addEventListener("click", loadGame);
 $("saveBtn").addEventListener("click", () => saveGame(false));
 $("closeChestBtn").addEventListener("click", closeChest);
+
+// ---------- OPENING STORY + OBJECTIVE MARKER (first 5 minutes) ----------
+// A short scripted intro: wake by a broken campfire, a friendly cat (Whiskers)
+// runs up, the sky flashes purple, then guided objectives with a glowing beacon,
+// a first monster within 2 minutes and a buried secret within 3. New game only.
+let objMarker = null;
+function ensureObjMarker() {
+  if (objMarker) return;
+  const g = new THREE.Group();
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(0.22, 7, 0.22), new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.45, depthWrite: false, fog: false }));
+  beam.position.y = 3.5; g.add(beam);
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(255,228,110,0.95)", "rgba(255,180,40,0)"), depthWrite: false, transparent: true, fog: false }));
+  spr.scale.set(2.2, 2.2, 1); spr.position.y = 7.2; g.add(spr);
+  objMarker = g; objMarker.visible = false; scene.add(objMarker);
+}
+function setObjective(x, y, z) { ensureObjMarker(); objMarker.position.set(x, y, z); objMarker.visible = true; }
+function clearObjective() { if (objMarker) objMarker.visible = false; }
+function purpleFlash() {
+  const f = $("flash"); if (f) { f.style.opacity = "1"; setTimeout(() => { if (f) f.style.opacity = "0"; }, settings.reduceMotion ? 220 : 750); }
+}
+// cinematic captions over letterbox bars
+function cine(text) { const c = $("cine"); if (!c) return; c.classList.remove("hidden"); const cap = $("cineCap"); if (cap) { cap.textContent = text; cap.classList.remove("show"); void cap.offsetWidth; cap.classList.add("show"); } }
+function endCine() { const c = $("cine"); if (c) c.classList.add("hidden"); }
+// build a broken campfire + supply chest near spawn (decorative, new game only)
+function buildSpawnCamp() {
+  const touched = new Set();
+  const put = (x, y, z, id) => { setRaw(x, y, z, id); touched.add(ck(Math.floor(x / CH), Math.floor(z / CH))); touched.add(ck(Math.floor((x + 1) / CH), Math.floor(z / CH))); touched.add(ck(Math.floor((x - 1) / CH), Math.floor(z / CH))); touched.add(ck(Math.floor(x / CH), Math.floor((z + 1) / CH))); touched.add(ck(Math.floor(x / CH), Math.floor((z - 1) / CH))); };
+  const cx = 3, cz = 2;                                        // campfire centre, a couple blocks from spawn
+  // ring of stones around the fire
+  for (const [ox, oz] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1]]) { const sy = surfaceY(cx + ox, cz + oz); put(cx + ox, sy, cz + oz, COBBLE); }
+  // a couple of broken logs and an ember (torch) in the middle
+  const fy = surfaceY(cx, cz); put(cx, fy, cz, WOOD); put(cx, fy + 1, cz, TORCH);
+  const wy = surfaceY(cx + 1, cz - 1); put(cx + 1, wy, cz - 1, WOOD);
+  // supply chest beside the fire, with a generous starter haul
+  const chx = cx + 2, chz = cz; const chy = surfaceY(chx, chz);
+  put(chx, chy, chz, CHEST);
+  const cgkey = chestKey(chx, chy, chz);
+  chestStore.set(cgkey, [{ id: WOOD, count: 6 }, { id: PLANKS, count: 8 }, { id: TORCH, count: 6 }, { id: I_APPLE, count: 3 }, { id: I_SPICK, count: 1 }, { id: COBBLE, count: 8 }, null, null, null]);
+  // a buried secret a short walk away (revealed by Whiskers later)
+  const sx = -4, sz = 4; const sgy = surfaceY(sx, sz);
+  put(sx, sgy - 1, sz, CHEST); put(sx, sgy, sz, DIRT);          // chest one below the surface, capped by dirt
+  chestStore.set(chestKey(sx, sgy - 1, sz), [{ id: I_APPLE, count: 4 }, { id: PLANKS, count: 12 }, { id: BRICK, count: 8 }, { id: I_STICK, count: 6 }, null, null, null, null, null]);
+  // rebuild touched chunks now so the camp is visible immediately
+  for (const k of touched) { const p = k.split(","); buildChunk(+p[0], +p[1]); }
+  rebuildTorchCells();
+  return { chestX: chx, chestY: chy, chestZ: chz, catX: cx - 2, catZ: cz + 3, secret: { x: sx, y: sgy, z: sz, revealed: false } };
+}
+function spawnWhiskers(x, z) { spawnCat(x, z, { color: "orange", friendly: true, name: "Whiskers" }); SFX.meow(); }
+const story = { active: false, t: 0, step: 0, steps: [], firstMonster: false, secret: null, chestOpened: false };
+function startStory(camp) {
+  story.active = true; story.t = 0; story.step = 0; story.firstMonster = false; story.secret = camp.secret; story.chestOpened = false;
+  story.starterKey = chestKey(camp.chestX, camp.chestY, camp.chestZ);
+  story.steps = [
+    [0.3, () => cine("Thomas wakes beside a cold, broken campfire.")],
+    [3.2, () => { cine("A small orange cat slips out of the ferns, meowing at Thomas."); spawnWhiskers(camp.catX, camp.catZ); }],
+    [6.4, () => { cine("Far away, the sky flashes purple."); purpleFlash(); SFX.growl(); addShake(0.22); }],
+    [9.4, () => cine("Thomas... the forest is changing.")],
+    [12.6, () => { endCine(); showBanner("Chapter 1. The Block Forest"); setObjective(camp.chestX + 0.5, surfaceY(camp.chestX, camp.chestZ), camp.chestZ + 0.5); toast("Open the supply chest by the campfire. Look at it and press Use."); }]
+  ];
+}
+function updateStory(dt) {
+  if (objMarker && objMarker.visible) {                        // gentle pulse + bob
+    const t = performance.now() * 0.004; const b = objMarker.children[0], s = objMarker.children[1];
+    if (b && b.material) b.material.opacity = 0.32 + (Math.sin(t) * 0.5 + 0.5) * 0.3;
+    if (s) s.position.y = 7.2 + Math.sin(t) * 0.3;
+  }
+  if (!story.active) return;
+  story.t += dt;
+  while (story.step < story.steps.length && story.t >= story.steps[story.step][0]) { try { story.steps[story.step][1](); } catch (e) {} story.step++; }
+  if (!story.firstMonster && story.t > 70 && DIM === "overworld") {   // first encounter, within 2 minutes
+    story.firstMonster = true;
+    const a = Math.random() * 6.28, r = 11;
+    spawnMonster(Math.floor(player.pos.x + Math.cos(a) * r), Math.floor(player.pos.z + Math.sin(a) * r), "crawler");
+    showBanner("A purple crawler creeps out of the trees. Defend Thomas."); SFX.growl();
+  }
+  if (story.secret && !story.secret.revealed && story.t > 150 && DIM === "overworld") {  // first secret, within 3 minutes
+    story.secret.revealed = true;
+    setObjective(story.secret.x + 0.5, surfaceY(story.secret.x, story.secret.z), story.secret.z + 0.5);
+    toast("Whiskers sniffs at loose dirt nearby. Something is buried here. Dig down to find it."); SFX.meow();
+  }
+}
 
 // ---------- GAME START ----------
 // ---------- MINIMAP (UISystem) ----------
@@ -1670,6 +1767,8 @@ function startGame() {
   setQuest(quests[0].text); qi = 0; kills = 0; minedStone = 0; survivedNight = false; tamedCat = false; craftedPick = false; craftedPlanks = false; fireBossDown = false;
   xp = 0; level = 1; xpNext = 50; placedBlocks = 0; movedDist = 0; tameCount = 0; ach.clear(); loadAch(); dodge.t = 0; dodge.cd = 0; wasNight = false; raidShown = false; updateXPUI(); renderSkills();
   editsByDim.overworld = new Map(); editsByDim.fire = new Map(); editsByDim.end = new Map(); chestStore = new Map(); openChestK = null; day = 1; timeOfDay = 0.28;
+  clearObjective(); story.active = false;
+  const camp = buildSpawnCamp(); startStory(camp);            // opening cinematic + guided first 5 minutes
   renderHotbar(); updateVitals(); buildViewItem();
   camera.fov = settings.fov; camera.updateProjectionMatrix();
   if (!isTouch) canvas.requestPointerLock();
@@ -1712,6 +1811,7 @@ function loop() {
     // night raid + survive-night
     if (isNight()) { wasNight = true; if (!raidShown) { raidShown = true; showBanner("Night raid. Defend Thomas."); } }
     else { raidShown = false; if (wasNight && !survivedNight) { survivedNight = true; achieve("night", "First Night Survived"); } }
+    updateStory(dt);
     updateQuests();
     checkAchievements();
     updateMusic(dt);
