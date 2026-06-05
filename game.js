@@ -543,6 +543,32 @@ function renderAch() {
 }
 function toggleAch() { const o = $("ach"); const open = !o.classList.contains("hidden"); if (open) o.classList.add("hidden"); else { renderAch(); o.classList.remove("hidden"); } }
 
+// ---------- COLLECTIONS (cat collection + monster bestiary, long term goals) ----------
+const catsFound = new Set(), mobsFound = new Set();
+const COLL_KEY = "thomas_voxel_collections";
+const CAT_NAMES = { orange: "Orange Tabby", black: "Black Cat", white: "Snow Cat", gray: "Gray Cat", tabby: "Tabby Cat" };
+const MOB_NAMES = { crawler: "Crawler", brute: "Purple Brute", spitter: "Spitter", ghost: "Ghost", screamer: "Screamer", miner: "Miner", firedemon: "Fire Demon", lavaworm: "Lava Worm", shadowknight: "Shadow Knight", endstalker: "End Stalker" };
+function saveColl() { try { localStorage.setItem(COLL_KEY, JSON.stringify({ cats: [...catsFound], mobs: [...mobsFound] })); } catch (e) {} }
+function loadColl() { try { const d = JSON.parse(localStorage.getItem(COLL_KEY)); if (d) { (d.cats || []).forEach(c => catsFound.add(c)); (d.mobs || []).forEach(m => mobsFound.add(m)); } } catch (e) {} }
+function discoverCat(color) { if (!color || catsFound.has(color)) return; catsFound.add(color); saveColl(); toast("New cat in your collection: " + (CAT_NAMES[color] || color)); SFX.pickup(); if (typeof renderColl === "function") renderColl(); checkCollComplete(); }
+function discoverMob(type) { if (!type || !MTYPE[type] || mobsFound.has(type)) return; mobsFound.add(type); saveColl(); toast("Bestiary updated: " + (MOB_NAMES[type] || type)); if (typeof renderColl === "function") renderColl(); checkCollComplete(); }
+function checkCollComplete() {
+  if (CAT_COLORS.every(c => catsFound.has(c.n))) achieve("catcollector", "Cat Collector");
+  if (Object.keys(MTYPE).every(t => mobsFound.has(t))) achieve("bestiary", "Monster Hunter");
+}
+function renderColl() {
+  const el = $("collList"); if (!el) return;
+  const hd = t => '<div class="muted" style="font-size:12px;letter-spacing:1px;margin:8px 0 4px">' + t + "</div>";
+  let html = hd("CATS");
+  for (const c of CAT_COLORS) { const got = catsFound.has(c.n); html += '<div class="arow ' + (got ? "got" : "") + '"><b>' + (got ? "★ " : "☆ ") + (got ? (CAT_NAMES[c.n] || c.n) : "? ? ?") + "</b><span>" + (got ? ("ability: " + catAbilityDesc(catAbility(c.n))) : "undiscovered cat") + "</span></div>"; }
+  html += hd("BESTIARY");
+  for (const t of Object.keys(MTYPE)) { const got = mobsFound.has(t); html += '<div class="arow ' + (got ? "got" : "") + '"><b>' + (got ? "★ " : "☆ ") + (got ? (MOB_NAMES[t] || t) : "? ? ?") + "</b><span>" + (got ? "defeated" : "not yet defeated") + "</span></div>"; }
+  el.innerHTML = html;
+  const found = catsFound.size + mobsFound.size, tot = CAT_COLORS.length + Object.keys(MTYPE).length;
+  const h = $("collCount"); if (h) h.textContent = found + " / " + tot + " (" + Math.round(100 * found / tot) + "%)";
+}
+function toggleColl() { const o = $("collections"); const open = !o.classList.contains("hidden"); if (open) o.classList.add("hidden"); else { renderColl(); o.classList.remove("hidden"); } }
+
 // SKILL TREE
 const skills = { pts: 0, mine: 0, hp: 0, stam: 0, sword: 0, cat: 0 };
 let swordBonus = 0, catMult = 1;
@@ -1054,7 +1080,7 @@ function updateAnimals(dt) {
       c.g.position.y = surfaceY(c.g.position.x, c.g.position.z);
       // fight nearest monster (damage scales with cat level)
       let nm = null, nmd = 8; for (const m of monsters) if (!m.dead) { const md = m.g.position.distanceTo(c.g.position); if (md < nmd) { nmd = md; nm = m; } }
-      if (nm && nmd < 1.3) { nm.hp -= 8 * dt * catMult * (1 + 0.25 * (c.level - 1)) * (c.ability === "fury" ? 1.5 : 1); nm.bar.up(Math.max(0, nm.hp / nm.max)); if (nm.hp <= 0 && !nm.dead) { nm.dead = true; addXP(Math.round((nm.xp || 8) * 0.5)); onKill(); c.kills++; if (c.kills % 3 === 0) { c.level++; toast((c.name || (c.color + " cat")) + " reached level " + c.level); SFX.levelUp(); } } }
+      if (nm && nmd < 1.3) { nm.hp -= 8 * dt * catMult * (1 + 0.25 * (c.level - 1)) * (c.ability === "fury" ? 1.5 : 1); nm.bar.up(Math.max(0, nm.hp / nm.max)); if (nm.hp <= 0 && !nm.dead) { nm.dead = true; discoverMob(nm.type); addXP(Math.round((nm.xp || 8) * 0.5)); onKill(); c.kills++; if (c.kills % 3 === 0) { c.level++; toast((c.name || (c.color + " cat")) + " reached level " + c.level); SFX.levelUp(); } } }
     } else if (c.friendly) {                                   // a friendly stray (Whiskers) trots over to Thomas
       const dx = player.pos.x - c.g.position.x, dz = player.pos.z - c.g.position.z, d = Math.hypot(dx, dz) || 1;
       if (d > 1.7) { c.g.position.x += (dx / d) * 3.4 * dt; c.g.position.z += (dz / d) * 3.4 * dt; c.g.rotation.y = Math.atan2(dx, dz); c.g.position.y = surfaceY(c.g.position.x, c.g.position.z); c.moved = true; }
@@ -1099,7 +1125,7 @@ function attackEntity(hit) {
 function knock(g, f) { const dx = g.position.x - player.pos.x, dz = g.position.z - player.pos.z, d = Math.hypot(dx, dz) || 1; g.position.x += dx / d * f; g.position.z += dz / d * f; }
 // central monster death: loot, xp, quest hook, and a power-up chance from elites
 function killMonster(m) {
-  if (m.dead) return; m.dead = true;
+  if (m.dead) return; m.dead = true; discoverMob(m.type);
   for (const [lid, lc, lp] of (m.loot || [])) if (Math.random() < (m.elite ? Math.min(1, lp + 0.3) : lp)) addItem(lid, lc);
   if (m.elite) { addItem(I_APPLE, 1); if (Math.random() < 0.55) givePowerup(randPowerup()); }
   addXP(m.xp || 10); onKill();
@@ -1195,7 +1221,7 @@ function interact() {
   if (near && !near.tamed) {
     if (near.friendly || countItem(I_APPLE) > 0) {
       if (!near.friendly) consumeItem(I_APPLE, 1);
-      near.tamed = true; near.friendly = false; near.mode = "follow"; SFX.meow();
+      near.tamed = true; near.friendly = false; near.mode = "follow"; SFX.meow(); discoverCat(near.color);
       const who = near.name ? near.name : ("The " + near.color + " cat");
       toast(who + " joined you and " + catAbilityDesc(near.ability) + ".");
       if (near.name) { showBanner(near.name + " joined Thomas!"); questComplete("New Companion. " + near.name); }
@@ -1611,6 +1637,8 @@ $("sFps1").addEventListener("click", () => { settings.showFps = true; $("fps").s
 document.querySelectorAll(".seg button[data-g]").forEach(b => b.addEventListener("click", () => { settings.gfx = b.dataset.g; document.querySelectorAll(".seg button[data-g]").forEach(x => x.classList.remove("on")); b.classList.add("on"); applyGfx(); }));
 $("pAchBtn").addEventListener("click", () => { hide("pause"); paused = false; toggleAch(); });
 $("closeAchBtn").addEventListener("click", () => hide("ach"));
+$("pCollBtn").addEventListener("click", () => { hide("pause"); paused = false; toggleColl(); });
+$("closeCollBtn").addEventListener("click", () => hide("collections"));
 $("sSfx").addEventListener("input", e => { settings.sfxVol = e.target.value / 100; applyAudioGains(); });
 $("sMusV").addEventListener("input", e => { settings.musicVol = e.target.value / 100; applyAudioGains(); });
 $("sMute0").addEventListener("click", () => { settings.muted = false; applyAudioGains(); segOn("sMute1", "sMute0", false); });
@@ -1929,6 +1957,7 @@ addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; cam
 addEventListener("orientationchange", () => setTimeout(() => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); }, 250));
 scene.background = new THREE.Color(0x9fd2ff);
 loadAch();
+loadColl();
 loadSettings();
 syncSettingsUI();
 applyGfx();
