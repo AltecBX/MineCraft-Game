@@ -135,7 +135,9 @@ const SFX = {
   slam: () => { noiseHit(0.12, 0.3); blip(70, 0.2, "square", 0.18, 40); },
   levelUp: () => { blip(523, 0.12, "square", 0.16); setTimeout(() => blip(659, 0.12, "square", 0.16), 90); setTimeout(() => blip(784, 0.16, "square", 0.16), 180); },
   zap: () => { blip(1300, 0.07, "sawtooth", 0.2, 280); noiseHit(0.12, 0.22); setTimeout(() => blip(900, 0.06, "square", 0.12, 200), 50); },
-  power: () => { blip(440, 0.1, "triangle", 0.16, 660); setTimeout(() => blip(660, 0.12, "triangle", 0.16, 990), 80); }
+  power: () => { blip(440, 0.1, "triangle", 0.16, 660); setTimeout(() => blip(660, 0.12, "triangle", 0.16, 990), 80); },
+  treasure: () => { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => blip(f, 0.16, "triangle", 0.16), i * 70)); },
+  victory: () => { [392, 523, 659, 784, 1046].forEach((f, i) => setTimeout(() => blip(f, 0.22, "square", 0.18), i * 120)); }
 };
 function stepSound() {
   const b = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.1), Math.floor(player.pos.z));
@@ -147,7 +149,7 @@ function stepSound() {
 }
 // generative background music: a slow per-dimension pad, no asset files
 let musicGain = null, musicT = 0, musicIdx = 0;
-const SCALES = { overworld: [220, 247, 294, 330, 392, 440], fire: [110, 131, 147, 175, 131, 98], end: [330, 392, 494, 587, 392, 247] };
+const SCALES = { overworld: [220, 247, 294, 330, 392, 440], night: [165, 196, 220, 247, 196, 147], cave: [110, 131, 147, 110, 98, 87], fire: [110, 131, 147, 175, 131, 98], end: [330, 392, 494, 587, 392, 247] };
 function playPad(freq, dur) {
   if (!settings.music || settings.muted || !actx) return;
   if (!musicGain) { musicGain = actx.createGain(); musicGain.connect(actx.destination); applyAudioGains(); }
@@ -160,9 +162,12 @@ function playPad(freq, dur) {
 function updateMusic(dt) {
   if (!settings.music || !actx) return;
   musicT -= dt; if (musicT > 0) return;
-  const sc = SCALES[DIM] || SCALES.overworld, note = sc[musicIdx % sc.length]; musicIdx++;
+  // overworld music shifts mood by time of day and when underground
+  let key = DIM;
+  if (DIM === "overworld") key = isNight() ? "night" : (player.pos.y < SEA - 3 ? "cave" : "overworld");
+  const sc = SCALES[key] || SCALES.overworld, note = sc[musicIdx % sc.length]; musicIdx++;
   const boss = bossActive();
-  const dur = boss ? 1.1 : DIM === "fire" ? 2.2 : DIM === "end" ? 2.9 : 1.8;     // urgent tempo during boss fights
+  const dur = boss ? 1.1 : key === "night" ? 2.4 : key === "cave" ? 3.1 : DIM === "fire" ? 2.2 : DIM === "end" ? 2.9 : 1.8;
   playPad(note * (boss ? (Math.random() < 0.5 ? 0.5 : 1) : (Math.random() < 0.18 ? 2 : 1)), dur);
   musicT = dur * (boss ? 0.45 : 0.66);
 }
@@ -1238,6 +1243,7 @@ function killMonster(m) {
   for (const [lid, lc, lp] of (m.loot || [])) if (Math.random() < (m.elite ? Math.min(1, lp + 0.3) : lp)) addItem(lid, lc);
   if (m.elite) { addItem(I_APPLE, 1); if (Math.random() < 0.55) givePowerup(randPowerup()); }
   addCoins(m.elite ? 3 + Math.floor(Math.random() * 4) : 1 + Math.floor(Math.random() * 2));
+  if (!treasureKey && DIM === "overworld" && Math.random() < 0.03) { startTreasureHunt(); toast("A monster dropped a treasure map!"); }
   addXP(m.xp || 10); onKill();
 }
 // Lightning Hammer chain shock: damages every monster near Thomas with a cooldown
@@ -1534,7 +1540,7 @@ function updateFireBoss(dt) {
   }
   if (fb.hp <= 0) {
     hitSpark(fb.g.position, 0xff7a1e); for (let i = 0; i < 4; i++) hitSpark({ x: fb.g.position.x + (Math.random() - .5) * 2, y: fb.g.position.y + 1, z: fb.g.position.z + (Math.random() - .5) * 2 }, 0xffb02a);
-    scene.remove(fb.g); fireBoss = null; hideBoss();
+    scene.remove(fb.g); fireBoss = null; hideBoss(); SFX.victory();
     toast("Fire Guardian defeated. The path to the End opens.");
     addItem(FIRE_CRYSTAL, 6); addItem(I_FIRECHARM, 1); addXP(120);
     buildPortalFrame(0, surfaceY(0, -8), -8, "x"); setRaw(0, surfaceY(0, -8) + 1, -8, PORTAL); rebuildPortalCells();
@@ -1591,7 +1597,7 @@ function updateDragon(dt) {
   }
 }
 function winDragon() {
-  dragon.dead = true; hideBoss(); achieve("dragon", "Dragon Defeated"); addXP(150); addShake(0.6); toast("The Black Dragon falls.");
+  dragon.dead = true; hideBoss(); achieve("dragon", "Dragon Defeated"); addXP(150); addShake(0.6); toast("The Black Dragon falls."); SFX.victory();
   for (let i = 0; i < 12; i++) hitSpark({ x: dragon.g.position.x + (Math.random() - .5) * 4, y: dragon.g.position.y + (Math.random() - .5) * 3, z: dragon.g.position.z + (Math.random() - .5) * 4 }, 0xb026ff);
   setTimeout(() => { running = false; document.exitPointerLock(); hide("touch"); document.getElementById("hud").classList.add("hidden"); show("win"); }, 2200);
 }
@@ -1730,6 +1736,7 @@ function openChest(key) {
   openChestK = key; if (!chestStore.has(key)) chestStore.set(key, new Array(9).fill(null));
   if (story.active && key === story.starterKey && !story.chestOpened) { story.chestOpened = true; clearObjective(); addXP(20); showBanner("Supplies recovered. Now gather Wood from the trees."); }
   if (story.active && key === story.secretKey && !story.secretOpened) { story.secretOpened = true; clearObjective(); showBanner("A buried secret! Cat Vision unlocked."); givePowerup("catvision"); }
+  if (treasureKey && key === treasureKey) { treasureKey = null; clearObjective(); addCoins(15); addXP(40); SFX.treasure(); showBanner("Treasure found! +15 coins"); achieve("treasure", "Treasure Hunter"); }
   renderChest(); show("chest"); document.exitPointerLock();
 }
 function cellEl(s, onClick) {
@@ -1903,7 +1910,7 @@ function loadGame() {
   chestStore = new Map(data.chests || []);
   running = true; paused = false; wasNight = false; raidShown = false; dodge.t = 0; dodge.cd = 0; openChestK = null;
   story.active = false; clearObjective(); endCine();
-  eventCd = 180; activeEvent = null; xpMult = 1; setEventTint(null);
+  eventCd = 180; activeEvent = null; xpMult = 1; setEventTint(null); treasureKey = null;
   applyGfx();
   loadDimension(data.dim || "overworld", true);
   if (data.pos) { player.pos.set(data.pos[0], data.pos[1], data.pos[2]); player.spawn.copy(player.pos); }
@@ -2089,7 +2096,8 @@ const SHOP = [
   { name: "Bounce Block x3", cost: 12, give: () => addItem(BOUNCE, 3) },
   { name: "Speed Boots (power-up)", cost: 16, give: () => givePowerup("speed") },
   { name: "Shield Bubble (power-up)", cost: 16, give: () => givePowerup("shield") },
-  { name: "Mystery Power-up", cost: 24, give: () => givePowerup(randPowerup()) }
+  { name: "Mystery Power-up", cost: 24, give: () => givePowerup(randPowerup()) },
+  { name: "Treasure Map", cost: 10, give: () => startTreasureHunt() }
 ];
 function renderShop() {
   const sc = $("shopCoins"); if (sc) sc.textContent = "you have 🪙 " + coins;
@@ -2104,6 +2112,19 @@ function renderShop() {
 }
 function openShop() { renderShop(); show("shop"); document.exitPointerLock(); SFX.meow(); }
 function closeShop() { hide("shop"); if (!isTouch && running) canvas.requestPointerLock(); }
+// Treasure Hunt mini game: a map buries a chest a short trek away and points the beacon at the X
+let treasureKey = null;
+function startTreasureHunt() {
+  if (DIM !== "overworld") { toast("Treasure maps only work in the forest."); return; }
+  const a = Math.random() * 6.28, r = 22 + Math.random() * 18;
+  const x = Math.floor(player.pos.x + Math.cos(a) * r), z = Math.floor(player.pos.z + Math.sin(a) * r), y = surfaceY(x, z);
+  setRaw(x, y - 1, z, CHEST); setRaw(x, y, z, DIRT); recordEdit(x, y - 1, z, CHEST); recordEdit(x, y, z, DIRT);
+  treasureKey = chestKey(x, y - 1, z);
+  chestStore.set(treasureKey, [{ id: I_APPLE, count: 3 }, { id: BRICK, count: 8 }, { id: BOUNCE, count: 3 }, { id: COBBLE, count: 16 }, { id: TORCH, count: 6 }, null, null, null, null]);
+  buildChunk(Math.floor(x / CH), Math.floor(z / CH));
+  setObjective(x + 0.5, y, z + 0.5);
+  showBanner("Treasure Hunt! X marks the spot."); toast("Follow the glowing marker and dig up the treasure."); SFX.power();
+}
 
 // ---------- GAME START ----------
 // ---------- MINIMAP (UISystem) ----------
@@ -2170,7 +2191,7 @@ function startGame() {
   editsByDim.overworld = new Map(); editsByDim.fire = new Map(); editsByDim.end = new Map(); chestStore = new Map(); openChestK = null; day = 1; timeOfDay = 0.28;
   clearObjective(); story.active = false;
   eventCd = 180; activeEvent = null; xpMult = 1; setEventTint(null);
-  coins = 0; updateCoinUI(); spawnMerchant(7, 5);             // a friendly trader near camp
+  coins = 0; updateCoinUI(); spawnMerchant(7, 5); treasureKey = null;   // a friendly trader near camp
   const camp = buildSpawnCamp(); startStory(camp);            // opening cinematic + guided first 5 minutes
   renderHotbar(); updateVitals(); buildViewItem();
   camera.fov = settings.fov; camera.updateProjectionMatrix();
