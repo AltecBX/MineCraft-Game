@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Thomas and the Block World</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="crosshair"></div>
+  <div id="dmg"></div>
+  <svg id="mineRing" viewBox="0 0 54 54"><circle class="bg" cx="27" cy="27" r="22"/><circle class="fg" cx="27" cy="27" r="22"/></svg>
+  <div id="topbar">
+    <div id="vitals">
+      <div id="hearts"></div>
+      <div id="hunger"></div>
+      <div id="stamina"><div></div></div>
+    </div>
+    <div id="clock"><div class="big" id="clockBig">Day 1</div><div id="clockSub">Morning</div></div>
+  </div>
+  <div id="quest"><div class="h">Objective</div><div class="o" id="questText">Punch trees for wood</div></div>
+  <canvas id="minimap" width="120" height="120"></canvas>
+  <div id="toast"></div>
+  <div id="banner"></div>
+  <div id="bossbar"><div class="l" id="bossName">BOSS</div><div class="t"><div class="f" id="bossFill"></div></div></div>
+  <div id="questPop"></div>
+  <div id="xpwrap"><div id="lvl">LV 1</div><div id="xpbar"><div id="xpfill"></div></div></div>
+  <div id="hotbar"></div>
+  <div id="fps"></div>
+</div>
+
+<div id="touch" class="hidden">
+  <div id="joy"><div id="joyT"></div></div>
+  <button id="bUse" class="tc">Use</button>
+  <button id="bAttack" class="tc big">Hit</button>
+  <button id="bJump" class="tc">Jump</button>
+  <button id="bBuild" class="tc">Build</button>
+  <button id="bDodge" class="tc">Dodge</button>
+  <button id="bInv" class="tc">Bag</button>
+  <button id="bPause" class="tc">II</button>
+</div>
+
+<div id="hurt"></div>
+<div id="fade"></div>
+
+<!-- Main menu -->
+<div id="menu" class="overlay">
+  <h1>Thomas and the <span>Block World</span></h1>
+  <p>Thomas wakes in a strange block world. Mine, build, craft, tame cats, survive the night, and fight through the fire and end dimensions to the black dragon.</p>
+  <div style="margin-top:18px">
+    <button class="btn" id="contBtn" style="display:none">Continue</button>
+    <button class="btn" id="playBtn">New Game</button>
+    <button class="btn ghost" id="settBtn">Settings</button>
+  </div>
+  <p class="muted" style="margin-top:18px">Desktop. WASD or arrow keys to move, click to look, Space jump, Shift sprint, C crouch, F dodge, V camera, left click mine or attack, right click place, E use or sleep in a bed, G command a cat, J quest journal, 1 to 9 hotbar, I inventory, K skills, Esc pause. A and D strafe by default, or set them to turn in Settings. Mobile. Use the on screen controls.</p>
+</div>
+
+<!-- Intro -->
+<div id="intro" class="overlay hidden">
+  <div class="panel">
+    <h2>Wake Up, Thomas</h2>
+    <p>Thomas wakes up in a strange block world. The sky is calm, but something purple is spreading underground.</p>
+    <p class="muted">Find wood, craft a tool, build a small shelter, and tame a cat before the first night.</p>
+    <button class="btn" id="beginBtn">Begin</button>
+  </div>
+</div>
+
+<!-- Pause -->
+<div id="pause" class="overlay hidden">
+  <div class="panel">
+    <h2>Paused</h2>
+    <button class="btn" id="resumeBtn">Resume</button>
+    <button class="btn ghost" id="saveBtn">Save game</button>
+    <button class="btn ghost" id="pSkillBtn">Skills</button>
+    <button class="btn ghost" id="pJournalBtn">Quest journal</button>
+    <button class="btn ghost" id="pAchBtn">Achievements</button>
+    <button class="btn ghost" id="pSettBtn">Settings</button>
+    <button class="btn ghost" id="quitBtn">Main menu</button>
+  </div>
+</div>
+
+<!-- Settings -->
+<div id="settings" class="overlay hidden">
+  <div class="panel">
+    <h2>Settings</h2>
+    <div class="row"><span>Mouse sensitivity</span><input id="sSensD" type="range" min="3" max="30" value="12"></div>
+    <div class="row"><span>Touch sensitivity</span><input id="sSensM" type="range" min="3" max="30" value="14"></div>
+    <div class="row"><span>Field of view</span><input id="sFov" type="range" min="60" max="100" value="75"></div>
+    <div class="row"><span>Auto jump</span><div class="seg"><button id="sAuto0" class="on">Off</button><button id="sAuto1">On</button></div></div>
+    <div class="row"><span>Camera</span><div class="seg"><button id="sCam1" class="on">1st person</button><button id="sCam3">3rd person</button></div></div>
+    <div class="row"><span>A / D keys</span><div class="seg"><button id="sScheme0" class="on">Strafe</button><button id="sScheme1">Turn</button></div></div>
+    <div class="row"><span>Graphics</span><div class="seg"><button data-g="low">Low</button><button data-g="med" class="on">Med</button><button data-g="high">High</button><button data-g="ultra">Ultra</button></div></div>
+    <div class="row"><span>Camera bob</span><div class="seg"><button id="sBob1" class="on">On</button><button id="sBob0">Off</button></div></div>
+    <div class="row"><span>Run (mobile)</span><div class="seg"><button id="sRun0" class="on">Hold edge</button><button id="sRun1">Always</button></div></div>
+    <div class="row"><span>Button opacity</span><input id="sBtnOp" type="range" min="30" max="100" value="85"></div>
+    <div class="row"><span>Sound</span><div class="seg"><button id="sSnd1" class="on">On</button><button id="sSnd0">Off</button></div></div>
+    <div class="row"><span>Music</span><div class="seg"><button id="sMus1" class="on">On</button><button id="sMus0">Off</button></div></div>
+    <div class="row"><span>Show FPS</span><div class="seg"><button id="sFps0" class="on">Off</button><button id="sFps1">On</button></div></div>
+    <div class="row"><span>SFX volume</span><input id="sSfx" type="range" min="0" max="100" value="80"></div>
+    <div class="row"><span>Music volume</span><input id="sMusV" type="range" min="0" max="100" value="50"></div>
+    <div class="row"><span>Mute all (M)</span><div class="seg"><button id="sMute0" class="on">Off</button><button id="sMute1">On</button></div></div>
+    <div class="row"><span>Colorblind labels</span><div class="seg"><button id="sCb0" class="on">Off</button><button id="sCb1">On</button></div></div>
+    <div class="row"><span>Reduce motion</span><div class="seg"><button id="sRm0" class="on">Off</button><button id="sRm1">On</button></div></div>
+    <div class="kbhead">Key bindings</div>
+    <div id="keybinds"></div>
+    <button class="btn ghost" id="resetKeysBtn">Reset keys to default</button>
+    <button class="btn" id="closeSettBtn">Done</button>
+  </div>
+</div>
+
+<!-- Achievements -->
+<div id="ach" class="overlay hidden">
+  <div class="panel">
+    <h2>Achievements <span id="achCount" style="font-size:14px;opacity:.7"></span></h2>
+    <div id="achList" class="achlist"></div>
+    <button class="btn" id="closeAchBtn">Done</button>
+  </div>
+</div>
+
+<!-- Inventory + crafting -->
+<div id="inv" class="overlay hidden">
+  <div class="panel">
+    <h2>Inventory</h2>
+    <div class="grid" id="invGrid"></div>
+    <h2 style="margin-top:16px">Crafting</h2>
+    <div class="craftList" id="craftList"></div>
+    <button class="btn" id="closeInvBtn">Close</button>
+  </div>
+</div>
+
+<!-- Skills -->
+<div id="skills" class="overlay hidden">
+  <div class="panel">
+    <h2>Skills <span class="muted" style="font-size:13px">points <b id="skillPts">0</b></span></h2>
+    <div class="craftList" id="skillList"></div>
+    <button class="btn" id="closeSkillBtn">Close</button>
+  </div>
+</div>
+
+<!-- Quest journal -->
+<div id="journal" class="overlay hidden">
+  <div class="panel">
+    <h2>Quest Journal</h2>
+    <div class="craftList" id="journalList"></div>
+    <button class="btn" id="closeJournalBtn">Close</button>
+  </div>
+</div>
+
+<!-- Chest -->
+<div id="chest" class="overlay hidden">
+  <div class="panel">
+    <h2>Chest</h2>
+    <div class="grid" id="chestGrid"></div>
+    <h2 style="margin-top:14px">Your items</h2>
+    <div class="grid" id="chestInv"></div>
+    <p class="muted">Tap an item to move it between the chest and your bag.</p>
+    <button class="btn" id="closeChestBtn">Close</button>
+  </div>
+</div>
+
+<!-- Death -->
+<div id="death" class="overlay hidden">
+  <h1>Thomas fell</h1>
+  <p id="deathMsg">Respawn at your last rest point.</p>
+  <button class="btn" id="respawnBtn">Respawn</button>
+</div>
+
+<!-- Win -->
+<div id="win" class="overlay hidden">
+  <h1>Dragon <span>defeated</span></h1>
+  <p>Thomas saved the block world. The corruption is gone.</p>
+  <button class="btn" id="againBtn">Back to the Overworld</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
