@@ -483,7 +483,7 @@ const player = {
 let gravity = 28, jumpV = 9.2;
 
 // feel + progression state
-let thirdPerson = false;
+let thirdPerson = false, tpZoom = 4.2;
 const dodge = { t: 0, cd: 0, x: 0, z: 0 };
 const shake = { t: 0, mag: 0 };
 let stepT = 0, movedDist = 0, miningMult = 1, placedBlocks = 0, breathT = 0.2;
@@ -493,17 +493,41 @@ function addShake(m) { if (settings.reduceMotion) m *= 0.2; shake.t = 0.28; shak
 
 // Thomas avatar (visible in third person; animated)
 const thomas = new THREE.Group();
+// the name THOMAS printed on the back of the shirt, drawn to a texture so it sits on the cloth
+function makeShirtBack(shirtHex) {
+  const cv = document.createElement("canvas"); cv.width = 128; cv.height = 128; const x = cv.getContext("2d");
+  const col = new THREE.Color(shirtHex), R = col.r * 255 | 0, G = col.g * 255 | 0, B = col.b * 255 | 0;
+  x.fillStyle = "rgb(" + R + "," + G + "," + B + ")"; x.fillRect(0, 0, 128, 128);
+  x.fillStyle = "rgba(0,0,0,0.14)"; x.fillRect(0, 0, 128, 16);                  // collar shade
+  const lum = 0.299 * col.r + 0.587 * col.g + 0.114 * col.b;
+  x.fillStyle = lum > 0.55 ? "#15171c" : "#ffffff";
+  x.strokeStyle = lum > 0.55 ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.4)"; x.lineWidth = 5;
+  x.font = "900 30px Arial, Helvetica, sans-serif"; x.textAlign = "center"; x.textBaseline = "middle";
+  x.strokeText("THOMAS", 64, 72); x.fillText("THOMAS", 64, 72);
+  const t = new THREE.CanvasTexture(cv); t.needsUpdate = true; return t;
+}
 (function buildThomas() {
-  const skin = 0xdca06b, shirt = 0x2f6fe0, pant = 0x374151, hair = 0x4a2f1a;
+  const skin = 0xdca06b, shirt = 0x2f6fe0, pant = 0x374151, hair = 0x4a2f1a, shoe = 0x2a2a2a;
   const bx = (w, h, d, c) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color: c }));
-  const body = bx(0.5, 0.55, 0.28, shirt); body.position.y = 1.0; thomas.add(body);
-  const head = bx(0.42, 0.42, 0.42, skin); head.position.y = 1.5; thomas.add(head);
-  const hairTop = bx(0.46, 0.13, 0.46, hair); hairTop.position.y = 1.72; thomas.add(hairTop);
-  const armL = bx(0.16, 0.5, 0.18, skin); armL.geometry.translate(0, -0.2, 0); armL.position.set(-0.33, 1.05, 0); thomas.add(armL);
-  const armR = armL.clone(); armR.position.x = 0.33; thomas.add(armR);
+  // torso: a 6-material box so the +z face (the back, seen in third person) carries the THOMAS print
+  const backTex = makeShirtBack(shirt); const bodyMats = [];
+  for (let i = 0; i < 6; i++) bodyMats.push(i === 4 ? new THREE.MeshLambertMaterial({ map: backTex, color: 0xffffff }) : new THREE.MeshLambertMaterial({ color: shirt }));
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.6, 0.28), bodyMats); body.position.y = 1.0; thomas.add(body);
+  const head = bx(0.42, 0.42, 0.42, skin); head.position.y = 1.53; thomas.add(head);
+  const hairTop = bx(0.46, 0.14, 0.46, hair); hairTop.position.y = 1.75; thomas.add(hairTop);
+  const hairBack = bx(0.46, 0.3, 0.08, hair); hairBack.position.set(0, 1.58, -0.2); thomas.add(hairBack);
+  const eyeMat = new THREE.MeshLambertMaterial({ color: 0x20242c });            // face on the front (-z)
+  const eL = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.04), eyeMat); eL.position.set(-0.1, 1.55, -0.22); thomas.add(eL);
+  const eR = eL.clone(); eR.position.x = 0.1; thomas.add(eR);
+  const armL = bx(0.16, 0.5, 0.18, shirt); armL.geometry.translate(0, -0.2, 0); armL.position.set(-0.34, 1.06, 0); thomas.add(armL);
+  const handL = bx(0.17, 0.16, 0.2, skin); handL.position.set(0, -0.46, 0); armL.add(handL);
+  const armR = bx(0.16, 0.5, 0.18, shirt); armR.geometry.translate(0, -0.2, 0); armR.position.set(0.34, 1.06, 0); thomas.add(armR);
+  const handR = bx(0.17, 0.16, 0.2, skin); handR.position.set(0, -0.46, 0); armR.add(handR);
   const legL = bx(0.18, 0.55, 0.2, pant); legL.geometry.translate(0, -0.27, 0); legL.position.set(-0.13, 0.55, 0); thomas.add(legL);
-  const legR = legL.clone(); legR.position.x = 0.13; thomas.add(legR);
-  thomas.userData = { armL, armR, legL, legR, body, hairTop };
+  const shoeL = bx(0.21, 0.13, 0.27, shoe); shoeL.position.set(0, -0.52, 0.03); legL.add(shoeL);
+  const legR = bx(0.18, 0.55, 0.2, pant); legR.geometry.translate(0, -0.27, 0); legR.position.set(0.13, 0.55, 0); thomas.add(legR);
+  const shoeR = bx(0.21, 0.13, 0.27, shoe); shoeR.position.set(0, -0.52, 0.03); legR.add(shoeR);
+  thomas.userData = { armL, armR, legL, legR, body, bodyMats, backTex, hairTop, hairBack };
 })();
 thomas.visible = false; scene.add(thomas);
 // ---------- THOMAS SKINS (cosmetic recolor of the third-person avatar) ----------
@@ -520,10 +544,19 @@ const SKINS = [
 let currentSkin = "explorer";
 function applySkin(id) {
   const s = SKINS.find(x => x.id === id) || SKINS[0]; currentSkin = s.id; const u = thomas.userData; if (!u) return;
-  if (u.body && u.body.material.color) u.body.material.color.setHex(s.shirt);
-  if (u.legL && u.legL.material.color) u.legL.material.color.setHex(s.pant);   // legR shares this material
+  // recolour the torso faces and regenerate the THOMAS back print in the new shirt colour
+  if (u.bodyMats) {
+    for (let i = 0; i < 6; i++) {
+      if (i === 4) { const nt = makeShirtBack(s.shirt); if (u.bodyMats[4].map && u.bodyMats[4].map.dispose) u.bodyMats[4].map.dispose(); u.bodyMats[4].map = nt; if (u.bodyMats[4].color) u.bodyMats[4].color.setHex(0xffffff); u.bodyMats[4].needsUpdate = true; u.backTex = nt; }
+      else if (u.bodyMats[i].color) u.bodyMats[i].color.setHex(s.shirt);
+    }
+  } else if (u.body && u.body.material.color) u.body.material.color.setHex(s.shirt);
+  if (u.armL && u.armL.material.color) u.armL.material.color.setHex(s.shirt);
+  if (u.armR && u.armR.material.color) u.armR.material.color.setHex(s.shirt);
+  if (u.legL && u.legL.material.color) u.legL.material.color.setHex(s.pant);
   if (u.legR && u.legR.material.color) u.legR.material.color.setHex(s.pant);
   if (u.hairTop && u.hairTop.material.color) u.hairTop.material.color.setHex(s.hair);
+  if (u.hairBack && u.hairBack.material.color) u.hairBack.material.color.setHex(s.hair);
   try { localStorage.setItem("thomas_voxel_skin", id); } catch (e) {}
 }
 function loadSkin() { try { const id = localStorage.getItem("thomas_voxel_skin"); if (id) applySkin(id); } catch (e) {} }
@@ -618,6 +651,10 @@ function renderSkinPick() {
   }
 }
 function toggleSkinPick() { const o = $("skinpicker"); const open = !o.classList.contains("hidden"); if (open) o.classList.add("hidden"); else { renderSkinPick(); o.classList.remove("hidden"); } }
+// Character screen: spins Thomas so the player can see his outfit and the THOMAS print on his back
+let charView = false, charAngle = 0;
+function openCharacter() { charView = true; charAngle = 0; renderSkinPick(); show("skinpicker"); document.exitPointerLock(); }
+function closeCharacter() { charView = false; hide("skinpicker"); thomas.visible = false; if (!isTouch && running && !paused) canvas.requestPointerLock(); }
 
 // SKILL TREE
 const skills = { pts: 0, mine: 0, hp: 0, stam: 0, sword: 0, cat: 0 };
@@ -713,7 +750,7 @@ function physics(dt) {
   if (shake.t > 0) { shake.t -= dt; const s = shake.mag * (shake.t / 0.28); sx = (Math.random() - .5) * s; sy = (Math.random() - .5) * s; sz = (Math.random() - .5) * s; if (shake.t <= 0) shake.mag = 0; }
   if (thirdPerson) {
     const dir = new THREE.Vector3(-Math.sin(player.yaw) * Math.cos(player.pitch), Math.sin(player.pitch), -Math.cos(player.yaw) * Math.cos(player.pitch));
-    let dist = 4.2;
+    let dist = tpZoom;
     for (let d = 0.6; d < dist; d += 0.4) { if (isSolidBlock(getBlock(Math.floor(player.pos.x - dir.x * d), Math.floor(eyeY - dir.y * d + 0.3), Math.floor(player.pos.z - dir.z * d)))) { dist = Math.max(1.2, d - 0.4); break; } }
     camera.position.set(player.pos.x - dir.x * dist + sx, eyeY - dir.y * dist + 0.4 + sy, player.pos.z - dir.z * dist + sz);
   } else {
@@ -727,6 +764,8 @@ function physics(dt) {
     thomas.userData.legL.rotation.x = swph * amp; thomas.userData.legR.rotation.x = -swph * amp;
     thomas.userData.armL.rotation.x = -swph * amp * 0.7;
     thomas.userData.armR.rotation.x = swing > 0 ? -Math.sin(swing * Math.PI) * 1.7 : swph * amp * 0.7;
+    if (!player.onGround) { thomas.userData.legL.rotation.x = -0.55; thomas.userData.legR.rotation.x = 0.4; thomas.userData.armL.rotation.x = -0.7; if (swing <= 0) thomas.userData.armR.rotation.x = -0.7; }   // jump pose
+    else if (primaryHeld && swing <= 0) { thomas.userData.armR.rotation.x = -1.1 + Math.sin(performance.now() * 0.018) * 0.5; }                                                                                  // mining/working swing
     thomas.scale.set(1, player._crouch ? 0.78 : 1, 1);
   } else thomas.visible = false;
   sun.position.set(player.pos.x + lightDir.x * 80, player.pos.y + lightDir.y * 90 + 10, player.pos.z + lightDir.z * 80);
@@ -773,6 +812,7 @@ canvas.addEventListener("mouseup", e => { if (e.button === 0) { primaryHeld = fa
 canvas.addEventListener("contextmenu", e => e.preventDefault());
 canvas.addEventListener("wheel", e => { if (!running) return; selectSlot((selSlot + (e.deltaY > 0 ? 1 : 8)) % 9); }, { passive: true });
 addEventListener("mousemove", e => { if (!pointerLocked) return; player.yaw -= e.movementX * settings.sensD; player.pitch -= e.movementY * settings.sensD; clampPitch(); });
+addEventListener("wheel", e => { if (!thirdPerson) return; tpZoom = Math.max(1.8, Math.min(9, tpZoom + (e.deltaY > 0 ? 0.6 : -0.6))); }, { passive: true });
 document.addEventListener("pointerlockchange", () => { pointerLocked = document.pointerLockElement === canvas; });
 function clampPitch() { const l = Math.PI / 2 - 0.04; player.pitch = Math.max(-l, Math.min(l, player.pitch)); }
 
@@ -1764,8 +1804,8 @@ $("pAchBtn").addEventListener("click", () => { hide("pause"); paused = false; to
 $("closeAchBtn").addEventListener("click", () => hide("ach"));
 $("pCollBtn").addEventListener("click", () => { hide("pause"); paused = false; toggleColl(); });
 $("closeCollBtn").addEventListener("click", () => hide("collections"));
-$("pSkinsBtn").addEventListener("click", () => { hide("pause"); paused = false; toggleSkinPick(); });
-$("closeSkinBtn").addEventListener("click", () => hide("skinpicker"));
+$("pSkinsBtn").addEventListener("click", () => { hide("pause"); paused = false; openCharacter(); });
+$("closeSkinBtn").addEventListener("click", closeCharacter);
 $("sSfx").addEventListener("input", e => { settings.sfxVol = e.target.value / 100; applyAudioGains(); });
 $("sMusV").addEventListener("input", e => { settings.musicVol = e.target.value / 100; applyAudioGains(); });
 $("sMute0").addEventListener("click", () => { settings.muted = false; applyAudioGains(); segOn("sMute1", "sMute0", false); });
@@ -2141,6 +2181,14 @@ let last = performance.now(); let hungerT = 0, heatT = 0, droneT = 3;
 function loop() {
   requestAnimationFrame(loop);
   const now = performance.now(); let dt = (now - last) / 1000; last = now; if (dt > 0.05) dt = 0.05;
+  if (charView) {                                              // character screen: orbit-free spin of Thomas
+    charAngle += dt * 0.7;
+    const u = thomas.userData; thomas.visible = true; thomas.position.set(player.pos.x, player.pos.y, player.pos.z); thomas.rotation.y = charAngle;
+    u.legL.rotation.x = 0; u.legR.rotation.x = 0; u.armL.rotation.x = 0; u.armR.rotation.x = 0; thomas.scale.set(1, 1, 1);
+    camera.position.set(player.pos.x, player.pos.y + 1.25, player.pos.z + 3.0); camera.rotation.set(0, 0, 0);
+    if (camera.lookAt) camera.lookAt(player.pos.x, player.pos.y + 1.0, player.pos.z);
+    renderer.render(scene, camera); return;
+  }
   if (running && !paused) {
     if (attackCd > 0) attackCd -= dt; if (portalCd > 0) portalCd -= dt; if (hammerCd > 0) hammerCd -= dt; if (bowCd > 0) bowCd -= dt;
     physics(dt);
