@@ -174,7 +174,7 @@ function updateMusic(dt) {
 
 // ---------- BLOCKS ----------
 const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, LEAVES = 5, SAND = 6, WATER = 7, LAVA = 8,
-      FIRESTONE = 9, ENDSTONE = 10, PORTAL = 11, PLANKS = 12, COBBLE = 13, TORCH = 14, CHEST = 15, SNOW = 16, BRICK = 17, BED = 18, FIRE_CRYSTAL = 19, BOUNCE = 20, SPIKE = 21, ALARM = 22, FREDA = 23;
+      FIRESTONE = 9, ENDSTONE = 10, PORTAL = 11, PLANKS = 12, COBBLE = 13, TORCH = 14, CHEST = 15, SNOW = 16, BRICK = 17, BED = 18, FIRE_CRYSTAL = 19, BOUNCE = 20, SPIKE = 21, ALARM = 22, FREDA = 23, MYCELIUM = 24, MUSHROOM = 25, CRYSTAL = 26;
 function C(hex) { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; }
 const BLOCKS = {
   [GRASS]:    { name: "Grass", solid: 1, opaque: 1, hard: 0.45, top: C(0x6cc24a), side: C(0x5aa83e), bot: C(0x8a5a2b), drop: DIRT, icon: "🟩" },
@@ -198,13 +198,16 @@ const BLOCKS = {
   [BOUNCE]:   { name: "Bounce Block", solid: 1, opaque: 1, hard: 0.3, top: C(0x49e06a), side: C(0x36c456), bot: C(0x2aa345), drop: BOUNCE, bouncy: 1, icon: "🟢" },
   [SPIKE]:    { name: "Spike Trap", solid: 1, opaque: 1, hard: 0.5, top: C(0xb8c0cc), side: C(0x8a929e), bot: C(0x6f7782), drop: SPIKE, spike: 1, icon: "🔺" },
   [ALARM]:    { name: "Alarm Bell", solid: 1, opaque: 1, hard: 0.6, top: C(0xffd24a), side: C(0xc9a227), bot: C(0x8a6f1a), drop: ALARM, alarm: 1, icon: "🔔" },
-  [FREDA]:    { name: "Freda Block", solid: 1, opaque: 1, hard: 0.35, top: C(0xe23b2e), side: C(0xc62c22), bot: C(0x8a1c16), drop: FREDA, freda: 1, icon: "💥" }
+  [FREDA]:    { name: "Freda Block", solid: 1, opaque: 1, hard: 0.35, top: C(0xe23b2e), side: C(0xc62c22), bot: C(0x8a1c16), drop: FREDA, freda: 1, icon: "💥" },
+  [MYCELIUM]: { name: "Mycelium", solid: 1, opaque: 1, hard: 0.5, top: C(0x9a6cb8), side: C(0x6a4a86), bot: C(0x8a5a2b), drop: DIRT, icon: "🟪" },
+  [MUSHROOM]: { name: "Mushroom", solid: 1, opaque: 1, hard: 0.3, top: C(0xd0463a), side: C(0xc23a30), bot: C(0xe8e0d0), drop: MUSHROOM, icon: "🍄" },
+  [CRYSTAL]:  { name: "Crystal", solid: 1, opaque: 1, hard: 1.2, top: C(0x76e4ff), side: C(0x4fc8ef), bot: C(0x36a8d0), drop: CRYSTAL, tool: "pick", glow: 1, icon: "🔷" }
 };
 function isOpaque(id) { return id !== AIR && id !== WATER && id !== PORTAL && BLOCKS[id] && BLOCKS[id].opaque; }
 function isSolidBlock(id) { return id !== AIR && id !== WATER && id !== PORTAL && BLOCKS[id] && BLOCKS[id].solid; }
 
 // ITEMS (tools/food), ids offset 100
-const I_HAND = 100, I_WPICK = 101, I_SPICK = 102, I_SWORD = 103, I_AXE = 104, I_FIRECHARM = 105, I_FIRESWORD = 106, I_LIGHTHAMMER = 107, I_BOOMPICK = 108, I_ICEBOW = 109, I_APPLE = 110, I_STICK = 111, I_SLIMELAUNCH = 112;
+const I_HAND = 100, I_WPICK = 101, I_SPICK = 102, I_SWORD = 103, I_AXE = 104, I_FIRECHARM = 105, I_FIRESWORD = 106, I_LIGHTHAMMER = 107, I_BOOMPICK = 108, I_ICEBOW = 109, I_APPLE = 110, I_STICK = 111, I_SLIMELAUNCH = 112, I_CRYSTALSPEAR = 113;
 const ITEMS = {
   [I_WPICK]: { name: "Wood Pickaxe", tool: "pick", tier: 1, dmg: 2, icon: "⛏️" },
   [I_SPICK]: { name: "Stone Pickaxe", tool: "pick", tier: 2, dmg: 3, icon: "⛏️" },
@@ -216,6 +219,7 @@ const ITEMS = {
   [I_BOOMPICK]: { name: "Boom Pickaxe", tool: "pick", tier: 2, dmg: 3, special: "boom", icon: "⛏️" },
   [I_ICEBOW]: { name: "Ice Bow", tool: "bow", dmg: 1, special: "ice", icon: "🏹" },
   [I_SLIMELAUNCH]: { name: "Slime Launcher", tool: "bow", dmg: 1, special: "slime", icon: "🟢" },
+  [I_CRYSTALSPEAR]: { name: "Crystal Spear", tool: "sword", tier: 3, dmg: 8, special: "pierce", icon: "🔱" },
   [I_APPLE]: { name: "Apple", food: 4, icon: "🍎" },
   [I_STICK]: { name: "Stick", icon: "➖" }
 };
@@ -290,20 +294,27 @@ function genChunk(cx, cz) {
       const b = biomeAt(x, z), h = heightAt(x, z);
       const peak = h > SEA + 16;
       const desert = b.t > 0.66 && !peak && h > SEA;
-      const forest = b.m > 0.58 && !desert && !peak;
+      const mush = b.m > 0.72 && b.t > 0.4 && b.t < 0.66 && !peak && h > SEA;   // mushroom forest: very wet, temperate
+      const swamp = b.m > 0.6 && !mush && !desert && !peak && h > SEA && h <= SEA + 2;  // swamp: wet lowlands
+      const forest = b.m > 0.58 && !desert && !peak && !mush;
       for (let y = 0; y <= h; y++) {
         let id = STONE;
-        if (y === h) id = (h <= SEA) ? SAND : peak ? SNOW : desert ? SAND : GRASS;
+        if (y === h) id = (h <= SEA) ? SAND : peak ? SNOW : desert ? SAND : mush ? MYCELIUM : GRASS;
         else if (y > h - 3) id = peak ? STONE : desert ? SAND : DIRT;
         // carve connected caves through the stone interior (leave surface + bedrock intact)
         if (id === STONE && y > 1 && y < h - 1 && caveAt(x, y, z)) id = (y <= 4) ? LAVA : AIR;
-        // sparse cobble "ore" veins for variety
+        // crystal-cave veins deep underground, then sparse cobble "ore"
+        else if (id === STONE && y > 2 && y < SEA - 3 && vn3(x * 0.18 + 9, y * 0.18 + 9, z * 0.18 + 9) > 0.93) id = CRYSTAL;
         else if (id === STONE && vn3(x * 0.2, y * 0.2, z * 0.2) > 0.9) id = COBBLE;
         setRaw(x, y, z, id);
       }
       for (let y = h + 1; y <= SEA; y++) setRaw(x, y, z, WATER);   // fill water to sea level
       if (h <= SEA) setRaw(x, h, z, SAND);                          // shore/seabed
-      if (!desert && !peak && h > SEA) { const tr = hsh(x * 3 + 7, z * 5 + 11); if (tr > (forest ? 0.86 : 0.95)) tree(x, h + 1, z); else if (forest && tr > 0.8) bush(x, h + 1, z); }
+      if (h > SEA && !peak) {
+        if (mush) { if (hsh(x * 3 + 7, z * 5 + 11) > 0.93) giantMushroom(x, h + 1, z); else if (hsh(x * 2 + 1, z * 2 + 3) > 0.9) setRaw(x, h + 1, z, MUSHROOM); }
+        else if (swamp) { if (hsh(x * 3 + 2, z * 3 + 5) > 0.86) setRaw(x, h + 1, z, BOUNCE); else if (hsh(x * 5 + 1, z * 7 + 2) > 0.9) bush(x, h + 1, z); }
+        else if (!desert) { const tr = hsh(x * 3 + 7, z * 5 + 11); if (tr > (forest ? 0.86 : 0.95)) tree(x, h + 1, z); else if (forest && tr > 0.8) bush(x, h + 1, z); }
+      }
     }
     // rare ruin landmark per chunk (exploration reward)
     if (hsh(cx * 91 + 5, cz * 57 + 3) > 0.93) {
@@ -363,6 +374,13 @@ function tree(x, y, z) {
   }
 }
 function bush(x, y, z) { if (getBlock(x, y, z) === AIR) setRaw(x, y, z, LEAVES); if (hsh(x * 5, z * 3) > 0.6 && getBlock(x, y + 1, z) === AIR) setRaw(x, y + 1, z, LEAVES); }
+function giantMushroom(x, y, z) {   // mushroom-forest landmark: a pale stem topped with a red cap
+  const th = 3 + (hsh(x * 2 + 1, z * 2 + 5) * 3 | 0);
+  for (let i = 0; i < th; i++) setRaw(x, y + i, z, PLANKS);
+  const top = y + th;
+  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) { if (Math.abs(dx) === 2 && Math.abs(dz) === 2) continue; if (getBlock(x + dx, top, z + dz) === AIR) setRaw(x + dx, top, z + dz, MUSHROOM); }
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (getBlock(x + dx, top + 1, z + dz) === AIR) setRaw(x + dx, top + 1, z + dz, MUSHROOM);
+}
 
 // chunk meshing (face-culled, vertex-colored)
 const FACES = [
@@ -1021,7 +1039,8 @@ const RECIPES = [
   { out: BOUNCE, n: 2, need: [[LEAVES, 4], [PLANKS, 1]] },
   { out: SPIKE, n: 2, need: [[COBBLE, 2], [I_STICK, 1]] },
   { out: ALARM, n: 1, need: [[COBBLE, 3], [I_STICK, 1]] },
-  { out: FREDA, n: 1, need: [[COBBLE, 3], [FIRE_CRYSTAL, 1]] }
+  { out: FREDA, n: 1, need: [[COBBLE, 3], [FIRE_CRYSTAL, 1]] },
+  { out: I_CRYSTALSPEAR, n: 1, need: [[CRYSTAL, 3], [I_STICK, 2]] }
 ];
 function canCraft(r) { return r.need.every(([id, c]) => countItem(id) >= c); }
 function craft(r) { if (!canCraft(r)) return; r.need.forEach(([id, c]) => consumeItem(id, c)); addItem(r.out, r.n); SFX.craft(); renderCraft(); onCraft(r.out); }
@@ -1320,6 +1339,7 @@ function attackEntity(hit) {
     hitSpark(hit.point, m.elite ? 0xff66ff : 0xff5577); dmgNumber(hit.point, dmg, crit);
     if (tool && tool.special === "fire") { m.burn = 3; m.burnTick = 0; }                       // Flame Sword: burn over time
     if (tool && tool.special === "lightning" && hammerCd <= 0) { hammerCd = 2.2; lightningZap(); } // Lightning Hammer: chain shock
+    if (tool && tool.special === "pierce") { for (const m2 of monsters) { if (m2.dead || m2 === m) continue; if (m2.g.position.distanceTo(m.g.position) < 3) { m2.hp -= dmg * 0.6; m2.flash = 0.15; m2.bar.up(Math.max(0, m2.hp / m2.max)); hitSpark(m2.g.position, 0x76e4ff); if (m2.hp <= 0 && !m2.dead) killMonster(m2); break; } } }  // Crystal Spear pierces a second foe
     if (m.hp <= 0 && !m.dead) killMonster(m);
   }
   else if (ent && ent.userData.kind === "crystal") { const c = ent.userData.c; c.hp -= dmg; hitSpark(hit.point, 0x22d3ee); dmgNumber(hit.point, dmg, crit); if (c.hp <= 0 && !c.dead) { c.dead = true; scene.remove(c.g); crystalsLeft--; updateBoss(); } }
@@ -1452,7 +1472,7 @@ function buildViewItem() {
   if (viewItem) vScene.remove(viewItem);
   const g = new THREE.Group(); const it = hotbar[selSlot];
   if (it && isItem(it.id)) {
-    if (ITEMS[it.id].tool === "sword") { const blade = box(0.06, 0.5, 0.06, ITEMS[it.id].special === "fire" ? 0xff7a2a : 0xd7dbe4); blade.position.y = 0.3; g.add(blade); const gu = box(0.2, 0.05, 0.08, 0xc9a227); gu.position.y = 0.05; g.add(gu); }
+    if (ITEMS[it.id].tool === "sword") { const blade = box(0.06, 0.5, 0.06, ITEMS[it.id].special === "fire" ? 0xff7a2a : ITEMS[it.id].special === "pierce" ? 0x76e4ff : 0xd7dbe4); blade.position.y = 0.3; g.add(blade); const gu = box(0.2, 0.05, 0.08, 0xc9a227); gu.position.y = 0.05; g.add(gu); }
     else if (ITEMS[it.id].tool === "hammer") { const head = box(0.26, 0.2, 0.18, 0x6fb7ff); head.position.y = 0.36; g.add(head); const trim = box(0.28, 0.06, 0.2, 0xffe066); trim.position.y = 0.36; g.add(trim); const stick = box(0.05, 0.36, 0.05, 0x6e4a25); stick.position.y = 0.12; g.add(stick); }
     else if (ITEMS[it.id].tool === "bow") { const col = ITEMS[it.id].special === "slime" ? 0x49e06a : 0x9fe8ff; const arc = box(0.06, 0.5, 0.06, col); arc.position.y = 0.25; g.add(arc); const tip1 = box(0.05, 0.12, 0.05, 0xcfcfe0); tip1.position.set(0, 0.48, 0.04); tip1.rotation.x = 0.5; g.add(tip1); const tip2 = box(0.05, 0.12, 0.05, 0xcfcfe0); tip2.position.set(0, 0.02, 0.04); tip2.rotation.x = -0.5; g.add(tip2); }
     else { const head = box(0.18, 0.1, 0.06, 0x9b9b9b); head.position.y = 0.34; g.add(head); const stick = box(0.05, 0.34, 0.05, 0x6e4a25); stick.position.y = 0.12; g.add(stick); }
