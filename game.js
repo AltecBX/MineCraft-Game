@@ -1150,6 +1150,7 @@ function killMonster(m) {
   if (m.dead) return; m.dead = true; discoverMob(m.type);
   for (const [lid, lc, lp] of (m.loot || [])) if (Math.random() < (m.elite ? Math.min(1, lp + 0.3) : lp)) addItem(lid, lc);
   if (m.elite) { addItem(I_APPLE, 1); if (Math.random() < 0.55) givePowerup(randPowerup()); }
+  addCoins(m.elite ? 3 + Math.floor(Math.random() * 4) : 1 + Math.floor(Math.random() * 2));
   addXP(m.xp || 10); onKill();
 }
 // Lightning Hammer chain shock: damages every monster near Thomas with a cooldown
@@ -1280,6 +1281,8 @@ function interact() {
   // eat food if selected
   const it = hotbar[selSlot];
   if (it && isItem(it.id) && ITEMS[it.id].food) { if (player.food < 20) { player.food = Math.min(20, player.food + ITEMS[it.id].food); removeItem(selSlot, 1); updateVitals(); toast("Ate " + ITEMS[it.id].name); } return; }
+  // open the merchant shop when standing next to it
+  if (merchant && merchant.g.position.distanceTo(player.pos) < 3) { openShop(); return; }
   // tame nearby cat by feeding apple
   let near = null, nd = 3; for (const c of cats) { const d = c.g.position.distanceTo(player.pos); if (d < nd) { nd = d; near = c; } }
   if (near && !near.tamed) {
@@ -1364,7 +1367,7 @@ function transitionTo(name) {
   SFX.portal(); const fade = document.getElementById("fade"); fade.style.opacity = "1";
   setTimeout(() => { loadDimension(name); fade.style.opacity = "0"; }, 520);
 }
-function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
+function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (merchant) { scene.remove(merchant.g); merchant = null; } if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
 function loadDimension(name, fromSave) {
   DIM = name; clearWorld(); clearEntities();
   if (name === "fire") achieve("firep", "Fire Portal Opened");
@@ -1770,7 +1773,7 @@ function saveGame(silent) {
       xp: xp, level: level, xpNext: xpNext,
       skills: { mine: skills.mine, hp: skills.hp, stam: skills.stam, sword: skills.sword, cat: skills.cat, pts: skills.pts },
       flags: { craftedPlanks, craftedPick, minedStone, survivedNight, tamedCat, kills, fireBossDown, tameCount, placedBlocks, movedDist },
-      qi: qi, ach: [...ach], day: day, timeOfDay: timeOfDay, hotbar: hotbar,
+      qi: qi, ach: [...ach], day: day, timeOfDay: timeOfDay, hotbar: hotbar, coins: coins,
       side: [...sideDone],
       cats: cats.filter(c => c.tamed).map(c => ({ x: Math.round(c.g.position.x), z: Math.round(c.g.position.z), color: c.color, level: c.level, mode: c.mode })),
       edits: { overworld: [...editsByDim.overworld], fire: [...editsByDim.fire], end: [...editsByDim.end] },
@@ -1805,7 +1808,8 @@ function loadGame() {
   player.yaw = data.yaw || 0; player.pitch = data.pitch || 0; player.vel.set(0, 0, 0);
   player.hp = Math.min(player.maxHp, data.hp != null ? data.hp : player.maxHp); player.food = data.food != null ? data.food : 20; player.stam = Math.min(player.maxStam, data.stam != null ? data.stam : player.maxStam);
   sideDone.clear(); (data.side || []).forEach(s => sideDone.add(s));
-  if ((data.dim || "overworld") === "overworld") (data.cats || []).forEach(cd => spawnCat(cd.x, cd.z, { tamed: true, color: cd.color, level: cd.level, mode: cd.mode }));
+  coins = data.coins || 0; updateCoinUI();
+  if ((data.dim || "overworld") === "overworld") { (data.cats || []).forEach(cd => spawnCat(cd.x, cd.z, { tamed: true, color: cd.color, level: cd.level, mode: cd.mode })); spawnMerchant(7, 5); }
   renderHotbar(); updateVitals(); updateXPUI(); renderSkills(); buildViewItem();
   camera.fov = settings.fov; camera.updateProjectionMatrix();
   if (!isTouch) canvas.requestPointerLock();
@@ -1813,6 +1817,7 @@ function loadGame() {
 $("contBtn").addEventListener("click", loadGame);
 $("saveBtn").addEventListener("click", () => saveGame(false));
 $("closeChestBtn").addEventListener("click", closeChest);
+$("closeShopBtn").addEventListener("click", closeShop);
 
 // ---------- POWER-UPS (easy to read timed buffs) ----------
 const POWERUPS = {
@@ -1959,6 +1964,45 @@ function updateEvents(dt) {
   if (eventCd <= 0) { eventCd = 110 + Math.random() * 90; const pool = EVENTS.filter(e => !e.night || isNight()); if (pool.length) startEvent(pool[Math.floor(Math.random() * pool.length)]); }
 }
 
+// ---------- ECONOMY + MOUSE MERCHANT (coins, trading) ----------
+let coins = 0, merchant = null;
+function updateCoinUI() { const el = $("coins"); if (el) el.textContent = "🪙 " + coins; }
+function addCoins(n) { coins += n; updateCoinUI(); }
+function spawnMerchant(x, z) {
+  if (merchant) { scene.remove(merchant.g); merchant = null; }
+  const g = new THREE.Group();
+  const robe = box(0.5, 0.85, 0.36, 0x4a7ec2); robe.position.y = 0.62; g.add(robe);
+  const head = box(0.4, 0.4, 0.4, 0xe8b98a); head.position.y = 1.26; g.add(head);
+  const hat = box(0.62, 0.18, 0.62, 0x2c4d80); hat.position.y = 1.52; g.add(hat);
+  const eL = box(0.06, 0.06, 0.04, 0x111111); eL.position.set(-0.1, 1.28, 0.2); g.add(eL);
+  const eR = eL.clone(); eR.position.x = 0.1; g.add(eR);
+  const sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(255,225,110,0.95)", "rgba(255,180,40,0)"), depthWrite: false, transparent: true, fog: false })); sign.scale.set(1.1, 1.1, 1); sign.position.y = 2.1; g.add(sign);
+  g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g);
+  merchant = { g };
+}
+const SHOP = [
+  { name: "Apple x2", cost: 6, give: () => addItem(I_APPLE, 2) },
+  { name: "Torch x4", cost: 8, give: () => addItem(TORCH, 4) },
+  { name: "Cobblestone x16", cost: 10, give: () => addItem(COBBLE, 16) },
+  { name: "Bounce Block x3", cost: 12, give: () => addItem(BOUNCE, 3) },
+  { name: "Speed Boots (power-up)", cost: 16, give: () => givePowerup("speed") },
+  { name: "Shield Bubble (power-up)", cost: 16, give: () => givePowerup("shield") },
+  { name: "Mystery Power-up", cost: 24, give: () => givePowerup(randPowerup()) }
+];
+function renderShop() {
+  const sc = $("shopCoins"); if (sc) sc.textContent = "you have 🪙 " + coins;
+  const l = $("shopList"); if (!l) return; l.innerHTML = "";
+  for (const s of SHOP) {
+    const ok = coins >= s.cost; const row = document.createElement("div"); row.className = "craftRow" + (ok ? "" : " no");
+    row.innerHTML = "<span><b>" + s.name + "</b><br><span class='muted'>🪙 " + s.cost + "</span></span>";
+    const b = document.createElement("button"); b.className = "mk"; b.textContent = "Buy";
+    b.addEventListener("pointerdown", e => { e.preventDefault(); if (coins >= s.cost) { coins -= s.cost; s.give(); SFX.pickup(); updateCoinUI(); renderShop(); } else toast("Not enough coins"); });
+    row.appendChild(b); l.appendChild(row);
+  }
+}
+function openShop() { renderShop(); show("shop"); document.exitPointerLock(); SFX.meow(); }
+function closeShop() { hide("shop"); if (!isTouch && running) canvas.requestPointerLock(); }
+
 // ---------- GAME START ----------
 // ---------- MINIMAP (UISystem) ----------
 const mmCv = document.getElementById("minimap"), mmx = mmCv.getContext("2d");
@@ -2002,6 +2046,7 @@ function startGame() {
   editsByDim.overworld = new Map(); editsByDim.fire = new Map(); editsByDim.end = new Map(); chestStore = new Map(); openChestK = null; day = 1; timeOfDay = 0.28;
   clearObjective(); story.active = false;
   eventCd = 180; activeEvent = null; xpMult = 1; setEventTint(null);
+  coins = 0; updateCoinUI(); spawnMerchant(7, 5);             // a friendly trader near camp
   const camp = buildSpawnCamp(); startStory(camp);            // opening cinematic + guided first 5 minutes
   renderHotbar(); updateVitals(); buildViewItem();
   camera.fov = settings.fov; camera.updateProjectionMatrix();
