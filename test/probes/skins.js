@@ -2,11 +2,12 @@
 (function () {
   console.log("SKINS count=" + SKINS.length + " default=" + currentSkin);
   console.log("PARTS body=" + !!thomas.userData.body + " hair=" + !!thomas.userData.hairTop + " legL=" + !!thomas.userData.legL);
+  // the THOMAS name lives on the +z (back) face of the torso as a texture
+  console.log("BACKPRINT bodyMats=" + (thomas.userData.bodyMats ? thomas.userData.bodyMats.length : 0) + " backTex=" + !!thomas.userData.backTex);
 
-  // applying a skin updates the recolorable materials and currentSkin
+  // applying a skin updates currentSkin and regenerates the back print
   applySkin("ninja");
-  const bodyHex = thomas.userData.body.material.color.getHexString ? thomas.userData.body.material.color : null;
-  console.log("APPLY currentSkin=" + currentSkin);
+  console.log("APPLY currentSkin=" + currentSkin + " backTexAfter=" + !!thomas.userData.bodyMats[4].map);
 
   // persisted to localStorage
   console.log("PERSIST saved=" + (localStorage.getItem("thomas_voxel_skin") === "ninja"));
