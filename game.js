@@ -161,14 +161,15 @@ function updateMusic(dt) {
   if (!settings.music || !actx) return;
   musicT -= dt; if (musicT > 0) return;
   const sc = SCALES[DIM] || SCALES.overworld, note = sc[musicIdx % sc.length]; musicIdx++;
-  const dur = DIM === "fire" ? 2.2 : DIM === "end" ? 2.9 : 1.8;
-  playPad(note * (Math.random() < 0.18 ? 2 : 1), dur);
-  musicT = dur * 0.66;
+  const boss = bossActive();
+  const dur = boss ? 1.1 : DIM === "fire" ? 2.2 : DIM === "end" ? 2.9 : 1.8;     // urgent tempo during boss fights
+  playPad(note * (boss ? (Math.random() < 0.5 ? 0.5 : 1) : (Math.random() < 0.18 ? 2 : 1)), dur);
+  musicT = dur * (boss ? 0.45 : 0.66);
 }
 
 // ---------- BLOCKS ----------
 const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, LEAVES = 5, SAND = 6, WATER = 7, LAVA = 8,
-      FIRESTONE = 9, ENDSTONE = 10, PORTAL = 11, PLANKS = 12, COBBLE = 13, TORCH = 14, CHEST = 15, SNOW = 16, BRICK = 17, BED = 18, FIRE_CRYSTAL = 19;
+      FIRESTONE = 9, ENDSTONE = 10, PORTAL = 11, PLANKS = 12, COBBLE = 13, TORCH = 14, CHEST = 15, SNOW = 16, BRICK = 17, BED = 18, FIRE_CRYSTAL = 19, BOUNCE = 20;
 function C(hex) { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; }
 const BLOCKS = {
   [GRASS]:    { name: "Grass", solid: 1, opaque: 1, hard: 0.45, top: C(0x6cc24a), side: C(0x5aa83e), bot: C(0x8a5a2b), drop: DIRT, icon: "🟩" },
@@ -188,7 +189,8 @@ const BLOCKS = {
   [SNOW]:     { name: "Snow", solid: 1, opaque: 1, hard: 0.35, top: C(0xeaf2f7), side: C(0xdfe9f0), bot: C(0xcfdae3), drop: SNOW, icon: "⬜" },
   [BRICK]:    { name: "Brick", solid: 1, opaque: 1, hard: 1.3, top: C(0x9c4a3c), side: C(0x99463a), bot: C(0x853c31), drop: BRICK, tool: "pick", icon: "🧱" },
   [BED]:      { name: "Bed", solid: 1, opaque: 1, hard: 0.4, top: C(0xd14b6a), side: C(0xb23b56), bot: C(0x7a5630), drop: BED, icon: "🛏️" },
-  [FIRE_CRYSTAL]: { name: "Fire Crystal", solid: 1, opaque: 1, hard: 1.4, top: C(0xff8a1e), side: C(0xff5a14), bot: C(0xd23c08), drop: FIRE_CRYSTAL, tool: "pick", glow: 1, icon: "🔶" }
+  [FIRE_CRYSTAL]: { name: "Fire Crystal", solid: 1, opaque: 1, hard: 1.4, top: C(0xff8a1e), side: C(0xff5a14), bot: C(0xd23c08), drop: FIRE_CRYSTAL, tool: "pick", glow: 1, icon: "🔶" },
+  [BOUNCE]:   { name: "Bounce Block", solid: 1, opaque: 1, hard: 0.3, top: C(0x49e06a), side: C(0x36c456), bot: C(0x2aa345), drop: BOUNCE, bouncy: 1, icon: "🟢" }
 };
 function isOpaque(id) { return id !== AIR && id !== WATER && id !== PORTAL && BLOCKS[id] && BLOCKS[id].opaque; }
 function isSolidBlock(id) { return id !== AIR && id !== WATER && id !== PORTAL && BLOCKS[id] && BLOCKS[id].solid; }
@@ -608,6 +610,8 @@ function physics(dt) {
     moveAxis("y", player.vel.y * sdt);
   }
   if (player.onGround) player.coyote = 0.12; else if (player.coyote > 0) player.coyote -= dt;
+  // bounce block: landing on slime launches Thomas high (trampoline toy)
+  if (player.onGround) { const below = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.1), Math.floor(player.pos.z)); if (BLOCKS[below] && BLOCKS[below].bouncy) { player.vel.y = 13; player.onGround = false; player.coyote = 0; SFX.jump(); addShake(0.05); } }
   // auto jump (mobile/option): bumped a wall while moving on ground -> hop
   if (settings.autoJump && player.onGround && (hitX || hitZ) && (wish.lengthSq() > 0.01)) { player.vel.y = jumpV; player.onGround = false; }
   // stamina
@@ -824,7 +828,8 @@ const RECIPES = [
   { out: BED, n: 1, need: [[PLANKS, 3], [WOOD, 2]] },
   { out: I_FIRECHARM, n: 1, need: [[FIRE_CRYSTAL, 4], [I_STICK, 2]] },
   { out: I_FIRESWORD, n: 1, need: [[FIRE_CRYSTAL, 3], [I_STICK, 1]] },
-  { out: I_LIGHTHAMMER, n: 1, need: [[COBBLE, 5], [I_STICK, 2]] }
+  { out: I_LIGHTHAMMER, n: 1, need: [[COBBLE, 5], [I_STICK, 2]] },
+  { out: BOUNCE, n: 2, need: [[LEAVES, 4], [PLANKS, 1]] }
 ];
 function canCraft(r) { return r.need.every(([id, c]) => countItem(id) >= c); }
 function craft(r) { if (!canCraft(r)) return; r.need.forEach(([id, c]) => consumeItem(id, c)); addItem(r.out, r.n); SFX.craft(); renderCraft(); onCraft(r.out); }
@@ -1269,7 +1274,7 @@ function transitionTo(name) {
   SFX.portal(); const fade = document.getElementById("fade"); fade.style.opacity = "1";
   setTimeout(() => { loadDimension(name); fade.style.opacity = "0"; }, 520);
 }
-function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; hideBoss(); }
+function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
 function loadDimension(name, fromSave) {
   DIM = name; clearWorld(); clearEntities();
   if (name === "fire") achieve("firep", "Fire Portal Opened");
@@ -1315,7 +1320,8 @@ function spawnFireBoss() {
   clearFirePad(0, 6);
   g.position.set(0.5, surfaceY(0, 6) + 0.1, 6.5); scene.add(g);
   const maxHp = 220;
-  fireBoss = { g, hp: maxHp, max: maxHp, touch: 0, atkCd: 2.5, slamCd: 4, summonCd: 9, windup: 0, phase: 1, armL, armR, body, flash: 0 };
+  fireBoss = { g, hp: maxHp, max: maxHp, touch: 0, atkCd: 2.5, slamCd: 4, summonCd: 9, windup: 0, phase: 1, intro: 2.6, armL, armR, body, flash: 0 };
+  bossIntro("FIRE GUARDIAN", "Heat radiates from its core. Strike when the rings flash.");
   g.traverse(o => { o.userData.kind = "monster"; o.userData.m = { get hp() { return fireBoss.hp; }, set hp(v) { fireBoss.hp = v; }, get max() { return fireBoss.max; }, set flash(v) { if (fireBoss) fireBoss.flash = v; }, get flash() { return fireBoss ? fireBoss.flash : 0; }, bar: { up: () => {} }, get dead() { return !fireBoss || fireBoss.hp <= 0; }, get ghost() { return false; }, g } });
   showBoss("FIRE GUARDIAN", 1);
 }
@@ -1329,6 +1335,7 @@ function updateFireBoss(dt) {
   showBoss("FIRE GUARDIAN" + (phase === 3 ? " (ENRAGED)" : ""), Math.max(0, frac));
   const dx = player.pos.x - fb.g.position.x, dz = player.pos.z - fb.g.position.z, d = Math.hypot(dx, dz) || 0.001;
   const spd = phase === 3 ? 2.8 : 1.7;
+  if (fb.intro > 0 && fb.hp > 0) { fb.intro -= dt; fb.g.rotation.y = Math.atan2(dx, dz); fb.g.position.y = surfaceY(fb.g.position.x, fb.g.position.z); return; }  // cinematic entrance grace
   if (fb.windup > 0) {                                       // ground slam telegraph
     fb.windup -= dt; fb.armL.rotation.x = -1.4; fb.armR.rotation.x = -1.4; fb.g.rotation.y = Math.atan2(dx, dz);
     if (fb.windup <= 0) {
@@ -1341,7 +1348,7 @@ function updateFireBoss(dt) {
     fb.g.rotation.y = Math.atan2(dx, dz); fb.g.position.y = surfaceY(fb.g.position.x, fb.g.position.z);
     fb.touch -= dt; if (d < 2.4 && fb.touch <= 0) { damage(8); fb.touch = 1; }
     fb.atkCd -= dt; if (fb.atkCd <= 0) { fb.atkCd = phase === 3 ? 1.0 : 2.2; const volley = phase === 3 ? 3 : 1; for (let i = 0; i < volley; i++) { const off = (i - (volley - 1) / 2) * 2; spawnProjectile(fb.g.position, { x: player.pos.x + off, y: player.pos.y, z: player.pos.z }); } }
-    if (phase >= 2) { fb.slamCd -= dt; if (fb.slamCd <= 0 && d < 6) { fb.windup = 0.7; SFX.growl(); } }
+    if (phase >= 2) { fb.slamCd -= dt; if (fb.slamCd <= 0 && d < 6) { fb.windup = 0.7; SFX.growl(); spawnTelegraph(player.pos.x, player.pos.z, 4, 0.7); } }
     if (phase >= 2) { fb.summonCd -= dt; if (fb.summonCd <= 0 && monsters.length < 8) { fb.summonCd = 12; for (let s = 0; s < 2; s++) { const a = Math.random() * 6.28; spawnMonster(Math.floor(fb.g.position.x + Math.cos(a) * 3), Math.floor(fb.g.position.z + Math.sin(a) * 3), "lavaworm"); } toast("The Guardian summons lava worms"); } }
     fb.armL.rotation.x = Math.sin(performance.now() * 0.005) * 0.3; fb.armR.rotation.x = -fb.armL.rotation.x;
   }
@@ -1371,6 +1378,7 @@ function buildEndDragon() {
   const legGeo = new THREE.BoxGeometry(0.4, 1.0, 0.4); for (const lx of [-0.6, 0.6]) for (const lz of [1.2, -1.2]) { const l = new THREE.Mesh(legGeo, mat()); l.position.set(lx, -1.0, lz); g.add(l); }
   g.position.set(0, 30, -16); scene.add(g);
   dragon = { g, hp: 240, max: 240, t: 0, swoop: 0, wL, wR, head, tail, dead: false, fall: 0, touch: 0, breatheCd: 3, summonCd: 12, phase: 1 };
+  bossIntro("BLACK DRAGON", "Destroy the four End Crystals, then strike.");
   g.traverse(o => { o.userData.kind = "dragon"; });
   crystals = []; const pts = [[12, 0], [-12, 0], [0, 12], [0, -12]];
   for (const p of pts) { for (let y = 17; y <= 19; y++) setRaw(p[0], y, p[1], COBBLE); const cg = new THREE.Group(); const oct = new THREE.Mesh(new THREE.OctahedronGeometry(0.7), new THREE.MeshLambertMaterial({ color: 0xa6f1ff, emissive: 0x1d7d92 })); cg.add(oct); cg.position.set(p[0] + 0.5, 21.5, p[1] + 0.5); scene.add(cg); const c = { g: cg, hp: 10, dead: false }; cg.traverse(o => { o.userData.kind = "crystal"; o.userData.c = c; }); crystals.push(c); }
@@ -1390,7 +1398,7 @@ function updateDragon(dt) {
   const speed = phase >= 3 ? 2.6 : phase >= 2 ? 1.9 : 1.4;
   let tx = Math.cos(fb.t * 0.5) * 16, tz = Math.sin(fb.t * 0.5) * 16, ty = (engaged ? 24 : 30) + Math.sin(fb.t * 0.8) * 2;  // circle high until crystals fall
   fb.swoop -= dt;
-  if (engaged && fb.swoop <= 0 && Math.random() < (phase >= 3 ? 0.02 : 0.008)) fb.swoop = 2.4;
+  if (engaged && fb.swoop <= 0 && Math.random() < (phase >= 3 ? 0.02 : 0.008)) { fb.swoop = 2.4; spawnTelegraph(player.pos.x, player.pos.z, 3, 0.9, 0xb026ff); }
   if (fb.swoop > 0) { tx = player.pos.x; tz = player.pos.z; ty = player.pos.y + 2.5; }                                  // swoop/dive
   g.position.x += (tx - g.position.x) * Math.min(1, dt * speed);
   g.position.z += (tz - g.position.z) * Math.min(1, dt * speed);
@@ -1407,6 +1415,31 @@ function winDragon() {
   for (let i = 0; i < 12; i++) hitSpark({ x: dragon.g.position.x + (Math.random() - .5) * 4, y: dragon.g.position.y + (Math.random() - .5) * 3, z: dragon.g.position.z + (Math.random() - .5) * 4 }, 0xb026ff);
   setTimeout(() => { running = false; document.exitPointerLock(); hide("touch"); document.getElementById("hud").classList.add("hidden"); show("win"); }, 2200);
 }
+
+// ---------- BOSS POLISH (cinematic intro, telegraph warning zones, music cue) ----------
+function bossActive() { return (typeof fireBoss !== "undefined" && fireBoss) || (typeof dragon !== "undefined" && dragon && !dragon.dead); }
+function bossIntro(name, sub) {
+  cine(name); showBanner(name); addShake(0.3); SFX.screech();
+  setTimeout(() => { const cap = $("cineCap"); if (cap && sub) { cap.textContent = sub; cap.classList.remove("show"); void cap.offsetWidth; cap.classList.add("show"); } }, 1200);
+  setTimeout(endCine, 2800);
+}
+// flat ground rings that flash where a heavy attack will land, so hits are readable
+const telegraphs = [];
+function spawnTelegraph(x, z, radius, dur, color) {
+  const geo = new THREE.RingGeometry(radius * 0.82, radius, 28);
+  const mat = new THREE.MeshBasicMaterial({ color: color || 0xff3b3b, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false, fog: false });
+  const m = new THREE.Mesh(geo, mat); m.rotation.x = -Math.PI / 2; m.position.set(x, surfaceY(x, z) + 0.06, z); scene.add(m);
+  telegraphs.push({ mesh: m, life: dur, max: dur });
+}
+function updateTelegraphs(dt) {
+  for (let i = telegraphs.length - 1; i >= 0; i--) {
+    const t = telegraphs[i]; t.life -= dt; const f = 1 - Math.max(0, t.life) / t.max;
+    t.mesh.scale.setScalar(0.5 + f * 0.7);
+    if (t.mesh.material) t.mesh.material.opacity = 0.25 + 0.5 * Math.abs(Math.sin(t.life * 14));
+    if (t.life <= 0) { scene.remove(t.mesh); if (t.mesh.geometry && t.mesh.geometry.dispose) t.mesh.geometry.dispose(); telegraphs.splice(i, 1); }
+  }
+}
+function clearTelegraphs() { for (const t of telegraphs) scene.remove(t.mesh); telegraphs.length = 0; }
 
 // ---------- QUESTS (Thomas main story) ----------
 const quests = [
@@ -1858,6 +1891,7 @@ function loop() {
     updateProjectiles(dt);
     updateDragon(dt);
     updateFx(dt);
+    updateTelegraphs(dt);
     updateViewItem(dt);
     updateDayNight(dt);
     updateSky(dt);
