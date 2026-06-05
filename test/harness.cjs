@@ -13,7 +13,7 @@ class V3{constructor(x=0,y=0,z=0){this.x=x;this.y=y;this.z=z;}
  length(){return Math.hypot(this.x,this.y,this.z);} lengthSq(){return this.x**2+this.y**2+this.z**2;}
  normalize(){const l=this.length()||1;return this.multiplyScalar(1/l);} dot(v){return this.x*v.x+this.y*v.y+this.z*v.z;}
  distanceTo(v){return Math.hypot(this.x-v.x,this.y-v.y,this.z-v.z);} clone(){return new V3(this.x,this.y,this.z);}
- applyQuaternion(){return this;} crossVectors(){return this;} }
+ applyQuaternion(){return this;} crossVectors(){return this;} project(){return this;} unproject(){return this;} }
 class Col{constructor(h){this.r=1;this.g=1;this.b=1;if(typeof h==='number')this.setHex(h);}
  setHex(h){this.r=((h>>16)&255)/255;this.g=((h>>8)&255)/255;this.b=(h&255)/255;return this;}
  set(h){return typeof h==='number'?this.setHex(h):this;} setHSL(){return this;} setRGB(r,g,b){this.r=r;this.g=g;this.b=b;return this;}

@@ -130,6 +130,9 @@
     text-shadow:0 2px 14px #000, 0 0 26px rgba(176,38,255,.65); opacity:0; transform:translateY(8px);
     transition:opacity .5s, transform .5s; }
   #cineCap.show { opacity:1; transform:translateY(0); }
+  #powerups { position:absolute; left:50%; bottom:128px; transform:translateX(-50%); display:flex; gap:8px; pointer-events:none; }
+  #powerups .pwr { background:rgba(20,12,40,.72); border:1px solid rgba(176,38,255,.6); color:#fff;
+    font-size:13px; font-weight:700; padding:4px 9px; border-radius:999px; box-shadow:0 2px 10px rgba(0,0,0,.5); }
   kbd { background:rgba(255,255,255,.12); border-radius:6px; padding:2px 7px; font-weight:700; font-family:inherit; }
   #bDodge { left:calc(16px + env(safe-area-inset-left)); bottom:calc(96px + env(safe-area-inset-bottom)); width:58px; height:58px; background:rgba(34,211,238,.32); }
   #xpwrap { position:absolute; left:50%; bottom:calc(72px + env(safe-area-inset-bottom)); transform:translateX(-50%); width:240px; max-width:60vw; text-align:center; pointer-events:none; }
