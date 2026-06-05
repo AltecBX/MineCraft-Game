@@ -169,7 +169,7 @@ function updateMusic(dt) {
 
 // ---------- BLOCKS ----------
 const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, LEAVES = 5, SAND = 6, WATER = 7, LAVA = 8,
-      FIRESTONE = 9, ENDSTONE = 10, PORTAL = 11, PLANKS = 12, COBBLE = 13, TORCH = 14, CHEST = 15, SNOW = 16, BRICK = 17, BED = 18, FIRE_CRYSTAL = 19, BOUNCE = 20;
+      FIRESTONE = 9, ENDSTONE = 10, PORTAL = 11, PLANKS = 12, COBBLE = 13, TORCH = 14, CHEST = 15, SNOW = 16, BRICK = 17, BED = 18, FIRE_CRYSTAL = 19, BOUNCE = 20, SPIKE = 21, ALARM = 22;
 function C(hex) { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; }
 const BLOCKS = {
   [GRASS]:    { name: "Grass", solid: 1, opaque: 1, hard: 0.45, top: C(0x6cc24a), side: C(0x5aa83e), bot: C(0x8a5a2b), drop: DIRT, icon: "🟩" },
@@ -190,7 +190,9 @@ const BLOCKS = {
   [BRICK]:    { name: "Brick", solid: 1, opaque: 1, hard: 1.3, top: C(0x9c4a3c), side: C(0x99463a), bot: C(0x853c31), drop: BRICK, tool: "pick", icon: "🧱" },
   [BED]:      { name: "Bed", solid: 1, opaque: 1, hard: 0.4, top: C(0xd14b6a), side: C(0xb23b56), bot: C(0x7a5630), drop: BED, icon: "🛏️" },
   [FIRE_CRYSTAL]: { name: "Fire Crystal", solid: 1, opaque: 1, hard: 1.4, top: C(0xff8a1e), side: C(0xff5a14), bot: C(0xd23c08), drop: FIRE_CRYSTAL, tool: "pick", glow: 1, icon: "🔶" },
-  [BOUNCE]:   { name: "Bounce Block", solid: 1, opaque: 1, hard: 0.3, top: C(0x49e06a), side: C(0x36c456), bot: C(0x2aa345), drop: BOUNCE, bouncy: 1, icon: "🟢" }
+  [BOUNCE]:   { name: "Bounce Block", solid: 1, opaque: 1, hard: 0.3, top: C(0x49e06a), side: C(0x36c456), bot: C(0x2aa345), drop: BOUNCE, bouncy: 1, icon: "🟢" },
+  [SPIKE]:    { name: "Spike Trap", solid: 1, opaque: 1, hard: 0.5, top: C(0xb8c0cc), side: C(0x8a929e), bot: C(0x6f7782), drop: SPIKE, spike: 1, icon: "🔺" },
+  [ALARM]:    { name: "Alarm Bell", solid: 1, opaque: 1, hard: 0.6, top: C(0xffd24a), side: C(0xc9a227), bot: C(0x8a6f1a), drop: ALARM, alarm: 1, icon: "🔔" }
 };
 function isOpaque(id) { return id !== AIR && id !== WATER && id !== PORTAL && BLOCKS[id] && BLOCKS[id].opaque; }
 function isSolidBlock(id) { return id !== AIR && id !== WATER && id !== PORTAL && BLOCKS[id] && BLOCKS[id].solid; }
@@ -459,6 +461,12 @@ function rebuildTorchCells() {
   torchMesh.instanceMatrix.needsUpdate = true; scene.add(torchMesh);
 }
 function nearTorch(x, z, rad) { for (const c of torchCells) { const dx = c[0] - x, dz = c[2] - z; if (dx * dx + dz * dz < rad * rad) return true; } return false; }
+// base defense: spike traps damage nearby monsters, alarm bells warn of raids
+const spikeCells = [], alarmCells = [];
+function rebuildDefenseCells() {
+  spikeCells.length = 0; alarmCells.length = 0;
+  for (const [k, id] of W) { if (id === SPIKE) { const p = k.split(","); spikeCells.push([+p[0], +p[1], +p[2]]); } else if (id === ALARM) { const p = k.split(","); alarmCells.push([+p[0], +p[1], +p[2]]); } }
+}
 
 // chest storage (per dimension + position) and player block edits (for save/load)
 let chestStore = new Map();           // "dim:x,y,z" -> [9 stacks]
@@ -815,6 +823,7 @@ function updateMining(dt) {
     setRaw(r.x, r.y, r.z, AIR); recordEdit(r.x, r.y, r.z, AIR);
     if (r.id === PORTAL) rebuildPortalCells();
     if (r.id === TORCH) rebuildTorchCells();
+    if (r.id === SPIKE || r.id === ALARM) rebuildDefenseCells();
     markDirty(r.x, r.z); markDirty(r.x + 1, r.z); markDirty(r.x - 1, r.z); markDirty(r.x, r.z + 1); markDirty(r.x, r.z - 1);
     blockParticles(r.x, r.y, r.z, BLOCKS[r.id].top);
     if (drop !== undefined) addItem(drop, 1);
@@ -836,6 +845,7 @@ function placeBlock() {
   setRaw(tx, ty, tz, it.id); recordEdit(tx, ty, tz, it.id);
   markDirty(tx, tz); markDirty(tx + 1, tz); markDirty(tx - 1, tz); markDirty(tx, tz + 1); markDirty(tx, tz - 1);
   if (it.id === TORCH) rebuildTorchCells();
+  if (it.id === SPIKE || it.id === ALARM) rebuildDefenseCells();
   if (it.id === CHEST && !chestStore.has(chestKey(tx, ty, tz))) chestStore.set(chestKey(tx, ty, tz), new Array(9).fill(null));
   removeItem(selSlot, 1); SFX.place(); placedBlocks++;
 }
@@ -876,7 +886,9 @@ const RECIPES = [
   { out: I_BOOMPICK, n: 1, need: [[COBBLE, 8], [I_STICK, 3]] },
   { out: I_ICEBOW, n: 1, need: [[PLANKS, 3], [I_STICK, 3]] },
   { out: I_SLIMELAUNCH, n: 1, need: [[BOUNCE, 2], [I_STICK, 2]] },
-  { out: BOUNCE, n: 2, need: [[LEAVES, 4], [PLANKS, 1]] }
+  { out: BOUNCE, n: 2, need: [[LEAVES, 4], [PLANKS, 1]] },
+  { out: SPIKE, n: 2, need: [[COBBLE, 2], [I_STICK, 1]] },
+  { out: ALARM, n: 1, need: [[COBBLE, 3], [I_STICK, 1]] }
 ];
 function canCraft(r) { return r.need.every(([id, c]) => countItem(id) >= c); }
 function craft(r) { if (!canCraft(r)) return; r.need.forEach(([id, c]) => consumeItem(id, c)); addItem(r.out, r.n); SFX.craft(); renderCraft(); onCraft(r.out); }
@@ -952,6 +964,7 @@ function updateMonsters(dt) {
     if (m.flash > 0) m.flash -= dt;
     if (m.slow > 0) { m.slow -= dt; if (m.slow <= 0 && m._bspd) m.speed = m._bspd; }   // ice slow wears off
     if (m.burn > 0) { m.burn -= dt; m.burnTick -= dt; if (m.burnTick <= 0) { m.burnTick = 0.5; m.hp -= 2; m.flash = 0.1; m.bar.up(Math.max(0, m.hp / m.max)); hitSpark(m.g.position, 0xff7a2a); if (m.hp <= 0 && !m.dead) { killMonster(m); continue; } } }
+    if (spikeCells.length) { m.spikeCd = (m.spikeCd || 0) - dt; if (m.spikeCd <= 0) { for (const c of spikeCells) { const sdx = c[0] + 0.5 - m.g.position.x, sdz = c[2] + 0.5 - m.g.position.z; if (sdx * sdx + sdz * sdz < 1.2 && Math.abs(c[1] + 1 - m.g.position.y) < 1.6) { m.hp -= 4; m.flash = 0.12; m.bar.up(Math.max(0, m.hp / m.max)); hitSpark(m.g.position, 0xcfd6e0); m.spikeCd = 0.6; break; } } if (m.hp <= 0 && !m.dead) { killMonster(m); continue; } } }
     if (m.touch > 0) m.touch -= dt;
     if (m.slamCd > 0) m.slamCd -= dt;
     if (m.summonCd > 0) m.summonCd -= dt;
@@ -1023,8 +1036,10 @@ function updateMonsters(dt) {
       }
     }
   }
+  // alarm bells ring when monsters raid the base at night
+  if (alarmCells.length && isNight()) { alarmCd -= dt; if (alarmCd <= 0) { for (const c of alarmCells) { let near = false; for (const m of monsters) if (!m.dead && Math.hypot(c[0] + 0.5 - m.g.position.x, c[2] + 0.5 - m.g.position.z) < 12) { near = true; break; } if (near) { alarmCd = 8; SFX.screech(); showBanner("Alarm! Monsters are raiding the base."); break; } } } }
 }
-let spawnTimer = 6;
+let spawnTimer = 6, alarmCd = 0;
 
 // ---------- ANIMALS (cats + mice) ----------
 let cats = [], mice = [];
@@ -1383,7 +1398,7 @@ function loadDimension(name, fromSave) {
   else { scene.background = new THREE.Color(0x000000); scene.fog = new THREE.Fog(0x000000, 30, 120); hemi.color.set(0xffffff); hemi.intensity = 0.9; sun.intensity = 0.7; sun.color.set(0xeae6ff); showBanner("The End"); buildEndDragon(); setQuest("Destroy the End Crystals, then slay the Black Dragon"); }
   // replay player block edits, then rebuild special blocks
   const ed = editsByDim[name]; if (ed) for (const [k, id] of ed) { const p = k.split(",").map(Number); setRaw(p[0], p[1], p[2], id); }
-  remeshAll(); rebuildPortalCells(); rebuildTorchCells();
+  remeshAll(); rebuildPortalCells(); rebuildTorchCells(); rebuildDefenseCells();
   loadChunks(); updateVitals(); renderHotbar();
 }
 // Fire dim: a teal portal to the End plus a simple fire guardian mini boss (TODO full fire boss with phases)
@@ -2091,7 +2106,7 @@ function loop() {
     if (DIM === "end") { droneT -= dt; if (droneT <= 0) { droneT = 5 + Math.random() * 4; if (typeof blip === "function") blip(58, 0.7, "sine", 0.05, 44); } }
     // night raid + survive-night
     if (isNight()) { wasNight = true; if (!raidShown) { raidShown = true; showBanner("Night raid. Defend Thomas."); } }
-    else { raidShown = false; if (wasNight && !survivedNight) { survivedNight = true; achieve("night", "First Night Survived"); } }
+    else { raidShown = false; if (wasNight) { if (!survivedNight) { survivedNight = true; achieve("night", "First Night Survived"); } addCoins(8); addXP(15); toast("You survived the night. +8 coins"); wasNight = false; } }
     updateStory(dt);
     updatePowerups(dt);
     updateEvents(dt);
