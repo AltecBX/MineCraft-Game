@@ -2023,7 +2023,7 @@ function transitionTo(name) {
   SFX.portal(); const fade = document.getElementById("fade"); fade.style.opacity = "1";
   setTimeout(() => { loadDimension(name); fade.style.opacity = "0"; }, 520);
 }
-function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } if (typeof skyBoss !== "undefined" && skyBoss) { scene.remove(skyBoss.g); skyBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (merchant) { scene.remove(merchant.g); merchant = null; } if (typeof clearRealmCreatures === "function") clearRealmCreatures(); if (typeof clearRealmNPCs === "function") clearRealmNPCs(); if (typeof clearRealmBosses === "function") clearRealmBosses(); if (typeof clearCompanion === "function") clearCompanion(); battle = null; cmenuOpen = false; if (typeof hide === "function") { hide("battle"); hide("cmenu"); } if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
+function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } if (typeof skyBoss !== "undefined" && skyBoss) { scene.remove(skyBoss.g); skyBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (merchant) { scene.remove(merchant.g); merchant = null; } if (typeof clearRealmCreatures === "function") clearRealmCreatures(); if (typeof clearRealmNPCs === "function") clearRealmNPCs(); if (typeof clearRealmBosses === "function") clearRealmBosses(); if (typeof clearCompanion === "function") clearCompanion(); if (typeof clearRealmPuzzle === "function") clearRealmPuzzle(); battle = null; cmenuOpen = false; if (typeof hide === "function") { hide("battle"); hide("cmenu"); } if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
 function loadDimension(name, fromSave) {
   DIM = name; clearWorld(); clearEntities(); clearPortalSigns(); clearTrail();
   if (name === "fire") achieve("firep", "Fire Portal Opened");
@@ -2957,7 +2957,7 @@ function enterRealm() {
   clearRealmCreatures(); clearRealmNPCs(); clearRealmBosses(); encounterCd = 0; realmHinted = {};
   // Sparky the Voltmouse is Thomas's electric starter and follows him everywhere in this stage
   if (!cteam.length) { cteam.push(makeCreature("voltmouse", 5, { name: "Pikachu" })); cdex.add("voltmouse"); toast("Pikachu wants to follow Thomas!"); showBanner("Pikachu joins Thomas! Press Use near creatures to battle."); }
-  spawnCompanion(Math.floor(player.pos.x), Math.floor(player.pos.z)); buildRealmVault();
+  spawnCompanion(Math.floor(player.pos.x), Math.floor(player.pos.z)); buildRealmVault(); buildRealmPuzzle();
   // hub NPCs near the spawn portal
   spawnRealmNPC("nurse", 3, 3); spawnRealmNPC("shop", 6, 3); spawnRealmNPC("trainer", -3, 4); spawnRealmNPC("badge", 0, 6); spawnRealmNPC("teacher", -6, 2);
   dressBossArenas(); spawnRealmBosses(); dressSnorlaxBridge(); spawnSnoozer();
@@ -2984,6 +2984,37 @@ function tryElectricDoor() {
     for (let i = 0; i < 8; i++) hitSpark(new THREE.Vector3(v.x + 0.5, v.y + 0.5, v.z + 1.5), 0xffe14d);
     showBanner("Pikachu unlocks the electric vault! Grab the treasure."); SFX.zap(); reactCompanion("cheer");
   }
+}
+// ---- push-block puzzle: shove the boulder onto the pressure plate to open a gated treasure ----
+let realmPuzzle = null;
+function clearRealmPuzzle() { if (realmPuzzle) { scene.remove(realmPuzzle.g); realmPuzzle = null; } }
+function buildRealmPuzzle() {
+  clearRealmPuzzle();
+  const bx = 16, bz = 4, plx = 16, plz = 8, gx = 16, gz = 10;          // boulder start, plate, gate
+  setRaw(plx, surfaceY(plx, plz) - 1, plz, HEAL);                       // glowing pressure plate (top block)
+  const gy = surfaceY(gx, gz); setRaw(gx, gy, gz, CDOOR); setRaw(gx, gy + 1, gz, CDOOR); setRaw(gx, gy, gz + 1, CHEST);   // gy captured before the gate raises surfaceY
+  const key = chestKey(gx, gy, gz + 1); if (!chestStore.has(key)) chestStore.set(key, [{ id: CRYSTAL, count: 6 }, { id: BRICK, count: 8 }, { id: I_APPLE, count: 3 }, null, null, null, null, null, null]);
+  markDirty(plx, plz); markDirty(gx, gz); markDirty(gx, gz + 1);
+  const g = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.92, 0.92), new THREE.MeshLambertMaterial({ color: 0x8a8d92 }));
+  g.position.set(bx + 0.5, surfaceY(bx, bz) + 0.46, bz + 0.5); scene.add(g);
+  realmPuzzle = { boulder: { x: bx, z: bz }, plate: { x: plx, z: plz }, gate: { x: gx, z: gz }, gateY: gy, g, solved: !!realmBossDown.puzzle };
+  if (realmPuzzle.solved) { setRaw(gx, gy, gz, AIR); setRaw(gx, gy + 1, gz, AIR); markDirty(gx, gz); }
+}
+function pushBoulder() {                                                // called from Use when Thomas is against the boulder
+  const p = realmPuzzle; if (!p || p.solved) return false;
+  if (Math.hypot((p.boulder.x + 0.5) - player.pos.x, (p.boulder.z + 0.5) - player.pos.z) > 2.2) return false;
+  let ddx = (p.boulder.x + 0.5) - player.pos.x, ddz = (p.boulder.z + 0.5) - player.pos.z, mx = 0, mz = 0;   // shove away from Thomas, dominant axis
+  if (Math.abs(ddx) > Math.abs(ddz)) mx = ddx > 0 ? 1 : -1; else mz = ddz > 0 ? 1 : -1;
+  const nx = p.boulder.x + mx, nz = p.boulder.z + mz;
+  if (nx === p.gate.x && nz === p.gate.z) return true;                  // can't push into the gate
+  p.boulder.x = nx; p.boulder.z = nz; p.g.position.set(nx + 0.5, surfaceY(nx, nz) + 0.46, nz + 0.5); SFX.step();
+  for (let i = 0; i < 3; i++) hitSpark(new THREE.Vector3(nx + 0.5, p.g.position.y, nz + 0.5), 0xcfd2d6);
+  if (nx === p.plate.x && nz === p.plate.z) {                           // solved!
+    p.solved = true; realmBossDown.puzzle = true;
+    setRaw(p.gate.x, p.gateY, p.gate.z, AIR); setRaw(p.gate.x, p.gateY + 1, p.gate.z, AIR); recordEdit(p.gate.x, p.gateY, p.gate.z, AIR); markDirty(p.gate.x, p.gate.z);
+    showBanner("The boulder clicks onto the plate! The gate grinds open."); SFX.victory(); addXP(40);
+  }
+  return true;
 }
 function updateRealm(dt) {
   updateCompanion(dt); tryElectricDoor();
@@ -3297,6 +3328,7 @@ function realmInteract() {   // Use near a realm NPC, boss, or the Snoozer. retu
     if (np.kind === "nurse") healTeam(); else if (np.kind === "shop") openCShop(); else if (np.kind === "trainer") trainerBattle(); else if (np.kind === "badge") openBadgeCase(); else if (np.kind === "teacher") teachMove();
     return true;
   }
+  if (pushBoulder()) return true;   // shove the puzzle boulder toward the pressure plate
   // fishing: stand by water and press Use to hook a water creature
   const px = Math.floor(player.pos.x), py = Math.floor(player.pos.y), pz = Math.floor(player.pos.z);
   for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) { if (getBlock(px + dx, py, pz + dz) === WATER || getBlock(px + dx, py - 1, pz + dz) === WATER) { goFishing(); return true; } }
