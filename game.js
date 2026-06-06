@@ -2900,7 +2900,7 @@ function enterRealm() {
   spawnCompanion(Math.floor(player.pos.x), Math.floor(player.pos.z));
   // hub NPCs near the spawn portal
   spawnRealmNPC("nurse", 3, 3); spawnRealmNPC("shop", 6, 3); spawnRealmNPC("trainer", -3, 4); spawnRealmNPC("badge", 0, 6);
-  spawnRealmBosses(); spawnSnoozer();
+  dressBossArenas(); spawnRealmBosses(); dressSnorlaxBridge(); spawnSnoozer();
   if (Math.random() < 0.5) { const a = Math.random() * 6.28, r = 18 + Math.random() * 16; spawnRealmCreature("mewling", Math.floor(player.pos.x + Math.cos(a) * r), Math.floor(player.pos.z + Math.sin(a) * r), 10); }   // rare playful legendary
   const roamers = ["voltmouse", "moonfox", "aurawolf", "museling", "landshark", "steelmind", "rocktitan"];
   for (let i = 0; i < 8; i++) { const a = Math.random() * 6.28, r = 8 + Math.random() * 22; spawnRealmCreature(roamers[Math.floor(Math.random() * roamers.length)], Math.floor(player.pos.x + Math.cos(a) * r), Math.floor(player.pos.z + Math.sin(a) * r), 3 + Math.floor(Math.random() * 5)); }
@@ -3115,6 +3115,45 @@ function spawnRealmBosses() {
   if (!realmBossDown.legendary) spawnRealmBoss("allbeast", "legendary", 0, 34, "Arceus, the Creator");   // final, gated until others fall
 }
 function clearRealmBosses() { for (const b of realmBosses) scene.remove(b.g); realmBosses = []; if (realmSnoozer) { scene.remove(realmSnoozer.g); realmSnoozer = null; } }
+// themed set-piece dressing around each legendary arena (centers kept clear so bosses are not buried)
+function ensureGen(x, z, r) { const c0x = Math.floor((x - r) / CH), c1x = Math.floor((x + r) / CH), c0z = Math.floor((z - r) / CH), c1z = Math.floor((z + r) / CH); for (let cx = c0x; cx <= c1x; cx++) for (let cz = c0z; cz <= c1z; cz++) genChunk(cx, cz); }
+function dressArena(kind, x, z) {
+  ensureGen(x, z, 6); const y = surfaceY(x, z);
+  if (kind === "cave") {                                   // Gengar: dark floor + back wall with two glowing eyes
+    for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) { if (Math.hypot(dx, dz) <= 4 && Math.hypot(dx, dz) > 1.5) setRaw(x + dx, y, z + dz, COBBLE); }
+    for (let dx = -4; dx <= 4; dx++) for (let yy = 1; yy <= 4; yy++) setRaw(x + dx, y + yy, z - 5, COBBLE);
+    setRaw(x - 2, y + 3, z - 5, CRYSTAL); setRaw(x + 2, y + 3, z - 5, CRYSTAL);
+  } else if (kind === "fire") {                            // Charizard: firestone ring with lava caps
+    for (let a = 0; a < 16; a++) { const ax = x + Math.round(Math.cos(a / 16 * 6.28) * 4), az = z + Math.round(Math.sin(a / 16 * 6.28) * 4); for (let yy = 1; yy <= 2 + (a % 2); yy++) setRaw(ax, y + yy, az, FIRESTONE); setRaw(ax, y + 3 + (a % 2), az, LAVA); }
+  } else if (kind === "water") {                           // Kyogre: a moat ring with brick pillars
+    for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) { const d = Math.hypot(dx, dz); if (d > 2.4 && d <= 4) setRaw(x + dx, y, z + dz, WATER); }
+    for (const [px, pz] of [[-3, -3], [3, -3], [-3, 3], [3, 3]]) for (let yy = 1; yy <= 3; yy++) setRaw(x + px, y + yy, z + pz, BRICK);
+  } else if (kind === "lava") {                            // Groudon: cracked ground + lava pockets
+    for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) { const d = Math.hypot(dx, dz); if (d <= 4 && d > 1.5) setRaw(x + dx, y, z + dz, ((dx + dz) & 1) ? FIRESTONE : STONE); }
+    for (const [px, pz] of [[3, 1], [-3, -1], [1, 3], [-1, -3]]) setRaw(x + px, y, z + pz, LAVA);
+  } else if (kind === "psychic") {                         // Mewtwo: floating crystal blocks
+    for (const [px, py, pz] of [[-3, 3, 0], [3, 3, 0], [0, 4, -3], [0, 4, 3], [-2, 5, -2], [2, 5, 2]]) setRaw(x + px, y + py, z + pz, CRYSTAL);
+    for (const [px, pz] of [[-3, -3], [3, 3]]) for (let yy = 1; yy <= 2; yy++) setRaw(x + px, y + yy, z + pz, BRICK);
+  } else if (kind === "sky") {                             // Rayquaza: a tall tower offset from the arena
+    const tx = x + 5; for (let yy = 1; yy <= 11; yy++) setRaw(tx, y + yy, z, (yy % 3) ? BRICK : CRYSTAL); setRaw(tx + 1, y + 11, z, CRYSTAL); setRaw(tx - 1, y + 11, z, CRYSTAL);
+  } else if (kind === "divine") {                          // Arceus: a glowing crystal ring
+    for (let a = 0; a < 12; a++) { const ax = x + Math.round(Math.cos(a / 12 * 6.28) * 4), az = z + Math.round(Math.sin(a / 12 * 6.28) * 4); setRaw(ax, y + 1, az, CRYSTAL); }
+  }
+}
+function dressBossArenas() {
+  const kindByBadge = { cave: "cave", fire: "fire", water: "water", lava: "lava", psychic: "psychic", sky: "sky" };
+  for (const p of BOSS_PLAN) if (!realmBossDown[p.badge]) dressArena(kindByBadge[p.badge], p.x, p.z);
+  if (!realmBossDown.legendary) dressArena("divine", 0, 34);
+}
+function dressSnorlaxBridge() {                            // Snorlax blocks a plank bridge over a river
+  if (realmBossDown.snoozer) return;
+  const x = 0, z = 15; ensureGen(x, z, 6); const gy = surfaceY(x, z);   // surfaceY is noise-based; Snorlax stands at gy, so deck the block below it
+  for (let dx = -5; dx <= 5; dx++) {
+    setRaw(x + dx, gy - 1, z, PLANKS);                         // walkable deck (top face at gy)
+    for (let yy = gy; yy <= gy + 2; yy++) setRaw(x + dx, yy, z, AIR);   // clear any lake water over the deck
+    setRaw(x + dx, gy, z - 1, WOOD); setRaw(x + dx, gy, z + 1, WOOD);   // side rails
+  }
+}
 function spawnSnoozer() { if (realmBossDown.snoozer) return; const x = 0, z = 15; const g = buildCreatureModel("snoozer", false); g.scale.multiplyScalar(1.4); g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); g.rotation.y = Math.PI; scene.add(g); realmSnoozer = { g, x, z }; }
 function teamAvgLevel() { return cteam.length ? Math.round(cteam.reduce((a, c) => a + c.level, 0) / cteam.length) : 5; }
 function challengeBoss(b) {
