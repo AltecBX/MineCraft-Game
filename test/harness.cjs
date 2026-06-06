@@ -16,7 +16,7 @@ class V3{constructor(x=0,y=0,z=0){this.x=x;this.y=y;this.z=z;}
  applyQuaternion(){return this;} crossVectors(){return this;} project(){return this;} unproject(){return this;} }
 class Col{constructor(h){this.r=1;this.g=1;this.b=1;if(typeof h==='number')this.setHex(h);}
  setHex(h){this.r=((h>>16)&255)/255;this.g=((h>>8)&255)/255;this.b=(h&255)/255;return this;}
- set(h){return typeof h==='number'?this.setHex(h):this;} setHSL(){return this;} setRGB(r,g,b){this.r=r;this.g=g;this.b=b;return this;}
+ set(h){return typeof h==='number'?this.setHex(h):this;} setHSL(){return this;} offsetHSL(){return this;} getHex(){return ((this.r*255)<<16)|((this.g*255)<<8)|(this.b*255);} setRGB(r,g,b){this.r=r;this.g=g;this.b=b;return this;}
  clone(){const c=new Col();c.r=this.r;c.g=this.g;c.b=this.b;return c;} copy(c){this.r=c.r;this.g=c.g;this.b=c.b;return this;}
  lerp(c,a){this.r+=(c.r-this.r)*a;this.g+=(c.g-this.g)*a;this.b+=(c.b-this.b)*a;return this;}
  multiplyScalar(s){this.r*=s;this.g*=s;this.b*=s;return this;} getHexString(){return '000000';} }
@@ -61,7 +61,7 @@ if(name==='HemisphereLight')return ctor({color:new Col(),groundColor:new Col(),i
 
 // ---- DOM / window stubs ----
 // overlays/panels that carry class="hidden" in index.html start hidden so anyPanelOpen() reads correctly
-const HIDDEN_IDS=new Set(['hud','touch','intro','pause','settings','ach','collections','trophies','catwardrobe','skinpicker','shop','inv','skills','journal','chest','death','win','cine']);
+const HIDDEN_IDS=new Set(['hud','touch','intro','pause','settings','ach','collections','trophies','catwardrobe','skinpicker','shop','inv','skills','journal','chest','death','win','cine','cmenu','battle']);
 function el(id){const cls=new Set(); if(id && HIDDEN_IDS.has(id)) cls.add('hidden');
  return new Proxy({style:{setProperty(){},},classList:{add(c){cls.add(c);},remove(c){cls.delete(c);},toggle(c,f){const on=f===undefined?!cls.has(c):!!f; on?cls.add(c):cls.delete(c); return on;},contains(c){return cls.has(c);}},
  children:[],dataset:{},textContent:'',value:'85',width:64,height:8,
