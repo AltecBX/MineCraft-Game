@@ -1167,13 +1167,19 @@ function spawnMonster(x, z, type) {
     bar, mark, body, legL, legR, armL, armR, moveT: 0, dir: Math.random() * 6.28, state: "idle", aggro: false, dead: false, dt: 0 });
 }
 function surfaceY(x, z) { for (let y = WORLD_H - 1; y >= 0; y--) if (isSolidBlock(getBlock(Math.floor(x), y, Math.floor(z)))) return y + 1; return SEA + 1; }
+// gravity for creatures: fall with acceleration when unsupported (so they drop if you dig under them), step up onto ground
+function fallToGround(o, dt) {
+  const gy = surfaceY(o.g.position.x, o.g.position.z);
+  if (o.g.position.y > gy + 0.05) { o._vy = (o._vy || 0) - 26 * dt; o.g.position.y += o._vy * dt; if (o.g.position.y <= gy) { o.g.position.y = gy; o._vy = 0; } }
+  else { o.g.position.y += (gy - o.g.position.y) * Math.min(1, dt * 12); o._vy = 0; }
+}
 function updateMonsters(dt) {
   const night = isNight();
   for (let i = monsters.length - 1; i >= 0; i--) {
     const m = monsters[i];
     if (m.dead) { m.dt += dt; m.g.scale.multiplyScalar(Math.max(0.0001, 1 - dt * 3)); m.g.rotation.z += dt * 6; m.g.position.y -= dt * 1.5; if (m.dt > 0.5) { scene.remove(m.g); monsters.splice(i, 1); } continue; }
     const dx = player.pos.x - m.g.position.x, dz = player.pos.z - m.g.position.z, d = Math.hypot(dx, dz) || 0.0001;
-    const aggroR = (night ? 17 : 13) + (m.summon ? 5 : 0) + (m.elite ? 4 : 0);
+    const aggroR = (night ? 13 : 10) + (m.summon ? 4 : 0) + (m.elite ? 3 : 0);
     if (!m.aggro && d < aggroR) { m.aggro = true; m.summon ? SFX.screech() : SFX.growl(); }
     else if (m.aggro && d > aggroR * 1.7) { m.aggro = false; }
     if (m.flash > 0) m.flash -= dt;
@@ -1210,7 +1216,7 @@ function updateMonsters(dt) {
       if (m.slam && d < 2.7 && m.slamCd <= 0) { m.windup = 0.6; SFX.growl(); }
       else if (d > 1.1) { m.g.position.x += (dx / d) * m.speed * dt; m.g.position.z += (dz / d) * m.speed * dt; face(); moving = true; }
       else if (m.touch <= 0 && !m.slam) { damage(m.dmg); m.touch = 1.0; const k = new THREE.Vector3(-dx / d, 0, -dz / d); player.pos.addScaledVector(k, 0.3); }
-      if (m.summon && m.summonCd <= 0 && d < aggroR && monsters.length < (night ? 16 : 6)) { m.summonCd = 11; SFX.screech(); for (let s = 0; s < 2; s++) { const a = Math.random() * 6.28; spawnMonster(Math.floor(m.g.position.x + Math.cos(a) * 3), Math.floor(m.g.position.z + Math.sin(a) * 3), "crawler"); } }
+      if (m.summon && m.summonCd <= 0 && d < aggroR && monsters.length < (night ? 8 : 5)) { m.summonCd = 15; SFX.screech(); const a = Math.random() * 6.28; spawnMonster(Math.floor(m.g.position.x + Math.cos(a) * 3), Math.floor(m.g.position.z + Math.sin(a) * 3), "crawler"); }
       if (m.digger && m.digCd <= 0 && d > 1.2) {
         const bx = Math.floor(m.g.position.x + (dx / d) * 0.8), bz = Math.floor(m.g.position.z + (dz / d) * 0.8), by = Math.floor(m.g.position.y + 0.5);
         let dug = false;
@@ -1219,8 +1225,7 @@ function updateMonsters(dt) {
       }
     }
     if (m.body && m.body.material.emissive) m.body.material.emissive.setHex(m.flash > 0 ? 0x771018 : (m.emBase || 0x000000));
-    const ty = surfaceY(m.g.position.x, m.g.position.z);     // smooth ground follow
-    m.g.position.y += (ty - m.g.position.y) * Math.min(1, dt * 10);
+    fallToGround(m, dt);     // gravity: falls if the ground is dug out, steps up onto hills
     if (moving && m.windup <= 0) { m.moveT += dt * 9; const s = Math.sin(m.moveT) * 0.5; m.legL.rotation.x = s; m.legR.rotation.x = -s; m.armL.rotation.x = -s; m.armR.rotation.x = s; }
     else if (m.windup <= 0) { m.legL.rotation.x *= 0.8; m.legR.rotation.x *= 0.8; }
   }
@@ -1228,16 +1233,16 @@ function updateMonsters(dt) {
   spawnTimer -= dt;
   if (spawnTimer <= 0) {
     if (DIM === "overworld") {
-      spawnTimer = isNight() ? 4.6 : 12;
-      const cap = isNight() ? 8 : 4;             // gentler night raid: fewer monsters, slower spawns
+      spawnTimer = isNight() ? 6.5 : 16;
+      const cap = isNight() ? 5 : 3;             // gentler raids: fewer monsters, slower spawns, time to react
       if (monsters.length < cap) {
         const a = Math.random() * Math.PI * 2, r = 16 + Math.random() * 8;
         const sxp = Math.floor(player.pos.x + Math.cos(a) * r), szp = Math.floor(player.pos.z + Math.sin(a) * r);
         if (!nearTorch(sxp, szp, 9)) spawnMonster(sxp, szp);
       }
     } else if (DIM === "fire") {
-      spawnTimer = 5;
-      if (monsters.length < 7) {
+      spawnTimer = 7;
+      if (monsters.length < 4) {
         const a = Math.random() * Math.PI * 2, r = 14 + Math.random() * 8;
         const sxp = Math.floor(player.pos.x + Math.cos(a) * r), szp = Math.floor(player.pos.z + Math.sin(a) * r);
         spawnMonster(sxp, szp, Math.random() < 0.5 ? "firedemon" : "lavaworm");
@@ -1355,7 +1360,7 @@ function spawnMouse(x, z) {
   g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g);
   mice.push({ g, dir: Math.random() * 6.28, tail, golden, cheese, ninja, stolen: false, steal: 0, t: Math.random() * 6 });
 }
-function wander(o, dt, sp) { if (Math.random() < 0.012) o.dir += (Math.random() - .5) * 1.6; o.g.position.x += Math.sin(o.dir) * sp * dt; o.g.position.z += Math.cos(o.dir) * sp * dt; o.g.rotation.y = o.dir; o.g.position.y = surfaceY(o.g.position.x, o.g.position.z); }
+function wander(o, dt, sp) { if (Math.random() < 0.012) o.dir += (Math.random() - .5) * 1.6; o.g.position.x += Math.sin(o.dir) * sp * dt; o.g.position.z += Math.cos(o.dir) * sp * dt; o.g.rotation.y = o.dir; fallToGround(o, dt); }
 function removeMouse(ms) { scene.remove(ms.g); mice = mice.filter(x => x !== ms); spawnMouse((player.pos.x + (Math.random() - .5) * 30) | 0, (player.pos.z + (Math.random() - .5) * 30) | 0); }
 function mouseCaught(ms) {
   if (ms.cheese) { addCoins(25); addXP(60); addItem(I_APPLE, 3); toast("You caught the Cheese King! Huge reward."); SFX.treasure(); achieve("cheeseking", "Cheese King Caught"); }
@@ -1373,7 +1378,7 @@ function updateAnimals(dt) {
     if (dpm < 0.75) { mouseCaught(ms); continue; }            // Thomas catches a mouse by touching it
     if (ms.ninja && !ms.stolen) {                             // ninja darts straight at Thomas to grab coins
       const dx = player.pos.x - ms.g.position.x, dz = player.pos.z - ms.g.position.z, dd = Math.hypot(dx, dz) || 1;
-      ms.g.position.x += (dx / dd) * 4.2 * dt; ms.g.position.z += (dz / dd) * 4.2 * dt; ms.g.rotation.y = Math.atan2(dx, dz); ms.g.position.y = surfaceY(ms.g.position.x, ms.g.position.z);
+      ms.g.position.x += (dx / dd) * 4.2 * dt; ms.g.position.z += (dz / dd) * 4.2 * dt; ms.g.rotation.y = Math.atan2(dx, dz); fallToGround(ms, dt);
       if (dpm < 1.1) { if (coins > 0) { const steal = Math.min(coins, 3); coins -= steal; updateCoinUI(); ms.steal = steal; toast("A ninja mouse stole " + steal + " coins. Catch it!"); SFX.squeak(); } ms.stolen = true; }
     } else {                                                   // flee from cats and Thomas (ninja flees fastest after stealing)
       const fleeing = (near && nd < 6) || dpm < 5 || (ms.ninja && ms.stolen);
@@ -1406,17 +1411,18 @@ function updateAnimals(dt) {
         const dx = player.pos.x - c.g.position.x, dz = player.pos.z - c.g.position.z, d = Math.hypot(dx, dz);
         if (d > 2) { c.g.position.x += (dx / d) * 3.2 * dt; c.g.position.z += (dz / d) * 3.2 * dt; c.g.rotation.y = Math.atan2(dx, dz); c.moved = true; }
       }
-      c.g.position.y = surfaceY(c.g.position.x, c.g.position.z);
+      fallToGround(c, dt);
       // fight nearest monster (damage scales with cat level)
       let nm = null, nmd = 8; for (const m of monsters) if (!m.dead) { const md = m.g.position.distanceTo(c.g.position); if (md < nmd) { nmd = md; nm = m; } }
       if (nm && nmd < 1.3) { nm.hp -= 8 * dt * catMult * (1 + 0.25 * (c.level - 1)) * (c.ability === "fury" ? 1.5 : 1); nm.bar.up(Math.max(0, nm.hp / nm.max)); if (nm.hp <= 0 && !nm.dead) { nm.dead = true; discoverMob(nm.type); addXP(Math.round((nm.xp || 8) * 0.5)); onKill(); c.kills++; if (c.kills % 3 === 0) { c.level++; toast((c.name || (c.color + " cat")) + " reached level " + c.level); SFX.levelUp(); } } }
     } else if (c.friendly) {                                   // a friendly stray (Whiskers) trots over to Thomas
       const dx = player.pos.x - c.g.position.x, dz = player.pos.z - c.g.position.z, d = Math.hypot(dx, dz) || 1;
-      if (d > 1.7) { c.g.position.x += (dx / d) * 3.4 * dt; c.g.position.z += (dz / d) * 3.4 * dt; c.g.rotation.y = Math.atan2(dx, dz); c.g.position.y = surfaceY(c.g.position.x, c.g.position.z); c.moved = true; }
+      if (d > 1.7) { c.g.position.x += (dx / d) * 3.4 * dt; c.g.position.z += (dz / d) * 3.4 * dt; c.g.rotation.y = Math.atan2(dx, dz); c.moved = true; }
       else { c.g.rotation.y = Math.atan2(dx, dz); if (c.meow <= 0.05) { c.meow = 2.5 + Math.random() * 2; } }
+      fallToGround(c, dt);
     } else {
       let nd = 999, near = null; for (const ms of mice) { const d = ms.g.position.distanceTo(c.g.position); if (d < nd) { nd = d; near = ms; } }
-      if (near && nd < 12) { const dx = near.g.position.x - c.g.position.x, dz = near.g.position.z - c.g.position.z, d = Math.hypot(dx, dz) || 1; c.g.position.x += (dx / d) * 3 * dt; c.g.position.z += (dz / d) * 3 * dt; c.g.rotation.y = Math.atan2(dx, dz); c.g.position.y = surfaceY(c.g.position.x, c.g.position.z); c.moved = true; if (nd < 0.6) { mouseCaught(near); } }
+      if (near && nd < 12) { const dx = near.g.position.x - c.g.position.x, dz = near.g.position.z - c.g.position.z, d = Math.hypot(dx, dz) || 1; c.g.position.x += (dx / d) * 3 * dt; c.g.position.z += (dz / d) * 3 * dt; c.g.rotation.y = Math.atan2(dx, dz); fallToGround(c, dt); c.moved = true; if (nd < 0.6) { mouseCaught(near); } }
       else { wander(c, dt, 1.6); c.moved = true; }
     }
     if (c.moved) { c.walkT += dt * 10; const s = Math.sin(c.walkT) * 0.6; c.legs[0].rotation.x = s; c.legs[1].rotation.x = -s; c.legs[2].rotation.x = -s; c.legs[3].rotation.x = s; }
@@ -1620,10 +1626,16 @@ function buildViewItem() {
   if (viewItem) vScene.remove(viewItem);
   const g = new THREE.Group(); const it = hotbar[selSlot];
   if (it && isItem(it.id)) {
-    if (ITEMS[it.id].tool === "sword") { const blade = box(0.06, 0.5, 0.06, ITEMS[it.id].special === "fire" ? 0xff7a2a : ITEMS[it.id].special === "pierce" ? 0x76e4ff : 0xd7dbe4); blade.position.y = 0.3; g.add(blade); const gu = box(0.2, 0.05, 0.08, 0xc9a227); gu.position.y = 0.05; g.add(gu); }
-    else if (ITEMS[it.id].tool === "hammer") { const head = box(0.26, 0.2, 0.18, 0x6fb7ff); head.position.y = 0.36; g.add(head); const trim = box(0.28, 0.06, 0.2, 0xffe066); trim.position.y = 0.36; g.add(trim); const stick = box(0.05, 0.36, 0.05, 0x6e4a25); stick.position.y = 0.12; g.add(stick); }
-    else if (ITEMS[it.id].tool === "bow") { const col = ITEMS[it.id].special === "slime" ? 0x49e06a : 0x9fe8ff; const arc = box(0.06, 0.5, 0.06, col); arc.position.y = 0.25; g.add(arc); const tip1 = box(0.05, 0.12, 0.05, 0xcfcfe0); tip1.position.set(0, 0.48, 0.04); tip1.rotation.x = 0.5; g.add(tip1); const tip2 = box(0.05, 0.12, 0.05, 0xcfcfe0); tip2.position.set(0, 0.02, 0.04); tip2.rotation.x = -0.5; g.add(tip2); }
-    else { const head = box(0.18, 0.1, 0.06, 0x9b9b9b); head.position.y = 0.34; g.add(head); const stick = box(0.05, 0.34, 0.05, 0x6e4a25); stick.position.y = 0.12; g.add(stick); }
+    const tool = ITEMS[it.id].tool, sp = ITEMS[it.id].special, tier = ITEMS[it.id].tier || 1;
+    // metal tone scales with tier so a stone tool reads grey and an iron/upgraded tool reads bright steel
+    const metal = sp === "fire" ? 0xff7a2a : sp === "pierce" ? 0x76e4ff : tier >= 2 ? 0xcfd6de : 0x8f8f8f;
+    const wood = 0x6e4a25;
+    if (tool === "sword") { const blade = box(0.06, 0.5, 0.06, metal); blade.position.y = 0.32; g.add(blade); const tip = box(0.06, 0.1, 0.06, metal); tip.position.y = 0.6; tip.rotation.z = 0.78; g.add(tip); const gu = box(0.22, 0.05, 0.08, 0xc9a227); gu.position.y = 0.06; g.add(gu); const grip = box(0.05, 0.14, 0.05, wood); grip.position.y = -0.04; g.add(grip); const pom = box(0.07, 0.05, 0.07, 0xc9a227); pom.position.y = -0.12; g.add(pom); }
+    else if (tool === "hammer") { const head = box(0.26, 0.2, 0.18, metal); head.position.y = 0.36; g.add(head); const trim = box(0.28, 0.06, 0.2, 0xffe066); trim.position.y = 0.36; g.add(trim); const stick = box(0.05, 0.42, 0.05, wood); stick.position.y = 0.1; g.add(stick); }
+    else if (tool === "bow") { const col = sp === "slime" ? 0x49e06a : 0x9fe8ff; const arc = box(0.06, 0.5, 0.06, col); arc.position.y = 0.25; g.add(arc); const tip1 = box(0.05, 0.12, 0.05, 0xcfcfe0); tip1.position.set(0, 0.48, 0.04); tip1.rotation.x = 0.5; g.add(tip1); const tip2 = box(0.05, 0.12, 0.05, 0xcfcfe0); tip2.position.set(0, 0.02, 0.04); tip2.rotation.x = -0.5; g.add(tip2); }
+    else if (tool === "pick") { const stick = box(0.05, 0.44, 0.05, wood); stick.position.y = 0.08; g.add(stick); const bar = box(0.34, 0.05, 0.05, metal); bar.position.y = 0.34; bar.rotation.z = 0.18; g.add(bar); const tL = box(0.05, 0.13, 0.05, metal); tL.position.set(-0.17, 0.3, 0); tL.rotation.z = 0.7; g.add(tL); const tR = box(0.05, 0.13, 0.05, metal); tR.position.set(0.17, 0.3, 0); tR.rotation.z = -0.7; g.add(tR); }
+    else if (tool === "axe") { const stick = box(0.05, 0.44, 0.05, wood); stick.position.y = 0.08; g.add(stick); const blade = box(0.04, 0.22, 0.22, metal); blade.position.set(0.13, 0.33, 0); g.add(blade); const edge = box(0.03, 0.26, 0.1, metal); edge.position.set(0.18, 0.33, 0); g.add(edge); const collar = box(0.08, 0.08, 0.08, metal); collar.position.set(0.04, 0.33, 0); g.add(collar); }
+    else { const head = box(0.18, 0.1, 0.06, metal); head.position.y = 0.34; g.add(head); const stick = box(0.05, 0.34, 0.05, wood); stick.position.y = 0.12; g.add(stick); }
     g.position.set(0.42, -0.42, -0.75); g.rotation.set(-0.4, -0.3, 0.25);
   } else if (it) {
     const c = BLOCKS[it.id]; const cube = box(0.32, 0.32, 0.32, new THREE.Color(c.top[0], c.top[1], c.top[2]).getHex()); g.add(cube); g.position.set(0.42, -0.4, -0.7); g.rotation.set(-0.4, 0.5, 0);
@@ -1787,8 +1799,8 @@ function spawnFireBoss() {
   for (let i = 0; i < 5; i++) { const c = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.4, 0.16), new THREE.MeshLambertMaterial({ color: 0xffb02a, emissive: 0xff7a1e })); const a = i / 5 * 6.28; c.position.set(Math.cos(a) * 0.5, 3.5, Math.sin(a) * 0.5); g.add(c); }
   clearFirePad(0, 6);
   g.position.set(0.5, surfaceY(0, 6) + 0.1, 6.5); scene.add(g);
-  const maxHp = 220;
-  fireBoss = { g, hp: maxHp, max: maxHp, touch: 0, atkCd: 2.5, slamCd: 4, summonCd: 9, windup: 0, phase: 1, intro: 2.6, armL, armR, body, flash: 0 };
+  const maxHp = 150;
+  fireBoss = { g, hp: maxHp, max: maxHp, touch: 0, atkCd: 3.2, slamCd: 6, summonCd: 14, windup: 0, phase: 1, intro: 3.4, armL, armR, body, flash: 0 };
   bossIntro("FIRE GUARDIAN", "Heat radiates from its core. Strike when the rings flash.");
   g.traverse(o => { o.userData.kind = "monster"; o.userData.m = { get hp() { return fireBoss.hp; }, set hp(v) { fireBoss.hp = v; }, get max() { return fireBoss.max; }, set flash(v) { if (fireBoss) fireBoss.flash = v; }, get flash() { return fireBoss ? fireBoss.flash : 0; }, bar: { up: () => {} }, get dead() { return !fireBoss || fireBoss.hp <= 0; }, get ghost() { return false; }, g } });
   showBoss("FIRE GUARDIAN", 1);
@@ -1807,17 +1819,17 @@ function updateFireBoss(dt) {
   if (fb.windup > 0) {                                       // ground slam telegraph
     fb.windup -= dt; fb.armL.rotation.x = -1.4; fb.armR.rotation.x = -1.4; fb.g.rotation.y = Math.atan2(dx, dz);
     if (fb.windup <= 0) {
-      SFX.slam(); addShake(0.6); if (d < 4) { damage(10); const k = new THREE.Vector3(-dx / d, 0, -dz / d); player.pos.addScaledVector(k, 0.8); }
-      for (let i = 0; i < 8; i++) { const a = i / 8 * 6.28; spawnProjectile(fb.g.position, { x: fb.g.position.x + Math.cos(a) * 4, y: player.pos.y, z: fb.g.position.z + Math.sin(a) * 4 }); } // shockwave
-      fb.armL.rotation.x = 0; fb.armR.rotation.x = 0; fb.slamCd = phase === 3 ? 3 : 5;
+      SFX.slam(); addShake(0.6); if (d < 4) { damage(6); const k = new THREE.Vector3(-dx / d, 0, -dz / d); player.pos.addScaledVector(k, 0.8); }
+      for (let i = 0; i < 6; i++) { const a = i / 6 * 6.28; spawnProjectile(fb.g.position, { x: fb.g.position.x + Math.cos(a) * 4, y: player.pos.y, z: fb.g.position.z + Math.sin(a) * 4 }); } // shockwave
+      fb.armL.rotation.x = 0; fb.armR.rotation.x = 0; fb.slamCd = phase === 3 ? 5 : 7;
     }
   } else {
     if (d > 3) { fb.g.position.x += dx / d * spd * dt; fb.g.position.z += dz / d * spd * dt; }
     fb.g.rotation.y = Math.atan2(dx, dz); fb.g.position.y = surfaceY(fb.g.position.x, fb.g.position.z);
-    fb.touch -= dt; if (d < 2.4 && fb.touch <= 0) { damage(8); fb.touch = 1; }
-    fb.atkCd -= dt; if (fb.atkCd <= 0) { fb.atkCd = phase === 3 ? 1.0 : 2.2; const volley = phase === 3 ? 3 : 1; for (let i = 0; i < volley; i++) { const off = (i - (volley - 1) / 2) * 2; spawnProjectile(fb.g.position, { x: player.pos.x + off, y: player.pos.y, z: player.pos.z }); } }
-    if (phase >= 2) { fb.slamCd -= dt; if (fb.slamCd <= 0 && d < 6) { fb.windup = 0.7; SFX.growl(); spawnTelegraph(player.pos.x, player.pos.z, 4, 0.7); } }
-    if (phase >= 2) { fb.summonCd -= dt; if (fb.summonCd <= 0 && monsters.length < 8) { fb.summonCd = 12; for (let s = 0; s < 2; s++) { const a = Math.random() * 6.28; spawnMonster(Math.floor(fb.g.position.x + Math.cos(a) * 3), Math.floor(fb.g.position.z + Math.sin(a) * 3), "lavaworm"); } toast("The Guardian summons lava worms"); } }
+    fb.touch -= dt; if (d < 2.4 && fb.touch <= 0) { damage(5); fb.touch = 1.2; }
+    fb.atkCd -= dt; if (fb.atkCd <= 0) { fb.atkCd = phase === 3 ? 1.8 : 3.0; const volley = phase === 3 ? 2 : 1; for (let i = 0; i < volley; i++) { const off = (i - (volley - 1) / 2) * 2; spawnProjectile(fb.g.position, { x: player.pos.x + off, y: player.pos.y, z: player.pos.z }); } }
+    if (phase >= 2) { fb.slamCd -= dt; if (fb.slamCd <= 0 && d < 6) { fb.windup = 0.9; SFX.growl(); spawnTelegraph(player.pos.x, player.pos.z, 4, 0.9); } }
+    if (phase >= 3) { fb.summonCd -= dt; if (fb.summonCd <= 0 && monsters.length < 3) { fb.summonCd = 18; const a = Math.random() * 6.28; spawnMonster(Math.floor(fb.g.position.x + Math.cos(a) * 3), Math.floor(fb.g.position.z + Math.sin(a) * 3), "lavaworm"); toast("The Guardian summons a lava worm"); } }
     fb.armL.rotation.x = Math.sin(performance.now() * 0.005) * 0.3; fb.armR.rotation.x = -fb.armL.rotation.x;
   }
   if (fb.hp <= 0) {
@@ -2273,7 +2285,8 @@ function saveGame(silent) {
       chests: [...chestStore] };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     if (!silent) toast("Game saved");
-  } catch (e) { if (!silent) toast("Saving is not available here"); }
+    return true;
+  } catch (e) { if (!silent) toast("Saving is not available here"); return false; }
 }
 function hasSave() { try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; } }
 function refreshContinue() { const b = $("contBtn"); if (b) b.style.display = hasSave() ? "" : "none"; }
@@ -2312,7 +2325,7 @@ function loadGame() {
   if (!isTouch) canvas.requestPointerLock();
 }
 $("contBtn").addEventListener("click", loadGame);
-$("saveBtn").addEventListener("click", () => saveGame(false));
+$("saveBtn").addEventListener("click", () => { const b = $("saveBtn"), prev = b.textContent, ok = saveGame(false); b.textContent = ok ? "Saved ✓" : "Save failed"; b.disabled = false; setTimeout(() => { b.textContent = prev; }, 1500); });
 $("closeChestBtn").addEventListener("click", closeChest);
 $("closeShopBtn").addEventListener("click", closeShop);
 
@@ -2449,8 +2462,8 @@ function meteorShower() {
 }
 const EVENTS = [
   { id: "meteor", name: "Meteor Shower", warn: "Meteors streak across the sky. Find the crash site.", dur: 25, tint: null, start() { meteorShower(); }, end() {} },
-  { id: "bloodmoon", name: "Blood Moon", warn: "A Blood Moon rises. Survive the horde.", dur: 36, tint: "rgba(180,0,0,.30)", night: true, start() { for (let i = 0; i < 4; i++) spawnRingMonster(18 + Math.random() * 6); }, end() { reward("You survived the Blood Moon.", () => { addXP(80); addItem(I_APPLE, 3); }); } },
-  { id: "storm", name: "Purple Storm", warn: "A corruption storm sweeps in. Hold out.", dur: 30, tint: "rgba(140,40,210,.24)", start() { for (let i = 0; i < 3; i++) spawnRingMonster(15 + Math.random() * 6); }, end() { reward("The storm passes.", () => { addXP(50); }); } },
+  { id: "bloodmoon", name: "Blood Moon", warn: "A Blood Moon rises. Survive the horde.", dur: 36, tint: "rgba(180,0,0,.30)", night: true, start() { for (let i = 0; i < 3; i++) spawnRingMonster(18 + Math.random() * 6); }, end() { reward("You survived the Blood Moon.", () => { addXP(80); addItem(I_APPLE, 3); }); } },
+  { id: "storm", name: "Purple Storm", warn: "A corruption storm sweeps in. Hold out.", dur: 30, tint: "rgba(140,40,210,.24)", start() { for (let i = 0; i < 2; i++) spawnRingMonster(15 + Math.random() * 6); }, end() { reward("The storm passes.", () => { addXP(50); }); } },
   { id: "golden", name: "Golden Forest Day", warn: "A Golden Day. Double XP while it lasts.", dur: 35, tint: "rgba(255,210,80,.18)", start() { xpMult = 2; }, end() { xpMult = 1; toast("The golden glow fades."); } },
   { id: "merchant", name: "Traveling Merchant", warn: "A traveling merchant left a care package nearby.", dur: 20, tint: null, start() { dropChestNear([{ id: I_APPLE, count: 2 }, { id: PLANKS, count: 6 }, { id: TORCH, count: 4 }, { id: I_STICK, count: 4 }], "A care package was left nearby."); }, end() {} }
 ];
@@ -2636,7 +2649,7 @@ function updateRealm(dt) {
     else {
       if (dp < 6 && dp > 1.4) { c.dir = Math.atan2(c.g.position.x - player.pos.x, c.g.position.z - player.pos.z); c.g.position.x += Math.sin(c.dir) * 2.2 * dt; c.g.position.z += Math.cos(c.dir) * 2.2 * dt; }   // shy: drift away
       else { if (Math.random() < 0.012) c.dir += (Math.random() - .5) * 1.5; c.g.position.x += Math.sin(c.dir) * 1.1 * dt; c.g.position.z += Math.cos(c.dir) * 1.1 * dt; }
-      c.g.rotation.y = c.dir; c.g.position.y = surfaceY(c.g.position.x, c.g.position.z);
+      c.g.rotation.y = c.dir; fallToGround(c, dt);
       c.walkT += dt * 8; const sw = Math.sin(c.walkT) * 0.5, L = c.g.userData.legs; if (L) { L[0].rotation.x = sw; L[1].rotation.x = -sw; L[2].rotation.x = -sw; L[3].rotation.x = sw; }
       if (!cmenuOpen && !battle && encounterCd <= 0 && dp < 2.1) openEncounter(makeCreature(c.id, c.level, { shiny: c.shiny }), c);
     }
