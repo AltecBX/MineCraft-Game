@@ -138,7 +138,9 @@ const SFX = {
   power: () => { blip(440, 0.1, "triangle", 0.16, 660); setTimeout(() => blip(660, 0.12, "triangle", 0.16, 990), 80); },
   treasure: () => { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => blip(f, 0.16, "triangle", 0.16), i * 70)); },
   victory: () => { [392, 523, 659, 784, 1046].forEach((f, i) => setTimeout(() => blip(f, 0.22, "square", 0.18), i * 120)); },
-  boom: () => { noiseHit(0.45, 0.45); blip(64, 0.45, "sawtooth", 0.28, 28); setTimeout(() => noiseHit(0.3, 0.22), 70); setTimeout(() => blip(48, 0.3, "square", 0.18, 24), 40); }
+  boom: () => { noiseHit(0.45, 0.45); blip(64, 0.45, "sawtooth", 0.28, 28); setTimeout(() => noiseHit(0.3, 0.22), 70); setTimeout(() => blip(48, 0.3, "square", 0.18, 24), 40); },
+  roar: () => { blip(70, 0.5, "sawtooth", 0.12, 110); setTimeout(() => blip(55, 0.6, "sawtooth", 0.1, 95), 120); setTimeout(() => noiseHit(0.18, 0.4), 60); },
+  sparkle: () => { [880, 1175, 1568].forEach((f, i) => setTimeout(() => blip(f, 0.1, "triangle", 0.1), i * 60)); }
 };
 function stepSound() {
   const b = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.1), Math.floor(player.pos.z));
@@ -939,9 +941,10 @@ addEventListener("keydown", e => {
   if (e.code === K.skills) toggleSkills();
   if (e.code === K.cat) catCommand();
   if (e.code === K.journal) toggleJournal();
+  if (e.code === "KeyH") primaryHeld = true;   // H breaks/hits just like the trackpad, without nudging the view
   if (e.code === "Escape") togglePause();
 });
-addEventListener("keyup", e => { keys[e.code] = false; });
+addEventListener("keyup", e => { keys[e.code] = false; if (e.code === "KeyH") { primaryHeld = false; mineReset(); } });
 canvas.addEventListener("mousedown", e => { if (!running || paused) return; if (!isTouch && !pointerLocked) { canvas.requestPointerLock(); return; } if (e.button === 0) { primaryHeld = true; } if (e.button === 2) placeBlock(); });
 canvas.addEventListener("mouseup", e => { if (e.button === 0) { primaryHeld = false; mineReset(); } });
 canvas.addEventListener("contextmenu", e => e.preventDefault());
@@ -1027,7 +1030,7 @@ function updateMining(dt) {
   if (mineProg >= need) {
     const drop = BLOCKS[r.id].drop;
     if (r.id === CHEST) collectChest(chestKey(r.x, r.y, r.z));
-    if (r.id === FREDA) { explode(r.x, r.y, r.z, 2); }
+    if (r.id === FREDA) { fredaEvent(r.x, r.y, r.z); }
     setRaw(r.x, r.y, r.z, AIR); recordEdit(r.x, r.y, r.z, AIR);
     if (r.id === PORTAL) rebuildPortalCells();
     if (r.id === TORCH) rebuildTorchCells();
@@ -1551,6 +1554,101 @@ function explode(cx, cy, cz, power) {
   const pd = Math.hypot(player.pos.x - cxw, player.pos.z - czw); if (pd < 3 && !powerActive("shield")) { damage(4); const kx = player.pos.x - cxw, kz = player.pos.z - czw, kd = Math.hypot(kx, kz) || 1; player.vel.x += kx / kd * 4; player.vel.y += 3; player.vel.z += kz / kd * 4; }
   SFX.boom(); SFX.zap(); addShake(settings.reduceMotion ? 0.3 : 0.9);
 }
+// ---------- FREDA BLOCK: a magical show plus a funny sky message ----------
+const FREDA_MSGS = [
+  "Freda is playing with the cats.",
+  "Freda is with the dinosaurs.",
+  "Freda just opened a secret portal.",
+  "Freda made the cats dance.",
+  "Freda is riding a dragon.",
+  "Freda found the golden mouse.",
+  "Freda is hiding in the block forest.",
+  "Freda woke up the dinosaurs.",
+  "Freda gave the cats superpowers.",
+  "Freda is building a castle.",
+  "Freda is chasing rocket mice.",
+  "Freda found a treasure chest.",
+  "Freda is flying through the sky.",
+  "Freda is having a cat party.",
+  "Freda turned the monsters purple.",
+  "Freda is laughing in the clouds.",
+  "Freda found the secret Freda Cave.",
+  "Freda is feeding the dinosaurs.",
+  "Freda is guarding the magic door.",
+  "Freda just made everything sparkle.",
+  "Freda summoned the Cat Army.",
+  "Freda is dancing with the mice.",
+  "Freda is riding a giant Snorlax style creature.",
+  "Freda is hiding behind the moon.",
+  "Freda made the sky explode with magic."
+];
+let lastFredaMsg = -1;
+function randomFredaMsg() {
+  if (FREDA_MSGS.length < 2) return FREDA_MSGS[0];
+  let i = Math.floor(Math.random() * FREDA_MSGS.length);
+  if (i === lastFredaMsg) i = (i + 1) % FREDA_MSGS.length;   // avoid repeating the same line twice in a row
+  lastFredaMsg = i; return FREDA_MSGS[i];
+}
+function showSkyMessage(text, big) {
+  const el = $("skyMsg"), t = $("skyMsgText"); if (!el || !t) return;
+  t.textContent = text;
+  if (big) el.classList.add("super"); else el.classList.remove("super");
+  el.classList.remove("out"); el.classList.remove("show"); void el.offsetWidth; el.classList.add("show");  // restart the fade-in
+  clearTimeout(el._t1); clearTimeout(el._t2);
+  const hold = big ? 4600 : 3200 + Math.floor(Math.random() * 1500);   // stays 3 to 5 seconds
+  el._t1 = setTimeout(() => { el.classList.add("out"); el.classList.remove("show"); }, hold);
+  el._t2 = setTimeout(() => { el.classList.remove("out"); el.classList.remove("super"); }, hold + 900);
+}
+function fredaConfetti(cx, cy, cz) {
+  const cols = [0xff5d8f, 0xffd23d, 0x49e06a, 0x55b8ff, 0xb069ff, 0xff9a3d, 0xffffff];
+  for (let i = 0; i < 28; i++) { if (fxParts.length > FX_CAP) break;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.04), new THREE.MeshBasicMaterial({ color: cols[i % cols.length] }));
+    m.position.set(cx + (Math.random() - .5), cy + 1 + Math.random() * 2, cz + (Math.random() - .5)); scene.add(m);
+    fxParts.push({ mesh: m, life: 1.8, confetti: true, vel: new THREE.Vector3((Math.random() - .5) * 6, 3 + Math.random() * 5, (Math.random() - .5) * 6) });
+  }
+}
+function rainbowBeam(cx, cy, cz) {
+  const cols = [0xff4d4d, 0xff9a3d, 0xffe14d, 0x49e06a, 0x55b8ff, 0xb069ff];
+  for (let i = 0; i < cols.length; i++) { if (fxParts.length > FX_CAP) break;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.55, 1.5, 0.55), new THREE.MeshBasicMaterial({ color: cols[i], transparent: true, opacity: 0.7, depthWrite: false }));
+    m.position.set(cx, cy + 1 + i * 1.5, cz); scene.add(m);
+    fxParts.push({ mesh: m, life: 1.6, max: 1.6, beam: true, vel: new THREE.Vector3(0, 2.2, 0) });
+  }
+}
+function fredaSecretHole(x, y, z) {
+  for (let dy = 1; dy <= 3; dy++) { setRaw(x, y - dy, z, AIR); recordEdit(x, y - dy, z, AIR); }
+  const fy = y - 4; setRaw(x, fy, z, CHEST); recordEdit(x, fy, z, CHEST);
+  const key = chestKey(x, fy, z);
+  if (!chestStore.has(key)) chestStore.set(key, [{ id: CRYSTAL, count: 2 }, { id: I_APPLE, count: 3 }, { id: BRICK, count: 8 }, null, null, null, null, null, null]);
+  markDirty(x, z); markDirty(x + 1, z); markDirty(x - 1, z); markDirty(x, z + 1); markDirty(x, z - 1);
+  toast("A secret Freda treasure hole opened below!"); SFX.treasure();
+}
+// brief reactions: cats rush toward the blast, mice flee in panic (handled by updateFredaReactions)
+function fredaEvent(x, y, z) {
+  explode(x, y, z, 2);                                    // the bigger boom: clears blocks, debris, smoke, ring, shake, sound
+  const cx = x + 0.5, cy = y + 0.5, cz = z + 0.5;
+  const sup = Math.random() < 0.12;                       // rare SUPER FREDA BLOCK
+  fredaConfetti(cx, cy, cz);
+  SFX.sparkle();
+  showSkyMessage(sup ? "SUPER FREDA BLOCK!" : randomFredaMsg(), sup);
+  addShake(0.2);
+  if (sup || Math.random() < 0.4) rainbowBeam(cx, cy, cz);          // rainbow beam into the sky
+  const here = new THREE.Vector3(cx, cy, cz);
+  for (const c of cats) { if (c.g.position.distanceTo(here) < 16) { c._fredaRun = 3; c._fredaTo = { x: cx, z: cz }; if (Math.random() < 0.5) SFX.meow(); } }   // cats run over
+  for (const ms of mice) { if (ms.g.position.distanceTo(here) < 14) { ms.dir = Math.atan2(ms.g.position.x - cx, ms.g.position.z - cz); ms._panic = 2.5; } }   // mice panic
+  const roll = Math.random();                              // a small random reward
+  if (roll < 0.30) { const c = 5 + Math.floor(Math.random() * 8); addCoins(c); toast("Freda left you " + c + " coins!"); }
+  else if (roll < 0.55) { addXP(20 + Math.floor(Math.random() * 25)); }
+  else if (roll < 0.72) { addItem(I_APPLE, 1 + Math.floor(Math.random() * 2)); toast("Freda dropped cat treats!"); }
+  else if (roll < 0.82) { addItem(CRYSTAL, 1); toast("A rare crystal block popped out!"); }
+  if (sup || Math.random() < 0.08) fredaSecretHole(x, y, z);        // rare secret treasure hole
+  if (Math.random() < 0.15) setTimeout(() => SFX.roar(), 350);      // rare distant dinosaur roar
+  if (Math.random() < 0.10) { for (const c of cats) { c._fredaRun = 3.5; c._fredaTo = { x: cx, z: cz }; } toast("A cat parade marches by!"); SFX.meow(); }   // rare cat parade
+}
+function updateFredaReactions(dt) {
+  for (const c of cats) { if (c._fredaRun > 0) { c._fredaRun -= dt; const dx = c._fredaTo.x - c.g.position.x, dz = c._fredaTo.z - c.g.position.z, d = Math.hypot(dx, dz) || 1; if (d > 1.6) { c.g.position.x += dx / d * 4 * dt; c.g.position.z += dz / d * 4 * dt; c.g.rotation.y = Math.atan2(dx, dz); c.moved = true; } fallToGround(c, dt); } }
+  for (const ms of mice) { if (ms._panic > 0) { ms._panic -= dt; ms.g.position.x += Math.sin(ms.dir) * 5 * dt; ms.g.position.z += Math.cos(ms.dir) * 5 * dt; ms.g.rotation.y = ms.dir; fallToGround(ms, dt); } }
+}
 // player ranged shots: Ice Bow (slow) and Slime Launcher (knockback)
 let bowCd = 0;
 const playerShots = [];
@@ -1613,6 +1711,8 @@ function updateFx(dt) {
   for (let i = fxParts.length - 1; i >= 0; i--) {
     const p = fxParts[i]; p.life -= dt; p.mesh.position.addScaledVector(p.vel, dt);
     if (p.smoke) { p.mesh.scale.multiplyScalar(1 + dt * 1.6); p.vel.multiplyScalar(1 - dt * 1.2); if (p.mesh.material) p.mesh.material.opacity = Math.max(0, 0.55 * p.life / (p.max || 1)); }
+    else if (p.confetti) { p.vel.y -= 3.5 * dt; p.vel.x *= (1 - dt * 0.6); p.vel.z *= (1 - dt * 0.6); p.mesh.rotation.x += dt * 6; p.mesh.rotation.z += dt * 5; }   // flutters and falls slowly without shrinking
+    else if (p.beam) { p.vel.multiplyScalar(1 - dt * 0.4); if (p.mesh.material) p.mesh.material.opacity = Math.max(0, 0.7 * p.life / (p.max || 1)); }
     else { p.vel.y -= 9 * dt; p.mesh.scale.multiplyScalar(1 - dt * 2.5); }
     if (p.life <= 0) { scene.remove(p.mesh); fxParts.splice(i, 1); }
   }
@@ -2948,6 +3048,7 @@ function loop() {
     updateMining(dt);
     updateMonsters(dt);
     updateAnimals(dt);
+    updateFredaReactions(dt);
     if (DIM === "realm") updateRealm(dt);
     updateFireBoss(dt);
     updateSkyBoss(dt);
