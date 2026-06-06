@@ -30,8 +30,6 @@
   </div>
   <div id="quest"><div class="h">Objective</div><div class="o" id="questText">Punch trees for wood</div></div>
   <canvas id="minimap" width="120" height="120"></canvas>
-  <div id="toast"></div>
-  <div id="banner"></div>
   <div id="bossbar"><div class="l" id="bossName">BOSS</div><div class="t"><div class="f" id="bossFill"></div></div></div>
   <div id="questPop"></div>
   <div id="xpwrap"><div id="lvl">LV 1</div><div id="xpbar"><div id="xpfill"></div></div></div>
@@ -57,6 +55,9 @@
 <div id="flash"></div>
 <div id="eventTint"></div>
 <div id="skyMsg"><span id="skyMsgText"></span></div>
+<!-- toast + banner live above overlays so feedback (Feed, shop, saves) is always visible -->
+<div id="toast"></div>
+<div id="banner"></div>
 <div id="cine" class="hidden"><div id="cineCap"></div></div>
 
 <!-- Main menu -->
@@ -126,7 +127,7 @@
     <div class="row"><span>Reduce motion</span><div class="seg"><button id="sRm0" class="on">Off</button><button id="sRm1">On</button></div></div>
     <div class="kbhead">Controls</div>
     <div id="controlsHelp" class="controlsHelp">
-      <div class="row"><span>Hit / Mine</span><b>Left click &nbsp;·&nbsp; Hit button (mobile)</b></div>
+      <div class="row"><span>Hit / Mine</span><b>Left click &nbsp;·&nbsp; H key &nbsp;·&nbsp; Hit button (mobile)</b></div>
       <div class="row"><span>Place block</span><b>Right click &nbsp;·&nbsp; Build button (mobile)</b></div>
       <div class="row"><span>Move</span><b>WASD / arrows &nbsp;·&nbsp; joystick (mobile)</b></div>
       <div class="row"><span>Jump</span><b>Space &nbsp;·&nbsp; Jump button (mobile)</b></div>
