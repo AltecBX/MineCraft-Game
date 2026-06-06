@@ -666,6 +666,7 @@ const ACHDEFS = [
   { id: "endin", label: "The End", desc: "Reach the End", test: () => DIM === "end" },
   { id: "skyboss", label: "Sky Beast Slain", desc: "Defeat the Sky Serpent", test: () => ach.has("skyboss") },
   { id: "daily", label: "Daily Challenger", desc: "Complete a daily challenge", test: () => ach.has("daily") },
+  { id: "raid", label: "Raid Defender", desc: "Survive a night raid", test: () => ach.has("raid") },
   { id: "treasure", label: "Treasure Hunter", desc: "Dig up buried treasure", test: () => ach.has("treasure") },
   { id: "cheeseking", label: "Cheese King Caught", desc: "Catch the Cheese King mouse", test: () => ach.has("cheeseking") },
   { id: "ninja", label: "Ninja Catcher", desc: "Catch a ninja mouse", test: () => ach.has("ninja") },
@@ -1356,8 +1357,13 @@ function updateAnimals(dt) {
   for (let i = cats.length - 1; i >= 0; i--) {
     const c = cats[i]; c.meow -= dt; if (c.meow <= 0) { c.meow = 6 + Math.random() * 8; SFX.meow(); }
     if (c.warnCd > 0) c.warnCd -= dt;
+    if (c.comboCd > 0) c.comboCd -= dt;
     c.moved = false;
     if (c.tamed) {
+      // night-raid stakes: monsters can wear a cat down and scare it off; cats recover when safe
+      let threat = false; if (isNight()) for (const m of monsters) { if (!m.dead && m.g.position.distanceTo(c.g.position) < 1.2) { threat = true; break; } }
+      if (threat) { c.hp -= 2.2 * dt; if (c.hp <= 0) { toast((c.name || (c.color + " cat")) + " was scared off. Protect your cats!"); SFX.hurt(); scene.remove(c.g); cats.splice(i, 1); continue; } }
+      else if (c.hp < 10) c.hp = Math.min(10, c.hp + dt);
       // danger warning: scout cats sense monsters day or night, others at night
       if (c.warnCd <= 0 && (isNight() || c.ability === "scout")) { for (const m of monsters) if (!m.dead && m.g.position.distanceTo(c.g.position) < 9) { SFX.meow(); toast((c.name || (c.color + " cat")) + " senses danger nearby"); c.warnCd = 12; break; } }
       // healer cats slowly mend Thomas when close
@@ -1389,6 +1395,22 @@ function updateAnimals(dt) {
 }
 
 // ---------- COMBAT ----------
+// when Thomas strikes a monster, a nearby tamed cat joins in with a pounce, scratch, or stun
+function catCombo(m) {
+  let cat = null, cd = 6; for (const c of cats) { if (!c.tamed) continue; const d = c.g.position.distanceTo(m.g.position); if (d < cd) { cd = d; cat = c; } }
+  if (!cat || (cat.comboCd || 0) > 0) return;
+  cat.comboCd = 2.4;
+  const mv = ["pounce", "scratch", "stun"][Math.floor(Math.random() * 3)];
+  const bonus = Math.round((6 + cat.level * 2) * catMult);
+  const dx = m.g.position.x - cat.g.position.x, dz = m.g.position.z - cat.g.position.z, d = Math.hypot(dx, dz) || 1;
+  cat.g.position.x += (dx / d) * Math.min(d, 1.6); cat.g.position.z += (dz / d) * Math.min(d, 1.6); cat.g.rotation.y = Math.atan2(dx, dz);
+  m.hp -= bonus; m.flash = 0.2; m.bar.up(Math.max(0, m.hp / m.max)); knock(m.g, mv === "pounce" ? 1.8 : 1.1);
+  hitSpark(m.g.position, 0x6cff6c); dmgNumber(m.g.position, bonus, true);
+  if (mv === "stun") { if (!m._bspd) m._bspd = m.speed; m.speed = m._bspd * 0.3; m.slow = Math.max(m.slow || 0, 1.6); m.touch = Math.max(m.touch, 1.2); m.windup = 0; }
+  toast((cat.name || (cat.color + " cat")) + " " + (mv === "stun" ? "stuns" : mv === "pounce" ? "pounces on" : "scratches") + " the monster! +" + bonus);
+  SFX.meow();
+  if (m.hp <= 0 && !m.dead) killMonster(m);
+}
 function aimEntity() {
   const targets = []; for (const m of monsters) if (!m.dead) targets.push(m.g); if (fireBoss) targets.push(fireBoss.g); if (dragon && !dragon.dead) { targets.push(dragon.g); for (const cr of crystals) if (!cr.dead) targets.push(cr.g); }
   if (!targets.length) return null;
@@ -1410,6 +1432,7 @@ function attackEntity(hit) {
     if (tool && tool.special === "fire") { m.burn = 3; m.burnTick = 0; }                       // Flame Sword: burn over time
     if (tool && tool.special === "lightning" && hammerCd <= 0) { hammerCd = 2.2; lightningZap(); } // Lightning Hammer: chain shock
     if (tool && tool.special === "pierce") { for (const m2 of monsters) { if (m2.dead || m2 === m) continue; if (m2.g.position.distanceTo(m.g.position) < 3) { m2.hp -= dmg * 0.6; m2.flash = 0.15; m2.bar.up(Math.max(0, m2.hp / m2.max)); hitSpark(m2.g.position, 0x76e4ff); if (m2.hp <= 0 && !m2.dead) killMonster(m2); break; } } }  // Crystal Spear pierces a second foe
+    catCombo(m);
     if (m.hp <= 0 && !m.dead) killMonster(m);
   }
   else if (ent && ent.userData.kind === "crystal") { const c = ent.userData.c; c.hp -= dmg; hitSpark(hit.point, 0x22d3ee); dmgNumber(hit.point, dmg, crit); if (c.hp <= 0 && !c.dead) { c.dead = true; scene.remove(c.g); crystalsLeft--; updateBoss(); } }
@@ -2579,9 +2602,9 @@ function loop() {
     hungerT += dt; if (hungerT > 4) { hungerT = 0; if (player.food > 0) { if (Math.random() < 0.5) player.food = Math.max(0, player.food - 1); } else damage(1); if (player.food > 16 && player.hp < player.maxHp) player.hp = Math.min(player.maxHp, player.hp + 1); updateVitals(); }
     if (DIM === "fire") { heatT += dt; if (heatT > 2.5) { heatT = 0; if (countItem(I_FIRECHARM) === 0) { damage(1); if (Math.random() < 0.5) toast("The heat is searing. You need a Flame Charm."); } } }
     if (DIM === "end") { droneT -= dt; if (droneT <= 0) { droneT = 5 + Math.random() * 4; if (typeof blip === "function") blip(58, 0.7, "sine", 0.05, 44); } }
-    // night raid + survive-night
-    if (isNight()) { wasNight = true; if (!raidShown) { raidShown = true; showBanner("Night raid. Defend Thomas."); } }
-    else { raidShown = false; if (wasNight) { if (!survivedNight) { survivedNight = true; achieve("night", "First Night Survived"); } addCoins(8); addXP(15); toast("You survived the night. +8 coins"); wasNight = false; } }
+    // night raid event: monsters assault the base; survive and protect the cats for a reward
+    if (isNight()) { wasNight = true; if (!raidShown) { raidShown = true; showBanner("Night Raid! Defend Thomas and the cats."); } }
+    else { raidShown = false; if (wasNight) { if (!survivedNight) { survivedNight = true; achieve("night", "First Night Survived"); } const safe = cats.filter(c => c.tamed).length; const rew = 8 + safe * 6; addCoins(rew); addXP(15 + safe * 5); showBanner("Raid survived! +" + rew + " coins. Cats safe: " + safe); toast("You protected " + safe + " cat" + (safe === 1 ? "" : "s") + "."); achieve("raid", "Raid Defender"); wasNight = false; } }
     updateStory(dt);
     updatePowerups(dt);
     updateBlockPowers(dt);
