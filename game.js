@@ -2951,7 +2951,7 @@ function enterRealm() {
   clearRealmCreatures(); clearRealmNPCs(); clearRealmBosses(); encounterCd = 0; realmHinted = {};
   // Sparky the Voltmouse is Thomas's electric starter and follows him everywhere in this stage
   if (!cteam.length) { cteam.push(makeCreature("voltmouse", 5, { name: "Pikachu" })); cdex.add("voltmouse"); toast("Pikachu wants to follow Thomas!"); showBanner("Pikachu joins Thomas! Press Use near creatures to battle."); }
-  spawnCompanion(Math.floor(player.pos.x), Math.floor(player.pos.z));
+  spawnCompanion(Math.floor(player.pos.x), Math.floor(player.pos.z)); buildRealmVault();
   // hub NPCs near the spawn portal
   spawnRealmNPC("nurse", 3, 3); spawnRealmNPC("shop", 6, 3); spawnRealmNPC("trainer", -3, 4); spawnRealmNPC("badge", 0, 6); spawnRealmNPC("teacher", -6, 2);
   dressBossArenas(); spawnRealmBosses(); dressSnorlaxBridge(); spawnSnoozer();
@@ -2961,8 +2961,26 @@ function enterRealm() {
   for (let i = 0; i < 2; i++) { const a = Math.random() * 6.28, r = 16 + Math.random() * 12; spawnRealmCreature(Math.random() < 0.5 ? "emberwing" : "dragonox", Math.floor(player.pos.x + Math.cos(a) * r), Math.floor(player.pos.z + Math.sin(a) * r), 8); }
   setQuest("Walk through the tall grass to find wild creatures, then Battle and Tame them.");
 }
+let realmVault = null;
+function buildRealmVault() {                            // a locked electric vault Pikachu can open (puzzle door)
+  const x = 12, z = -10, y = surfaceY(x, z) + 1;
+  setRaw(x, y, z, CHEST); setRaw(x, y, z + 1, CDOOR);  // treasure behind an electric lock
+  markDirty(x, z); markDirty(x, z + 1);
+  const key = chestKey(x, y, z); if (!chestStore.has(key)) chestStore.set(key, [{ id: CRYSTAL, count: 8 }, { id: FIRE_CRYSTAL, count: 3 }, { id: I_APPLE, count: 4 }, null, null, null, null, null, null]);
+  realmVault = { x, y, z, opened: !!realmBossDown.vault };
+  if (realmVault.opened) { setRaw(x, y, z + 1, AIR); markDirty(x, z + 1); }
+}
+function tryElectricDoor() {
+  if (!realmVault || realmVault.opened || !companion) return;
+  const v = realmVault, d = Math.hypot(companion.g.position.x - (v.x + 0.5), companion.g.position.z - (v.z + 1.5));
+  if (d < 3.2) {
+    v.opened = true; realmBossDown.vault = true; setRaw(v.x, v.y, v.z + 1, AIR); recordEdit(v.x, v.y, v.z + 1, AIR); markDirty(v.x, v.z + 1);
+    for (let i = 0; i < 8; i++) hitSpark(new THREE.Vector3(v.x + 0.5, v.y + 0.5, v.z + 1.5), 0xffe14d);
+    showBanner("Pikachu unlocks the electric vault! Grab the treasure."); SFX.zap(); reactCompanion("cheer");
+  }
+}
 function updateRealm(dt) {
-  updateCompanion(dt);
+  updateCompanion(dt); tryElectricDoor();
   for (const c of realmCreatures) {
     const dpx = player.pos.x - c.g.position.x, dpz = player.pos.z - c.g.position.z, dp = Math.hypot(dpx, dpz) || 1;
     if (c.fly) { c.t += dt; c.g.position.x += Math.cos(c.dir) * 1.4 * dt; c.g.position.z += Math.sin(c.dir) * 1.4 * dt; if (Math.random() < 0.012) c.dir += (Math.random() - .5); c.g.position.y = surfaceY(c.g.position.x, c.g.position.z) + 6 + Math.sin(c.t) * 0.6; if (c.g.userData.wings) { const f = Math.sin(c.t * 8) * 0.5; c.g.userData.wings[0].rotation.z = -f; c.g.userData.wings[1].rotation.z = f; } c.g.rotation.y = c.dir + Math.PI / 2; }
