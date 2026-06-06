@@ -2812,13 +2812,13 @@ function startTreasureHunt() {
 //  trademarked characters, so the public game stays legally clear.)
 // ============================================================================
 const MOVES = {
-  shock: { name: "Electric Shock", type: "electric", power: 18 }, fireblast: { name: "Fire Blast", type: "fire", power: 22 },
+  shock: { name: "Electric Shock", type: "electric", power: 18, status: "paralyze" }, fireblast: { name: "Fire Blast", type: "fire", power: 22, status: "burn" },
   watersurge: { name: "Water Surge", type: "water", power: 20 }, shadowball: { name: "Shadow Ball", type: "ghost", power: 20 },
   dragonstrike: { name: "Dragon Strike", type: "dragon", power: 24 }, psychicwave: { name: "Psychic Wave", type: "psychic", power: 20 },
   steelslam: { name: "Steel Slam", type: "steel", power: 18 }, darkbite: { name: "Dark Bite", type: "dark", power: 18 },
   iceslash: { name: "Ice Slash", type: "water", power: 18 }, healinglight: { name: "Healing Light", type: "fairy", power: 0, heal: 26 },
-  quickattack: { name: "Quick Attack", type: "normal", power: 12 }, thunderdash: { name: "Thunder Dash", type: "electric", power: 22 },
-  lavaburst: { name: "Lava Burst", type: "fire", power: 24 }, aquashield: { name: "Aqua Shield", type: "water", power: 0, shield: true },
+  quickattack: { name: "Quick Attack", type: "normal", power: 12 }, thunderdash: { name: "Thunder Dash", type: "electric", power: 22, status: "paralyze" },
+  lavaburst: { name: "Lava Burst", type: "fire", power: 24, status: "burn" }, aquashield: { name: "Aqua Shield", type: "water", power: 0, shield: true },
   meteorpunch: { name: "Meteor Punch", type: "rock", power: 22 }, punch: { name: "Power Punch", type: "fighting", power: 18 },
   fairykiss: { name: "Fairy Kiss", type: "fairy", power: 18 }, earthslam: { name: "Earth Slam", type: "ground", power: 20 },
   windgust: { name: "Wind Gust", type: "flying", power: 16 }
@@ -2953,7 +2953,7 @@ function enterRealm() {
   if (!cteam.length) { cteam.push(makeCreature("voltmouse", 5, { name: "Pikachu" })); cdex.add("voltmouse"); toast("Pikachu wants to follow Thomas!"); showBanner("Pikachu joins Thomas! Press Use near creatures to battle."); }
   spawnCompanion(Math.floor(player.pos.x), Math.floor(player.pos.z));
   // hub NPCs near the spawn portal
-  spawnRealmNPC("nurse", 3, 3); spawnRealmNPC("shop", 6, 3); spawnRealmNPC("trainer", -3, 4); spawnRealmNPC("badge", 0, 6);
+  spawnRealmNPC("nurse", 3, 3); spawnRealmNPC("shop", 6, 3); spawnRealmNPC("trainer", -3, 4); spawnRealmNPC("badge", 0, 6); spawnRealmNPC("teacher", -6, 2);
   dressBossArenas(); spawnRealmBosses(); dressSnorlaxBridge(); spawnSnoozer();
   if (Math.random() < 0.5) { const a = Math.random() * 6.28, r = 18 + Math.random() * 16; spawnRealmCreature("mewling", Math.floor(player.pos.x + Math.cos(a) * r), Math.floor(player.pos.z + Math.sin(a) * r), 10); }   // rare playful legendary
   const roamers = ["voltmouse", "moonfox", "aurawolf", "museling", "landshark", "steelmind", "rocktitan"];
@@ -2980,7 +2980,16 @@ function updateRealm(dt) {
   if (realmSnoozer && !battle && !cmenuOpen && realmSnoozer.g.position.distanceTo(player.pos) < 4 && !realmHinted.snoozer) { realmHinted.snoozer = 1; showBanner("A huge Snorlax blocks the path. Feed it Creature Food (press Use)."); }
   if (encounterCd > 0) encounterCd -= dt;
   const feet = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y), Math.floor(player.pos.z)), eye = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + 0.6), Math.floor(player.pos.z));
-  if ((feet === TALLGRASS || eye === TALLGRASS) && encounterCd <= 0 && !cmenuOpen && !battle) { encounterCd = 1.4; if (Math.random() < 0.3) { SFX.mine(); openEncounter(makeCreature(WILD_POOL[Math.floor(Math.random() * WILD_POOL.length)], 3 + Math.floor(Math.random() * 5)), null); } }
+  if ((feet === TALLGRASS || eye === TALLGRASS) && encounterCd <= 0 && !cmenuOpen && !battle) {
+    encounterCd = 1.4;
+    if (Math.random() < 0.3) {
+      const night = typeof isNight === "function" && isNight();
+      const pool = night ? WILD_POOL.concat(["moonfox", "shadeling", "frogblade"]) : WILD_POOL;   // night-only creatures appear after dark
+      let id = pool[Math.floor(Math.random() * pool.length)], opts = {};
+      if (Math.random() < 0.06) { id = Math.random() < 0.5 ? "mewling" : "museling"; opts.shiny = Math.random() < 0.5; showBanner("The air shimmers... a rare creature!"); }   // rare weather event
+      SFX.mine(); openEncounter(makeCreature(id, 3 + Math.floor(Math.random() * 5), opts), null);
+    }
+  }
 }
 // ---- encounter menu (Battle / Tame / Feed / Run) ----
 let cmenuOpen = false, cmenu = null;
@@ -3019,6 +3028,7 @@ function startBattle(wild, roamRef, opts) {
   opts = opts || {};
   if (!cteam.length) cteam.push(makeCreature("foxling", 5));
   let mine = cteam.find(c => c.hp > 0); if (!mine) { toast("Your creatures are too tired. Visit the Healing Nurse."); return; }
+  mine.status = null; mine.shield = false; wild.status = null;
   battle = { wild, mine, roam: roamRef, over: false, busy: false, menu: "main", trainer: !!opts.trainer, boss: opts.boss || null, badge: opts.badge || null, bossRef: opts.bossRef || null, phase: 1, log: opts.intro || (opts.trainer ? "A Trainer sends out " + wild.name + "!" : "A wild " + wild.name + " challenges you!") };
   showBattleWipe(); renderBattle(); show("battle"); document.exitPointerLock(); SFX.screech();
 }
@@ -3032,7 +3042,7 @@ function renderBattle() {
   const p = $("battlePanel"); if (!p || !battle) return; const b = battle;
   if (!b.menu) b.menu = "main";
   const bar = (c) => "<div class='cbar'><div class='cbarfill' style='width:" + Math.max(0, 100 * c.hp / c.maxHp) + "%'></div></div>";
-  const head = (c, side) => "<div class='cbox" + (side ? " mine" : "") + "'><b>" + (c.shiny ? "✨" : "") + c.name + "</b> Lv" + c.level + " " + typeChip(SPECIES[c.sp].type) + bar(c) + "<span class='muted'>" + Math.max(0, c.hp | 0) + "/" + c.maxHp + " · " + SPECIES[c.sp].type + (c.shield ? " · shielded" : "") + "</span></div>";
+  const head = (c, side) => "<div class='cbox" + (side ? " mine" : "") + "'><b>" + (c.shiny ? "✨" : "") + c.name + "</b> Lv" + c.level + " " + typeChip(SPECIES[c.sp].type) + bar(c) + "<span class='muted'>" + Math.max(0, c.hp | 0) + "/" + c.maxHp + " · " + SPECIES[c.sp].type + (c.shield ? " · shielded" : "") + (c.status === "burn" ? " · 🔥burn" : c.status === "paralyze" ? " · ⚡par" : "") + "</span></div>";
   p.innerHTML = "<div class='battleRow'>" + head(b.wild, false) + head(b.mine, true) + "</div><div class='battleLog'>" + b.log + "</div>";
   if (b.over) { const r = document.createElement("div"); r.style.cssText = "text-align:center;margin-top:8px"; const x = document.createElement("button"); x.className = "btn"; x.textContent = "Continue"; x.addEventListener("click", () => { battle = null; hide("battle"); closeCMenu(); }); r.appendChild(x); p.appendChild(r); return; }
   if (b.busy) return;   // enemy is acting; hide controls until their turn resolves
@@ -3074,12 +3084,16 @@ function switchCreature(c) {
   const b = battle; if (!b || b.over || b.busy || c.hp <= 0 || c === b.mine) return;
   b.mine = c; b.log = "Go, " + c.name + "!"; b.busy = true; b.menu = "main"; renderBattle(); setTimeout(enemyTurn, 600);
 }
+function inflictStatus(target, st) { if (st && !target.status && Math.random() < 0.45) { target.status = st; return " " + target.name + (st === "burn" ? " is burned!" : " is paralyzed!"); } return ""; }
+function burnTick(c) { if (c.status === "burn") { c.hp = Math.max(1, c.hp - Math.max(1, Math.round(c.maxHp * 0.06))); return " " + c.name + " is hurt by its burn."; } return ""; }
 function doMove(i) {
   const b = battle; if (!b || b.over || b.busy) return; b.busy = true;
   const mv = MOVES[b.mine.moves[i]]; b.menu = "main";
+  if (b.mine.status === "paralyze" && Math.random() < 0.28) { b.log = b.mine.name + " is paralyzed and can't move!" + burnTick(b.mine); renderBattle(); setTimeout(enemyTurn, 600); return; }
   if (mv.heal) { b.mine.hp = Math.min(b.mine.maxHp, b.mine.hp + mv.heal); b.log = b.mine.name + " used " + mv.name + " and recovered."; }
   else if (mv.shield) { b.mine.shield = true; b.log = b.mine.name + " raised " + mv.name + "."; }
-  else { const r = calcDamage(b.mine, b.wild, mv); b.wild.hp -= r.dmg; b.log = b.mine.name + " used " + mv.name + "! " + (r.eff > 1 ? "Super effective! " : r.eff < 1 ? "Not very effective. " : "") + "(" + r.dmg + ")"; battleFlash(mv.type); }
+  else { const r = calcDamage(b.mine, b.wild, mv); b.wild.hp -= r.dmg; b.log = b.mine.name + " used " + mv.name + "! " + (r.eff > 1 ? "Super effective! " : r.eff < 1 ? "Not very effective. " : "") + "(" + r.dmg + ")" + inflictStatus(b.wild, mv.status); battleFlash(mv.type); }
+  b.log += burnTick(b.mine);
   renderBattle();
   if (b.wild.hp <= 0) { return winBattle(); }
   setTimeout(() => { enemyTurn(); }, 600);
@@ -3087,11 +3101,14 @@ function doMove(i) {
 function enemyTurn() {
   const b = battle; if (!b || b.over) return;
   if (b.boss) { const frac = b.wild.hp / b.wild.maxHp, ph = frac > 0.66 ? 1 : frac > 0.33 ? 2 : 3; if (ph > b.phase) { b.phase = ph; b.wild.hp = Math.min(b.wild.maxHp, b.wild.hp + 8); b.log = b.wild.name + " powers up to phase " + ph + "!"; renderBattle(); } }
+  if (b.wild.status === "paralyze" && Math.random() < 0.28) { b.log = b.wild.name + " is paralyzed and can't move!" + burnTick(b.wild); b.busy = false; renderBattle(); if (b.wild.hp <= 0) return winBattle(); return; }
   const mid = b.wild.moves[Math.floor(Math.random() * b.wild.moves.length)], mv = MOVES[mid];
   if (mv.heal) { b.wild.hp = Math.min(b.wild.maxHp, b.wild.hp + mv.heal); b.log = b.wild.name + " used " + mv.name + "."; }
   else if (mv.shield) { b.wild.shield = true; b.log = b.wild.name + " braced with " + mv.name + "."; }
-  else { let r = calcDamage(b.wild, b.mine, mv); if (b.boss) r.dmg = Math.round(r.dmg * (1 + (b.phase - 1) * 0.2)); if (b.mine.shield) { r.dmg = Math.round(r.dmg * 0.5); b.mine.shield = false; } b.mine.hp -= r.dmg; b.log = (b.trainer ? "" : b.boss ? "" : "Wild ") + b.wild.name + " used " + mv.name + "! (" + r.dmg + ")"; battleFlash(mv.type); }
+  else { let r = calcDamage(b.wild, b.mine, mv); if (b.boss) r.dmg = Math.round(r.dmg * (1 + (b.phase - 1) * 0.2)); if (b.mine.shield) { r.dmg = Math.round(r.dmg * 0.5); b.mine.shield = false; } b.mine.hp -= r.dmg; b.log = (b.trainer ? "" : b.boss ? "" : "Wild ") + b.wild.name + " used " + mv.name + "! (" + r.dmg + ")" + inflictStatus(b.mine, mv.status); battleFlash(mv.type); }
+  b.log += burnTick(b.wild);
   b.busy = false; renderBattle();
+  if (b.wild.hp <= 0) return winBattle();
   if (b.mine.hp <= 0) {
     const next = cteam.find(c => c.hp > 0 && c !== b.mine);
     if (next) { b.mine = next; b.log = "Your creature fainted. Go, " + next.name + "!"; renderBattle(); }
@@ -3121,7 +3138,7 @@ function tryTameBattle() {
 // ---- Creature Realm: NPCs, healing, items, shop, badges, team/dex menus ----
 let realmNPCs = [], realmWins = 0, realmBossDown = {};
 const citems = { potion: 0, capture: 0, food: 0 };
-const NPC_DEFS = { nurse: { name: "Healing Nurse", col: 0xff8aa0, hat: 0xffffff }, shop: { name: "Shopkeeper", col: 0x4a7ec2, hat: 0x2c4d80 }, trainer: { name: "Creature Trainer", col: 0x6abf6a, hat: 0x2f7a2f }, badge: { name: "Badge Master", col: 0xe8b23a, hat: 0xc98a1e } };
+const NPC_DEFS = { nurse: { name: "Healing Nurse", col: 0xff8aa0, hat: 0xffffff }, shop: { name: "Shopkeeper", col: 0x4a7ec2, hat: 0x2c4d80 }, trainer: { name: "Creature Trainer", col: 0x6abf6a, hat: 0x2f7a2f }, badge: { name: "Badge Master", col: 0xe8b23a, hat: 0xc98a1e }, teacher: { name: "Move Teacher", col: 0xb06ad0, hat: 0x7a3ea0 } };
 function buildNPC(kind) {
   const d = NPC_DEFS[kind], g = new THREE.Group();
   const robe = box(0.5, 0.85, 0.36, d.col); robe.position.y = 0.62; g.add(robe);
@@ -3252,9 +3269,28 @@ function realmInteract() {   // Use near a realm NPC, boss, or the Snoozer. retu
   let bb = null, bd = 3.6; for (const b of realmBosses) { const d = b.g.position.distanceTo(player.pos); if (d < bd) { bd = d; bb = b; } }
   if (bb) { challengeBoss(bb); return true; }
   let np = null, nd = 3.4; for (const n of realmNPCs) { const d = n.g.position.distanceTo(player.pos); if (d < nd) { nd = d; np = n; } }
-  if (!np) return false;
-  if (np.kind === "nurse") healTeam(); else if (np.kind === "shop") openCShop(); else if (np.kind === "trainer") trainerBattle(); else if (np.kind === "badge") openBadgeCase();
-  return true;
+  if (np) {
+    if (np.kind === "nurse") healTeam(); else if (np.kind === "shop") openCShop(); else if (np.kind === "trainer") trainerBattle(); else if (np.kind === "badge") openBadgeCase(); else if (np.kind === "teacher") teachMove();
+    return true;
+  }
+  // fishing: stand by water and press Use to hook a water creature
+  const px = Math.floor(player.pos.x), py = Math.floor(player.pos.y), pz = Math.floor(player.pos.z);
+  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) { if (getBlock(px + dx, py, pz + dz) === WATER || getBlock(px + dx, py - 1, pz + dz) === WATER) { goFishing(); return true; } }
+  return false;
+}
+function goFishing() {
+  if (battle || cmenuOpen) return;
+  toast("You cast a line into the water...");
+  const id = Math.random() < 0.15 ? "tidequeen" : "frogblade";   // mostly Greninja, a rare big catch
+  openEncounter(makeCreature(id, 4 + Math.floor(Math.random() * 6), { shiny: Math.random() < 0.1 }), null);
+}
+function teachMove() {
+  const c = cteam.find(x => x.moves.length < 4);
+  if (!c) { toast("Move Teacher: your creatures have learned all they can for now."); return; }
+  const learnable = ["quickattack", "dragonstrike", "psychicwave", "fireblast", "watersurge", "shadowball", "iceslash"].filter(m => c.moves.indexOf(m) < 0);
+  if (!learnable.length) { toast("Move Teacher: nothing new to teach " + c.name + "."); return; }
+  const mv = learnable[Math.floor(Math.random() * learnable.length)]; c.moves.push(mv);
+  showBanner(c.name + " learned " + MOVES[mv].name + "!"); SFX.levelUp(); toast("Move Teacher taught " + c.name + " a new move.");
 }
 
 // ---------- GAME START ----------
