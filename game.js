@@ -1742,15 +1742,45 @@ function buildViewItem() {
   if (it && isItem(it.id)) {
     const tool = ITEMS[it.id].tool, sp = ITEMS[it.id].special, tier = ITEMS[it.id].tier || 1;
     // metal tone scales with tier so a stone tool reads grey and an iron/upgraded tool reads bright steel
-    const metal = sp === "fire" ? 0xff7a2a : sp === "pierce" ? 0x76e4ff : tier >= 2 ? 0xcfd6de : 0x8f8f8f;
-    const wood = 0x6e4a25;
-    if (tool === "sword") { const blade = box(0.06, 0.5, 0.06, metal); blade.position.y = 0.32; g.add(blade); const tip = box(0.06, 0.1, 0.06, metal); tip.position.y = 0.6; tip.rotation.z = 0.78; g.add(tip); const gu = box(0.22, 0.05, 0.08, 0xc9a227); gu.position.y = 0.06; g.add(gu); const grip = box(0.05, 0.14, 0.05, wood); grip.position.y = -0.04; g.add(grip); const pom = box(0.07, 0.05, 0.07, 0xc9a227); pom.position.y = -0.12; g.add(pom); }
-    else if (tool === "hammer") { const head = box(0.26, 0.2, 0.18, metal); head.position.y = 0.36; g.add(head); const trim = box(0.28, 0.06, 0.2, 0xffe066); trim.position.y = 0.36; g.add(trim); const stick = box(0.05, 0.42, 0.05, wood); stick.position.y = 0.1; g.add(stick); }
-    else if (tool === "bow") { const col = sp === "slime" ? 0x49e06a : 0x9fe8ff; const arc = box(0.06, 0.5, 0.06, col); arc.position.y = 0.25; g.add(arc); const tip1 = box(0.05, 0.12, 0.05, 0xcfcfe0); tip1.position.set(0, 0.48, 0.04); tip1.rotation.x = 0.5; g.add(tip1); const tip2 = box(0.05, 0.12, 0.05, 0xcfcfe0); tip2.position.set(0, 0.02, 0.04); tip2.rotation.x = -0.5; g.add(tip2); }
-    else if (tool === "pick") { const stick = box(0.05, 0.44, 0.05, wood); stick.position.y = 0.08; g.add(stick); const bar = box(0.34, 0.05, 0.05, metal); bar.position.y = 0.34; bar.rotation.z = 0.18; g.add(bar); const tL = box(0.05, 0.13, 0.05, metal); tL.position.set(-0.17, 0.3, 0); tL.rotation.z = 0.7; g.add(tL); const tR = box(0.05, 0.13, 0.05, metal); tR.position.set(0.17, 0.3, 0); tR.rotation.z = -0.7; g.add(tR); }
-    else if (tool === "axe") { const stick = box(0.05, 0.44, 0.05, wood); stick.position.y = 0.08; g.add(stick); const blade = box(0.04, 0.22, 0.22, metal); blade.position.set(0.13, 0.33, 0); g.add(blade); const edge = box(0.03, 0.26, 0.1, metal); edge.position.set(0.18, 0.33, 0); g.add(edge); const collar = box(0.08, 0.08, 0.08, metal); collar.position.set(0.04, 0.33, 0); g.add(collar); }
-    else { const head = box(0.18, 0.1, 0.06, metal); head.position.y = 0.34; g.add(head); const stick = box(0.05, 0.34, 0.05, wood); stick.position.y = 0.12; g.add(stick); }
-    g.position.set(0.42, -0.42, -0.75); g.rotation.set(-0.4, -0.3, 0.25);
+    const metal = sp === "fire" ? 0xff7a2a : sp === "pierce" ? 0x76e4ff : tier >= 2 ? 0xcfd6de : 0x9a9aa2;
+    const hi = sp === "fire" ? 0xffd24a : sp === "pierce" ? 0xd6f7ff : 0xeef1f6;   // bright edge highlight
+    const wood = 0x6e4a25, dark = 0x4a3318, gold = 0xc9a227;
+    if (tool === "sword") {
+      const blade = box(0.085, 0.52, 0.028, metal); blade.position.y = 0.36; g.add(blade);              // flat blade
+      const fuller = box(0.02, 0.44, 0.032, hi); fuller.position.set(0, 0.34, 0.002); g.add(fuller);     // center groove highlight
+      const edge = box(0.015, 0.5, 0.03, hi); edge.position.set(0.05, 0.36, 0); g.add(edge);             // bright cutting edge
+      const tip = box(0.085, 0.1, 0.028, metal); tip.position.set(0, 0.63, 0); tip.rotation.z = 0.785; g.add(tip);
+      const gu = box(0.26, 0.055, 0.09, gold); gu.position.y = 0.08; g.add(gu);                          // crossguard
+      const grip = box(0.05, 0.16, 0.05, dark); grip.position.y = -0.03; g.add(grip);                    // wrapped grip
+      const pom = box(0.08, 0.06, 0.08, gold); pom.position.y = -0.13; g.add(pom);
+    }
+    else if (tool === "hammer") { const head = box(0.28, 0.22, 0.2, metal); head.position.y = 0.38; g.add(head); const face = box(0.06, 0.24, 0.22, hi); face.position.set(0.15, 0.38, 0); g.add(face); const trim = box(0.3, 0.06, 0.22, 0xffe066); trim.position.y = 0.38; g.add(trim); const stick = box(0.05, 0.46, 0.05, wood); stick.position.y = 0.1; g.add(stick); }
+    else if (tool === "bow") {
+      const col = sp === "slime" ? 0x49e06a : sp === "ice" ? 0x9fe8ff : 0xb5793a;
+      const grip = box(0.06, 0.16, 0.06, dark); grip.position.y = 0.25; g.add(grip);
+      const uL = box(0.05, 0.26, 0.05, col); uL.position.set(-0.02, 0.42, 0); uL.rotation.z = -0.45; g.add(uL);    // upper limb
+      const uT = box(0.045, 0.16, 0.045, col); uT.position.set(-0.12, 0.6, 0); uT.rotation.z = -0.95; g.add(uT);   // upper recurve tip
+      const lL = box(0.05, 0.26, 0.05, col); lL.position.set(-0.02, 0.08, 0); lL.rotation.z = 0.45; g.add(lL);     // lower limb
+      const lT = box(0.045, 0.16, 0.045, col); lT.position.set(-0.12, -0.1, 0); lT.rotation.z = 0.95; g.add(lT);
+      const string = box(0.012, 0.66, 0.012, 0xf2f2f2); string.position.set(-0.16, 0.25, 0); g.add(string);
+    }
+    else if (tool === "pick") {
+      const stick = box(0.05, 0.5, 0.05, wood); stick.position.y = 0.06; g.add(stick);
+      const collar = box(0.09, 0.09, 0.09, dark); collar.position.y = 0.36; g.add(collar);
+      const tL = box(0.24, 0.06, 0.06, metal); tL.position.set(-0.12, 0.4, 0); tL.rotation.z = 0.42; g.add(tL);    // left arm sweeping up
+      const tR = box(0.24, 0.06, 0.06, metal); tR.position.set(0.12, 0.4, 0); tR.rotation.z = -0.42; g.add(tR);    // right arm
+      const pL = box(0.06, 0.1, 0.06, hi); pL.position.set(-0.23, 0.5, 0); pL.rotation.z = 0.42; g.add(pL);        // sharp tips
+      const pR = box(0.06, 0.1, 0.06, hi); pR.position.set(0.23, 0.5, 0); pR.rotation.z = -0.42; g.add(pR);
+    }
+    else if (tool === "axe") {
+      const stick = box(0.05, 0.5, 0.05, wood); stick.position.y = 0.06; g.add(stick);
+      const cheek = box(0.06, 0.24, 0.18, metal); cheek.position.set(0.12, 0.36, 0); g.add(cheek);                 // axe head body
+      const edge = box(0.035, 0.3, 0.12, hi); edge.position.set(0.2, 0.36, 0); g.add(edge);                        // flared cutting edge
+      const beard = box(0.05, 0.1, 0.13, metal); beard.position.set(0.17, 0.24, 0); g.add(beard);                  // beard (lower edge)
+      const poll = box(0.07, 0.12, 0.12, metal); poll.position.set(0.02, 0.36, 0); g.add(poll);                    // back poll
+    }
+    else { const head = box(0.2, 0.1, 0.06, metal); head.position.y = 0.34; g.add(head); const stick = box(0.05, 0.36, 0.05, wood); stick.position.y = 0.12; g.add(stick); }
+    g.position.set(0.42, -0.42, -0.75); g.rotation.set(-0.45, tool === "bow" ? -0.05 : -0.32, tool === "bow" ? 0.05 : 0.22);
   } else if (it) {
     const c = BLOCKS[it.id]; const cube = box(0.32, 0.32, 0.32, new THREE.Color(c.top[0], c.top[1], c.top[2]).getHex()); g.add(cube); g.position.set(0.42, -0.4, -0.7); g.rotation.set(-0.4, 0.5, 0);
   } else { const fist = box(0.18, 0.2, 0.2, 0xd9a06b); g.add(fist); g.position.set(0.4, -0.42, -0.7); g.rotation.set(-0.3, 0, 0); }
@@ -1850,6 +1880,85 @@ function buildPortalFrame(cx, baseY, z, dir, dest, edgeBlock) { // dir: 'x' plan
   rebuildPortalCells();
   for (let i = -2; i <= 3; i++) markDirty(cx + i, z);
 }
+// ---------- CREATURE VALLEY: the Creature Door lives FAR from spawn, reached by travel ----------
+const CV_X = 86, CV_Z = -54;           // far from the Fire portal (8,0) and spawn, in its own direction
+let trailGroup = null;
+function clearTrail() { if (trailGroup) { scene.remove(trailGroup); trailGroup = null; } }
+function buildSparkTrail(x0, z0, x1, z1) {     // glowing electric sparks guide Thomas toward the valley
+  clearTrail(); trailGroup = new THREE.Group(); scene.add(trailGroup);
+  const steps = 16;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / (steps + 1), x = Math.floor(x0 + (x1 - x0) * t), z = Math.floor(z0 + (z1 - z0) * t);
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(150,230,255,0.95)", "rgba(60,140,255,0)"), depthWrite: false, transparent: true, fog: false }));
+    s.scale.set(1.1, 1.1, 1); s.position.set(x + 0.5, surfaceY(x, z) + 1.3, z + 0.5); trailGroup.add(s);
+  }
+}
+function buildCreatureValley() {
+  // force-generate the valley's chunks first so terrain streaming will not overwrite the door later
+  const cMinX = Math.floor((CV_X - 9) / CH), cMaxX = Math.floor((CV_X + 9) / CH), cMinZ = Math.floor((CV_Z - 9) / CH), cMaxZ = Math.floor((CV_Z + 9) / CH);
+  for (let cx = cMinX; cx <= cMaxX; cx++) for (let cz = cMinZ; cz <= cMaxZ; cz++) genChunk(cx, cz);
+  const baseY = surfaceY(CV_X, CV_Z);
+  // colorful tall-grass meadow
+  for (let dx = -7; dx <= 7; dx++) for (let dz = -7; dz <= 7; dz++) {
+    if (dx * dx + dz * dz > 50) continue; const gx = CV_X + dx, gz = CV_Z + dz, gy = surfaceY(gx, gz);
+    if (getBlock(gx, gy, gz) === GRASS && getBlock(gx, gy + 1, gz) === AIR && Math.random() < 0.55) setRaw(gx, gy + 1, gz, TALLGRASS);
+  }
+  // colorful little trees ring the valley
+  for (const [tx, tz] of [[-6, -3], [6, -4], [-5, 5], [7, 4], [0, -7], [-7, 1]]) {
+    const x = CV_X + tx, z = CV_Z + tz, y = surfaceY(x, z);
+    for (let h = 0; h < 3; h++) setRaw(x, y + 1 + h, z, WOOD);
+    for (let lx = -1; lx <= 1; lx++) for (let lz = -1; lz <= 1; lz++) setRaw(x + lx, y + 4, z + lz, LEAVES);
+    setRaw(x, y + 5, z, LEAVES);
+  }
+  // creature statues flanking the door + a glowing crystal shrine behind it
+  for (const sx of [-3, 3]) { const x = CV_X + sx, z = CV_Z + 4, y = surfaceY(x, z); setRaw(x, y + 1, z, COBBLE); setRaw(x, y + 2, z, BRICK); setRaw(x, y + 3, z, CRYSTAL); }
+  for (let i = 0; i < 4; i++) setRaw(CV_X, baseY + 1 + i, CV_Z - 3, i < 3 ? BRICK : CRYSTAL);
+  setRaw(CV_X - 1, baseY + 1, CV_Z - 3, CRYSTAL); setRaw(CV_X + 1, baseY + 1, CV_Z - 3, CRYSTAL);
+  // the Creature Door portal
+  buildPortalFrame(CV_X, baseY, CV_Z, "x", "realm", CDOOR);
+  addPortalSign(CV_X, baseY, CV_Z, "CREATURE VALLEY", "#c79bff");
+}
+// ---------- SPARKY: the electric-mouse companion that follows Thomas in the Creature realm ----------
+let companion = null;
+function clearCompanion() { if (companion) { scene.remove(companion.g); companion = null; } }
+function spawnCompanion(x, z) {
+  clearCompanion();
+  const g = buildCreatureModel("voltmouse", false); g.scale.multiplyScalar(0.62);
+  g.position.set(x + 1.2, surfaceY(x, z), z + 0.5); scene.add(g);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(255,240,120,0.95)", "rgba(255,200,40,0)"), depthWrite: false, transparent: true, fog: false }));
+  glow.scale.set(1.8, 1.8, 1); glow.position.y = 0.7; glow.visible = false; g.add(glow);
+  companion = { g, glow, vy: 0, walkT: 0, t: Math.random() * 6, jumpCd: 0, emoteCd: 4, cheer: 0, friendship: 0 };
+}
+function companionEmote(col) { if (companion) hitSpark(new THREE.Vector3(companion.g.position.x, companion.g.position.y + 1.2, companion.g.position.z), col || 0xffe14d); }
+function reactCompanion(kind) {        // "alert" when a wild creature appears, "cheer" for treasure/wins
+  if (!companion) return;
+  companion.cheer = 1.2; companion.vy = 5; companionEmote(kind === "cheer" ? 0xff7ad6 : 0xfff14a);
+  blip(kind === "cheer" ? 880 : 1200, 0.08, "square", 0.08, kind === "cheer" ? 1320 : 1600);
+}
+function updateCompanion(dt) {
+  if (!companion) return;
+  const c = companion, g = c.g; c.t += dt; c.jumpCd = Math.max(0, c.jumpCd - dt); c.cheer = Math.max(0, c.cheer - dt);
+  const dx = player.pos.x - g.position.x, dz = player.pos.z - g.position.z, d = Math.hypot(dx, dz) || 1;
+  let moving = false;
+  if (d > 1.9) {                                  // stay close, run to catch up, but never crowd Thomas
+    const run = d > 6, sp = run ? 5.4 : 3.0;
+    g.position.x += dx / d * sp * dt; g.position.z += dz / d * sp * dt; g.rotation.y = Math.atan2(dx, dz); moving = true;
+    c.walkT += dt * (run ? 16 : 10);
+    if (run && c.jumpCd <= 0 && c.vy === 0) { c.vy = 5; c.jumpCd = 0.7; }   // little hops when sprinting to keep up
+  } else { g.rotation.y = Math.atan2(dx, dz); }
+  // gravity so it lands on terrain
+  const gy = surfaceY(g.position.x, g.position.z);
+  c.vy -= 22 * dt; g.position.y += c.vy * dt; if (g.position.y <= gy) { g.position.y = gy; c.vy = 0; }
+  // leg + idle animation
+  const L = g.userData.legs; if (L) { if (moving) { const s = Math.sin(c.walkT) * 0.6; L[0].rotation.x = s; L[1].rotation.x = -s; L[2].rotation.x = -s; L[3].rotation.x = s; } else { for (const l of L) l.rotation.x *= 0.85; } }
+  if (!moving && c.vy === 0) g.position.y = gy + Math.abs(Math.sin(c.t * 3)) * 0.05;     // cute idle bob
+  if (c.cheer > 0) g.rotation.z = Math.sin(c.t * 24) * 0.18; else g.rotation.z = 0;       // wiggle when cheering
+  // glow slightly when a rare/legendary creature is near
+  let rare = false; for (const rc of realmCreatures) { if ((rc.sp.legend || rc.shiny) && rc.g.position.distanceTo(g.position) < 14) { rare = true; break; } }
+  c.glow.visible = rare; if (rare) c.glow.material.opacity = 0.45 + 0.4 * Math.sin(c.t * 6);
+  // occasional happy spark emote
+  c.emoteCd -= dt; if (c.emoteCd <= 0) { c.emoteCd = 6 + Math.random() * 7; companionEmote(0xffe14d); if (Math.random() < 0.4) blip(1000, 0.05, "square", 0.05, 1500); }
+}
 let portalCd = 0;
 function checkPortal() {
   if (portalCd > 0) return;
@@ -1866,9 +1975,9 @@ function transitionTo(name) {
   SFX.portal(); const fade = document.getElementById("fade"); fade.style.opacity = "1";
   setTimeout(() => { loadDimension(name); fade.style.opacity = "0"; }, 520);
 }
-function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } if (typeof skyBoss !== "undefined" && skyBoss) { scene.remove(skyBoss.g); skyBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (merchant) { scene.remove(merchant.g); merchant = null; } if (typeof clearRealmCreatures === "function") clearRealmCreatures(); if (typeof clearRealmNPCs === "function") clearRealmNPCs(); if (typeof clearRealmBosses === "function") clearRealmBosses(); battle = null; cmenuOpen = false; if (typeof hide === "function") { hide("battle"); hide("cmenu"); } if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
+function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } if (typeof skyBoss !== "undefined" && skyBoss) { scene.remove(skyBoss.g); skyBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (merchant) { scene.remove(merchant.g); merchant = null; } if (typeof clearRealmCreatures === "function") clearRealmCreatures(); if (typeof clearRealmNPCs === "function") clearRealmNPCs(); if (typeof clearRealmBosses === "function") clearRealmBosses(); if (typeof clearCompanion === "function") clearCompanion(); battle = null; cmenuOpen = false; if (typeof hide === "function") { hide("battle"); hide("cmenu"); } if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
 function loadDimension(name, fromSave) {
-  DIM = name; clearWorld(); clearEntities(); clearPortalSigns();
+  DIM = name; clearWorld(); clearEntities(); clearPortalSigns(); clearTrail();
   if (name === "fire") achieve("firep", "Fire Portal Opened");
   if (name === "end") achieve("endp", "End Portal Opened");
   player.pos.set(0.5, 50, 0.5); player.vel.set(0, 0, 0);
@@ -1877,7 +1986,7 @@ function loadDimension(name, fromSave) {
   for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) buildChunk(dx, dz);
   if (!fromSave) { player.pos.y = surfaceY(0, 0) + 1; player.spawn.copy(player.pos); }
   // dimension setup
-  if (name === "overworld") { scene.fog = new THREE.Fog(0x9fd2ff, 20, GFX[settings.gfx].dist * CH); hemi.color.set(0xbfe3ff); sun.color.set(0xffffff); showBanner("Overworld"); buildPortalFrame(8, surfaceY(8, 0), 0, "x", "fire"); addPortalSign(8, surfaceY(8, 0), 0, "FIRE DIMENSION", "#ff8a4a"); if (fireBossDown) { buildPortalFrame(-10, surfaceY(-10, 0), 0, "x", "sky"); addPortalSign(-10, surfaceY(-10, 0), 0, "SKY ISLANDS", "#bfe3ff"); } buildPortalFrame(12, surfaceY(12, -6), -6, "x", "realm", CDOOR); addPortalSign(12, surfaceY(12, -6), -6, "CREATURE REALM", "#c79bff"); setQuest("Walk to the purple Creature Door (east) for the Creature Realm, or the orange portal for Fire"); }
+  if (name === "overworld") { scene.fog = new THREE.Fog(0x9fd2ff, 20, GFX[settings.gfx].dist * CH); hemi.color.set(0xbfe3ff); sun.color.set(0xffffff); showBanner("Overworld"); buildPortalFrame(8, surfaceY(8, 0), 0, "x", "fire"); addPortalSign(8, surfaceY(8, 0), 0, "FIRE DIMENSION", "#ff8a4a"); if (fireBossDown) { buildPortalFrame(-64, surfaceY(-64, 36), 36, "x", "sky"); addPortalSign(-64, surfaceY(-64, 36), 36, "SKY ISLANDS", "#bfe3ff"); } buildCreatureValley(); buildSparkTrail(16, -10, CV_X - 6, CV_Z); setObjective(CV_X + 0.5, surfaceY(CV_X, CV_Z) + 1, CV_Z + 0.5); setQuest("Follow the electric sparks far to the northeast to discover Creature Valley"); }
   else if (name === "realm") { scene.background = new THREE.Color(0x8ad0ff); scene.fog = new THREE.Fog(0xbfeaff, 26, GFX[settings.gfx].dist * CH); hemi.color.set(0xdaf3ff); hemi.intensity = 0.95; sun.intensity = 1.0; sun.color.set(0xffffff); showBanner("The Creature Battle Realm"); buildPortalFrame(6, surfaceY(6, 0), 0, "x", "overworld", CDOOR); addPortalSign(6, surfaceY(6, 0), 0, "BACK HOME", "#bfe3ff"); enterRealm(); }
   else if (name === "fire") { scene.background = new THREE.Color(0x2a0808); scene.fog = new THREE.Fog(0x551111, 8, 40); hemi.color.set(0xff7a3a); hemi.intensity = 0.6; sun.intensity = 0.5; sun.color.set(0xff8a4a); showBanner("Fire Dimension"); clearFirePad(0, 0); if (fireBossDown) { buildPortalFrame(0, surfaceY(0, -8), -8, "x", "end"); setRaw(0, surfaceY(0, -8) + 1, -8, PORTAL); setQuest("Enter the portal to reach the End"); } else { spawnFireBoss(); setQuest("Defeat the Fire Guardian. A Flame Charm will protect you from the heat"); } }
   else if (name === "sky") { scene.background = new THREE.Color(0x8fd0ff); scene.fog = new THREE.Fog(0xbfe3ff, 36, 150); hemi.color.set(0xdff1ff); hemi.intensity = 0.95; sun.intensity = 0.9; sun.color.set(0xffffff); showBanner("Sky Islands"); buildPortalFrame(6, surfaceY(6, 0), 0, "x", "overworld"); addPortalSign(6, surfaceY(6, 0), 0, "BACK HOME", "#bfe3ff"); spawnSkySerpent(); setQuest("Glide the Sky Islands and defeat the Sky Serpent"); }
@@ -2772,7 +2881,9 @@ function spawnRealmCreature(id, x, z, level) {
 }
 function enterRealm() {
   clearRealmCreatures(); clearRealmNPCs(); clearRealmBosses(); encounterCd = 0; realmHinted = {};
-  if (!cteam.length) { cteam.push(makeCreature("foxling", 5, { shiny: false })); cdex.add("foxling"); toast("Foxling joins you as your battle companion!"); }
+  // Sparky the Voltmouse is Thomas's electric starter and follows him everywhere in this stage
+  if (!cteam.length) { cteam.push(makeCreature("voltmouse", 5, { name: "Sparky" })); cdex.add("voltmouse"); toast("Sparky the Voltmouse wants to follow Thomas!"); showBanner("Sparky joins Thomas! Press Use near creatures to battle."); }
+  spawnCompanion(Math.floor(player.pos.x), Math.floor(player.pos.z));
   // hub NPCs near the spawn portal
   spawnRealmNPC("nurse", 3, 3); spawnRealmNPC("shop", 6, 3); spawnRealmNPC("trainer", -3, 4); spawnRealmNPC("badge", 0, 6);
   spawnRealmBosses(); spawnSnoozer();
@@ -2783,6 +2894,7 @@ function enterRealm() {
   setQuest("Walk through the tall grass to find wild creatures, then Battle and Tame them.");
 }
 function updateRealm(dt) {
+  updateCompanion(dt);
   for (const c of realmCreatures) {
     const dpx = player.pos.x - c.g.position.x, dpz = player.pos.z - c.g.position.z, dp = Math.hypot(dpx, dpz) || 1;
     if (c.fly) { c.t += dt; c.g.position.x += Math.cos(c.dir) * 1.4 * dt; c.g.position.z += Math.sin(c.dir) * 1.4 * dt; if (Math.random() < 0.012) c.dir += (Math.random() - .5); c.g.position.y = surfaceY(c.g.position.x, c.g.position.z) + 6 + Math.sin(c.t) * 0.6; if (c.g.userData.wings) { const f = Math.sin(c.t * 8) * 0.5; c.g.userData.wings[0].rotation.z = -f; c.g.userData.wings[1].rotation.z = f; } c.g.rotation.y = c.dir + Math.PI / 2; }
@@ -2805,7 +2917,7 @@ function updateRealm(dt) {
 // ---- encounter menu (Battle / Tame / Feed / Run) ----
 let cmenuOpen = false, cmenu = null;
 function openEncounter(wild, roamRef) {
-  cmenu = { wild, roam: roamRef }; cmenuOpen = true; encounterCd = 3; creatureCry(wild.type);
+  cmenu = { wild, roam: roamRef }; cmenuOpen = true; encounterCd = 3; creatureCry(wild.type); reactCompanion("alert");
   const p = $("cmenuPanel"); if (p) {
     const heartLine = () => { const h = Math.max(0, Math.min(5, Math.round(wild.friendship / 2))); return "Friendship: " + ("❤️".repeat(h) || "—") + "  ·  Tame chance " + Math.round(tameChance(wild) * 100) + "%"; };
     p.innerHTML = "<h2>" + (wild.shiny ? "✨ " : "") + "A wild " + wild.name + " appeared!</h2><p class='muted'>Level " + wild.level + " · " + SPECIES[wild.sp].type + " type</p>";
@@ -2899,6 +3011,8 @@ function winBattle() {
   if (b.boss && b.badge) { if (!cbadges.has(b.badge)) { cbadges.add(b.badge); extra = " The " + b.badge + " badge is yours!"; showBanner("Badge earned: " + b.badge + "!"); } realmBossDown[b.badge] = true; if (b.bossRef) { scene.remove(b.bossRef.g); realmBosses = realmBosses.filter(x => x !== b.bossRef); } }
   b.log = "You defeated " + b.wild.name + "! +" + reward + " XP" + (ups ? ". Lv" + b.mine.level + "!" : "") + extra;
   if (b.roam) { scene.remove(b.roam.g); realmCreatures = realmCreatures.filter(c => c !== b.roam); }
+  if (companion) companion.friendship++;
+  reactCompanion("cheer");
   SFX.victory(); renderBattle();
 }
 function tryTameBattle() {
