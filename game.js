@@ -137,7 +137,8 @@ const SFX = {
   zap: () => { blip(1300, 0.07, "sawtooth", 0.2, 280); noiseHit(0.12, 0.22); setTimeout(() => blip(900, 0.06, "square", 0.12, 200), 50); },
   power: () => { blip(440, 0.1, "triangle", 0.16, 660); setTimeout(() => blip(660, 0.12, "triangle", 0.16, 990), 80); },
   treasure: () => { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => blip(f, 0.16, "triangle", 0.16), i * 70)); },
-  victory: () => { [392, 523, 659, 784, 1046].forEach((f, i) => setTimeout(() => blip(f, 0.22, "square", 0.18), i * 120)); }
+  victory: () => { [392, 523, 659, 784, 1046].forEach((f, i) => setTimeout(() => blip(f, 0.22, "square", 0.18), i * 120)); },
+  boom: () => { noiseHit(0.45, 0.45); blip(64, 0.45, "sawtooth", 0.28, 28); setTimeout(() => noiseHit(0.3, 0.22), 70); setTimeout(() => blip(48, 0.3, "square", 0.18, 24), 40); }
 };
 function stepSound() {
   const b = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.1), Math.floor(player.pos.z));
@@ -174,7 +175,7 @@ function updateMusic(dt) {
 
 // ---------- BLOCKS ----------
 const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, LEAVES = 5, SAND = 6, WATER = 7, LAVA = 8,
-      FIRESTONE = 9, ENDSTONE = 10, PORTAL = 11, PLANKS = 12, COBBLE = 13, TORCH = 14, CHEST = 15, SNOW = 16, BRICK = 17, BED = 18, FIRE_CRYSTAL = 19, BOUNCE = 20, SPIKE = 21, ALARM = 22, FREDA = 23, MYCELIUM = 24, MUSHROOM = 25, CRYSTAL = 26;
+      FIRESTONE = 9, ENDSTONE = 10, PORTAL = 11, PLANKS = 12, COBBLE = 13, TORCH = 14, CHEST = 15, SNOW = 16, BRICK = 17, BED = 18, FIRE_CRYSTAL = 19, BOUNCE = 20, SPIKE = 21, ALARM = 22, FREDA = 23, MYCELIUM = 24, MUSHROOM = 25, CRYSTAL = 26, LAUNCH = 27, HEAL = 28, FROST = 29;
 function C(hex) { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; }
 const BLOCKS = {
   [GRASS]:    { name: "Grass", solid: 1, opaque: 1, hard: 0.45, top: C(0x6cc24a), side: C(0x5aa83e), bot: C(0x8a5a2b), drop: DIRT, icon: "🟩" },
@@ -201,7 +202,10 @@ const BLOCKS = {
   [FREDA]:    { name: "Freda Block", solid: 1, opaque: 1, hard: 0.35, top: C(0xe23b2e), side: C(0xc62c22), bot: C(0x8a1c16), drop: FREDA, freda: 1, icon: "💥" },
   [MYCELIUM]: { name: "Mycelium", solid: 1, opaque: 1, hard: 0.5, top: C(0x9a6cb8), side: C(0x6a4a86), bot: C(0x8a5a2b), drop: DIRT, icon: "🟪" },
   [MUSHROOM]: { name: "Mushroom", solid: 1, opaque: 1, hard: 0.3, top: C(0xd0463a), side: C(0xc23a30), bot: C(0xe8e0d0), drop: MUSHROOM, icon: "🍄" },
-  [CRYSTAL]:  { name: "Crystal", solid: 1, opaque: 1, hard: 1.2, top: C(0x76e4ff), side: C(0x4fc8ef), bot: C(0x36a8d0), drop: CRYSTAL, tool: "pick", glow: 1, icon: "🔷" }
+  [CRYSTAL]:  { name: "Crystal", solid: 1, opaque: 1, hard: 1.2, top: C(0x76e4ff), side: C(0x4fc8ef), bot: C(0x36a8d0), drop: CRYSTAL, tool: "pick", glow: 1, icon: "🔷" },
+  [LAUNCH]:   { name: "Launch Pad", solid: 1, opaque: 1, hard: 0.4, top: C(0xffd23d), side: C(0xff9a2e), bot: C(0xc97a1e), drop: LAUNCH, launch: 1, icon: "🚀" },
+  [HEAL]:     { name: "Heal Block", solid: 1, opaque: 1, hard: 0.5, top: C(0x7cf0a0), side: C(0x4fd07e), bot: C(0x36a85e), drop: HEAL, heal: 1, glow: 1, icon: "💚" },
+  [FROST]:    { name: "Frost Block", solid: 1, opaque: 1, hard: 0.5, top: C(0xbfe8ff), side: C(0x8fcff0), bot: C(0x6fb0d8), drop: FROST, frost: 1, glow: 1, icon: "🧊" }
 };
 function isOpaque(id) { return id !== AIR && id !== WATER && id !== PORTAL && BLOCKS[id] && BLOCKS[id].opaque; }
 function isSolidBlock(id) { return id !== AIR && id !== WATER && id !== PORTAL && BLOCKS[id] && BLOCKS[id].solid; }
@@ -502,10 +506,15 @@ function rebuildTorchCells() {
 }
 function nearTorch(x, z, rad) { for (const c of torchCells) { const dx = c[0] - x, dz = c[2] - z; if (dx * dx + dz * dz < rad * rad) return true; } return false; }
 // base defense: spike traps damage nearby monsters, alarm bells warn of raids
-const spikeCells = [], alarmCells = [];
+const spikeCells = [], alarmCells = [], healCells = [], frostCells = [];
 function rebuildDefenseCells() {
-  spikeCells.length = 0; alarmCells.length = 0;
-  for (const [k, id] of W) { if (id === SPIKE) { const p = k.split(","); spikeCells.push([+p[0], +p[1], +p[2]]); } else if (id === ALARM) { const p = k.split(","); alarmCells.push([+p[0], +p[1], +p[2]]); } }
+  spikeCells.length = 0; alarmCells.length = 0; healCells.length = 0; frostCells.length = 0;
+  for (const [k, id] of W) {
+    if (id === SPIKE) { const p = k.split(","); spikeCells.push([+p[0], +p[1], +p[2]]); }
+    else if (id === ALARM) { const p = k.split(","); alarmCells.push([+p[0], +p[1], +p[2]]); }
+    else if (id === HEAL) { const p = k.split(","); healCells.push([+p[0], +p[1], +p[2]]); }
+    else if (id === FROST) { const p = k.split(","); frostCells.push([+p[0], +p[1], +p[2]]); }
+  }
 }
 // floating "Freda" name plates over the explosive blocks
 let fredaLabelGroup = null;
@@ -819,7 +828,7 @@ function physics(dt) {
   }
   if (player.onGround) { player.coyote = 0.12; player.djUsed = false; } else if (player.coyote > 0) player.coyote -= dt;
   // bounce block: landing on slime launches Thomas high (trampoline toy)
-  if (player.onGround) { const below = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.1), Math.floor(player.pos.z)); if (BLOCKS[below] && BLOCKS[below].bouncy) { player.vel.y = 13; player.onGround = false; player.coyote = 0; SFX.jump(); addShake(0.05); } }
+  if (player.onGround) { const below = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.1), Math.floor(player.pos.z)); const bb = BLOCKS[below]; if (bb && bb.launch) { player.vel.y = 22; player.onGround = false; player.coyote = 0; SFX.jump(); SFX.zap(); addShake(0.12); } else if (bb && bb.bouncy) { player.vel.y = 13; player.onGround = false; player.coyote = 0; SFX.jump(); addShake(0.05); } }
   // auto jump (mobile/option): bumped a wall while moving on ground -> hop
   if (settings.autoJump && player.onGround && (hitX || hitZ) && (wish.lengthSq() > 0.01)) { player.vel.y = jumpV; player.onGround = false; }
   // stamina
@@ -990,7 +999,7 @@ function updateMining(dt) {
     setRaw(r.x, r.y, r.z, AIR); recordEdit(r.x, r.y, r.z, AIR);
     if (r.id === PORTAL) rebuildPortalCells();
     if (r.id === TORCH) rebuildTorchCells();
-    if (r.id === SPIKE || r.id === ALARM) rebuildDefenseCells();
+    if (r.id === SPIKE || r.id === ALARM || r.id === HEAL || r.id === FROST) rebuildDefenseCells();
     if (r.id === FREDA) rebuildFredaLabels();
     markDirty(r.x, r.z); markDirty(r.x + 1, r.z); markDirty(r.x - 1, r.z); markDirty(r.x, r.z + 1); markDirty(r.x, r.z - 1);
     blockParticles(r.x, r.y, r.z, BLOCKS[r.id].top);
@@ -1013,7 +1022,7 @@ function placeBlock() {
   setRaw(tx, ty, tz, it.id); recordEdit(tx, ty, tz, it.id);
   markDirty(tx, tz); markDirty(tx + 1, tz); markDirty(tx - 1, tz); markDirty(tx, tz + 1); markDirty(tx, tz - 1);
   if (it.id === TORCH) rebuildTorchCells();
-  if (it.id === SPIKE || it.id === ALARM) rebuildDefenseCells();
+  if (it.id === SPIKE || it.id === ALARM || it.id === HEAL || it.id === FROST) rebuildDefenseCells();
   if (it.id === FREDA) rebuildFredaLabels();
   if (it.id === CHEST && !chestStore.has(chestKey(tx, ty, tz))) chestStore.set(chestKey(tx, ty, tz), new Array(9).fill(null));
   removeItem(selSlot, 1); SFX.place(); placedBlocks++; dailyTick("build", 1);
@@ -1059,7 +1068,10 @@ const RECIPES = [
   { out: SPIKE, n: 2, need: [[COBBLE, 2], [I_STICK, 1]] },
   { out: ALARM, n: 1, need: [[COBBLE, 3], [I_STICK, 1]] },
   { out: FREDA, n: 1, need: [[COBBLE, 3], [FIRE_CRYSTAL, 1]] },
-  { out: I_CRYSTALSPEAR, n: 1, need: [[CRYSTAL, 3], [I_STICK, 2]] }
+  { out: I_CRYSTALSPEAR, n: 1, need: [[CRYSTAL, 3], [I_STICK, 2]] },
+  { out: LAUNCH, n: 1, need: [[BOUNCE, 1], [FIRE_CRYSTAL, 1]] },
+  { out: HEAL, n: 1, need: [[CRYSTAL, 1], [I_APPLE, 2]] },
+  { out: FROST, n: 1, need: [[CRYSTAL, 2], [SNOW, 2]] }
 ];
 function canCraft(r) { return r.need.every(([id, c]) => countItem(id) >= c); }
 function craft(r) { if (!canCraft(r)) return; r.need.forEach(([id, c]) => consumeItem(id, c)); addItem(r.out, r.n); SFX.craft(); renderCraft(); onCraft(r.out); }
@@ -1134,6 +1146,7 @@ function updateMonsters(dt) {
     else if (m.aggro && d > aggroR * 1.7) { m.aggro = false; }
     if (m.flash > 0) m.flash -= dt;
     if (m.slow > 0) { m.slow -= dt; if (m.slow <= 0 && m._bspd) m.speed = m._bspd; }   // ice slow wears off
+    if (frostCells.length) { m.frostCd = (m.frostCd || 0) - dt; if (m.frostCd <= 0) { for (const c of frostCells) { if (Math.hypot(c[0] + 0.5 - m.g.position.x, c[2] + 0.5 - m.g.position.z) < 3 && Math.abs(c[1] + 1 - m.g.position.y) < 2.5) { if (!m._bspd) m._bspd = m.speed; m.speed = m._bspd * 0.4; m.slow = Math.max(m.slow || 0, 1.2); m.flash = 0.1; hitSpark(m.g.position, 0xbfe8ff); m.frostCd = 1; break; } } if (m.frostCd <= 0) m.frostCd = 0.5; } }   // Frost blocks freeze nearby monsters
     if (m.burn > 0) { m.burn -= dt; m.burnTick -= dt; if (m.burnTick <= 0) { m.burnTick = 0.5; m.hp -= 2; m.flash = 0.1; m.bar.up(Math.max(0, m.hp / m.max)); hitSpark(m.g.position, 0xff7a2a); if (m.hp <= 0 && !m.dead) { killMonster(m); continue; } } }
     if (spikeCells.length) { m.spikeCd = (m.spikeCd || 0) - dt; if (m.spikeCd <= 0) { for (const c of spikeCells) { const sdx = c[0] + 0.5 - m.g.position.x, sdz = c[2] + 0.5 - m.g.position.z; if (sdx * sdx + sdz * sdz < 1.2 && Math.abs(c[1] + 1 - m.g.position.y) < 1.6) { m.hp -= 4; m.flash = 0.12; m.bar.up(Math.max(0, m.hp / m.max)); hitSpark(m.g.position, 0xcfd6e0); m.spikeCd = 0.6; break; } } if (m.hp <= 0 && !m.dead) { killMonster(m); continue; } } }
     if (m.touch > 0) m.touch -= dt;
@@ -1217,7 +1230,18 @@ function updateMonsters(dt) {
   // alarm bells ring when monsters raid the base at night
   if (alarmCells.length && isNight()) { alarmCd -= dt; if (alarmCd <= 0) { for (const c of alarmCells) { let near = false; for (const m of monsters) if (!m.dead && Math.hypot(c[0] + 0.5 - m.g.position.x, c[2] + 0.5 - m.g.position.z) < 12) { near = true; break; } if (near) { alarmCd = 8; SFX.screech(); showBanner("Alarm! Monsters are raiding the base."); break; } } } }
 }
-let spawnTimer = 6, alarmCd = 0;
+let spawnTimer = 6, alarmCd = 0, blockHealCd = 0;
+// heal blocks mend Thomas when he stands near one
+function updateBlockPowers(dt) {
+  if (!healCells.length) return;
+  blockHealCd -= dt; if (blockHealCd > 0) return; blockHealCd = 0.5;
+  for (const c of healCells) {
+    if (Math.hypot(c[0] + 0.5 - player.pos.x, c[2] + 0.5 - player.pos.z) < 2.6 && Math.abs(c[1] + 1 - player.pos.y) < 2.2) {
+      if (player.hp < player.maxHp) { player.hp = Math.min(player.maxHp, player.hp + 1); updateVitals(); hitSpark(new THREE.Vector3(player.pos.x, player.pos.y + 1, player.pos.z), 0x7cf0a0); }
+      blockHealCd = 1.5; break;
+    }
+  }
+}
 
 // ---------- ANIMALS (cats + mice) ----------
 let cats = [], mice = [];
@@ -1435,21 +1459,37 @@ function boomBreak(cx, cy, cz) {
   blockParticles(cx, cy, cz, [0.8, 0.8, 0.8]); SFX.slam(); addShake(0.18);
 }
 // Freda blocks explode when hit: clear a sphere of blocks, hurt nearby monsters, fling debris
+function explosionFlash() {
+  const f = $("flash"); if (!f) return;
+  f.style.background = "radial-gradient(circle, rgba(255,225,140,.8), rgba(255,140,40,.35) 40%, rgba(120,40,0,0) 70%)";
+  f.style.opacity = "1";
+  setTimeout(() => { if (f) { f.style.opacity = "0"; setTimeout(() => { if (f) f.style.background = ""; }, 320); } }, settings.reduceMotion ? 140 : 300);
+}
 function explode(cx, cy, cz, power) {
   power = power || 2;
+  const cxw = cx + 0.5, cyw = cy + 0.5, czw = cz + 0.5, cols = [];
   for (let dx = -power; dx <= power; dx++) for (let dy = -power; dy <= power; dy++) for (let dz = -power; dz <= power; dz++) {
     if (dx * dx + dy * dy + dz * dz > power * power + 1) continue;
     const x = cx + dx, y = cy + dy, z = cz + dz, id = getBlock(x, y, z);
     if (id === AIR || id === WATER || id === PORTAL || id === CHEST || id === BED || id === FREDA) continue;   // spare chests; chained Freda removed by the mining loop
     const b = BLOCKS[id]; if (!b || b.hard <= 0 || b.hard > 2.2) continue;
+    if (b.top && cols.length < 24) cols.push(b.top);
     setRaw(x, y, z, AIR); recordEdit(x, y, z, AIR);
     markDirty(x, z); markDirty(x + 1, z); markDirty(x - 1, z); markDirty(x, z + 1); markDirty(x, z - 1);
   }
   rebuildTorchCells(); rebuildDefenseCells();
-  for (let i = 0; i < 16; i++) { if (fxParts.length > FX_CAP) break; const m = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), new THREE.MeshBasicMaterial({ color: i % 2 ? 0xff8a2a : 0xffd23d })); m.position.set(cx + 0.5, cy + 0.5, cz + 0.5); scene.add(m); fxParts.push({ mesh: m, life: 0.5, vel: new THREE.Vector3((Math.random() - .5) * 9, Math.random() * 7, (Math.random() - .5) * 9) }); }
-  for (const mo of monsters) { if (mo.dead) continue; const d = Math.hypot(mo.g.position.x - (cx + 0.5), mo.g.position.z - (cz + 0.5)); if (d < 4.8) { mo.hp -= 20; mo.flash = 0.2; mo.bar.up(Math.max(0, mo.hp / mo.max)); knock(mo.g, 2.2); if (mo.hp <= 0 && !mo.dead) killMonster(mo); } }
-  const pd = Math.hypot(player.pos.x - (cx + 0.5), player.pos.z - (cz + 0.5)); if (pd < 2.8 && !powerActive("shield")) damage(4);
-  SFX.slam(); SFX.zap(); addShake(0.5);
+  // bright fireball core
+  for (let i = 0; i < 12; i++) { if (fxParts.length > FX_CAP) break; const m = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, 0.26), new THREE.MeshBasicMaterial({ color: i % 3 ? 0xffd23d : 0xffffff })); m.position.set(cxw, cyw, czw); scene.add(m); fxParts.push({ mesh: m, life: 0.45, vel: new THREE.Vector3((Math.random() - .5) * 13, Math.random() * 9, (Math.random() - .5) * 13) }); }
+  // flying block debris in the colours of the blocks that broke
+  for (let i = 0; i < 20; i++) { if (fxParts.length > FX_CAP) break; const c = cols.length ? cols[i % cols.length] : [0.6, 0.4, 0.3]; const m = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), new THREE.MeshBasicMaterial({ color: new THREE.Color(c[0], c[1], c[2]) })); m.position.set(cxw + (Math.random() - .5), cyw + (Math.random() - .5), czw + (Math.random() - .5)); scene.add(m); fxParts.push({ mesh: m, life: 1.1, vel: new THREE.Vector3((Math.random() - .5) * 12, 3 + Math.random() * 9, (Math.random() - .5) * 12) }); }
+  // rising smoke
+  for (let i = 0; i < 9; i++) { if (fxParts.length > FX_CAP) break; const m = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), new THREE.MeshBasicMaterial({ color: 0x6b6b6b, transparent: true, opacity: 0.55, depthWrite: false })); m.position.set(cxw + (Math.random() - .5) * 1.5, cyw + Math.random(), czw + (Math.random() - .5) * 1.5); scene.add(m); fxParts.push({ mesh: m, life: 1.3, max: 1.3, smoke: true, vel: new THREE.Vector3((Math.random() - .5) * 1.5, 1.5 + Math.random(), (Math.random() - .5) * 1.5) }); }
+  spawnTelegraph(cxw, czw, power + 1.5, 0.45, 0xffd27a, true);    // ground shockwave ring
+  explosionFlash();
+  // damage + knockback
+  for (const mo of monsters) { if (mo.dead) continue; const d = Math.hypot(mo.g.position.x - cxw, mo.g.position.z - czw); if (d < 5.2) { mo.hp -= 26; mo.flash = 0.25; mo.bar.up(Math.max(0, mo.hp / mo.max)); knock(mo.g, 2.8); if (mo.hp <= 0 && !mo.dead) killMonster(mo); } }
+  const pd = Math.hypot(player.pos.x - cxw, player.pos.z - czw); if (pd < 3 && !powerActive("shield")) { damage(4); const kx = player.pos.x - cxw, kz = player.pos.z - czw, kd = Math.hypot(kx, kz) || 1; player.vel.x += kx / kd * 4; player.vel.y += 3; player.vel.z += kz / kd * 4; }
+  SFX.boom(); SFX.zap(); addShake(settings.reduceMotion ? 0.3 : 0.9);
 }
 // player ranged shots: Ice Bow (slow) and Slime Launcher (knockback)
 let bowCd = 0;
@@ -1509,7 +1549,14 @@ function updateProjectiles(dt) {
 const fxParts = [];
 const FX_CAP = 150;                                  // keep particle count bounded so mobile stays smooth
 function hitSpark(p, col) { if (fxParts.length > FX_CAP) return; for (let i = 0; i < 6; i++) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), new THREE.MeshBasicMaterial({ color: col })); m.position.copy(p); scene.add(m); fxParts.push({ mesh: m, life: 0.3, vel: new THREE.Vector3((Math.random() - .5) * 4, Math.random() * 4, (Math.random() - .5) * 4) }); } }
-function updateFx(dt) { for (let i = fxParts.length - 1; i >= 0; i--) { const p = fxParts[i]; p.life -= dt; p.vel.y -= 9 * dt; p.mesh.position.addScaledVector(p.vel, dt); p.mesh.scale.multiplyScalar(1 - dt * 2.5); if (p.life <= 0) { scene.remove(p.mesh); fxParts.splice(i, 1); } } }
+function updateFx(dt) {
+  for (let i = fxParts.length - 1; i >= 0; i--) {
+    const p = fxParts[i]; p.life -= dt; p.mesh.position.addScaledVector(p.vel, dt);
+    if (p.smoke) { p.mesh.scale.multiplyScalar(1 + dt * 1.6); p.vel.multiplyScalar(1 - dt * 1.2); if (p.mesh.material) p.mesh.material.opacity = Math.max(0, 0.55 * p.life / (p.max || 1)); }
+    else { p.vel.y -= 9 * dt; p.mesh.scale.multiplyScalar(1 - dt * 2.5); }
+    if (p.life <= 0) { scene.remove(p.mesh); fxParts.splice(i, 1); }
+  }
+}
 // tag entity meshes after spawn (so raycast finds kind)
 function tagMonsters() { for (const m of monsters) m.g.traverse(o => { o.userData.kind = "monster"; o.userData.m = m; }); }
 
@@ -1840,17 +1887,17 @@ function bossIntro(name, sub) {
 }
 // flat ground rings that flash where a heavy attack will land, so hits are readable
 const telegraphs = [];
-function spawnTelegraph(x, z, radius, dur, color) {
+function spawnTelegraph(x, z, radius, dur, color, grow) {
   const geo = new THREE.RingGeometry(radius * 0.82, radius, 28);
   const mat = new THREE.MeshBasicMaterial({ color: color || 0xff3b3b, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false, fog: false });
   const m = new THREE.Mesh(geo, mat); m.rotation.x = -Math.PI / 2; m.position.set(x, surfaceY(x, z) + 0.06, z); scene.add(m);
-  telegraphs.push({ mesh: m, life: dur, max: dur });
+  telegraphs.push({ mesh: m, life: dur, max: dur, grow: !!grow });
 }
 function updateTelegraphs(dt) {
   for (let i = telegraphs.length - 1; i >= 0; i--) {
     const t = telegraphs[i]; t.life -= dt; const f = 1 - Math.max(0, t.life) / t.max;
-    t.mesh.scale.setScalar(0.5 + f * 0.7);
-    if (t.mesh.material) t.mesh.material.opacity = 0.25 + 0.5 * Math.abs(Math.sin(t.life * 14));
+    if (t.grow) { t.mesh.scale.setScalar(0.3 + f * 2.4); if (t.mesh.material) t.mesh.material.opacity = 0.65 * (1 - f); }   // expanding shockwave
+    else { t.mesh.scale.setScalar(0.5 + f * 0.7); if (t.mesh.material) t.mesh.material.opacity = 0.25 + 0.5 * Math.abs(Math.sin(t.life * 14)); }
     if (t.life <= 0) { scene.remove(t.mesh); if (t.mesh.geometry && t.mesh.geometry.dispose) t.mesh.geometry.dispose(); telegraphs.splice(i, 1); }
   }
 }
@@ -2537,6 +2584,7 @@ function loop() {
     else { raidShown = false; if (wasNight) { if (!survivedNight) { survivedNight = true; achieve("night", "First Night Survived"); } addCoins(8); addXP(15); toast("You survived the night. +8 coins"); wasNight = false; } }
     updateStory(dt);
     updatePowerups(dt);
+    updateBlockPowers(dt);
     updateEvents(dt);
     updateQuests();
     checkAchievements();
