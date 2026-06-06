@@ -1740,7 +1740,7 @@ function transitionTo(name) {
   SFX.portal(); const fade = document.getElementById("fade"); fade.style.opacity = "1";
   setTimeout(() => { loadDimension(name); fade.style.opacity = "0"; }, 520);
 }
-function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } if (typeof skyBoss !== "undefined" && skyBoss) { scene.remove(skyBoss.g); skyBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (merchant) { scene.remove(merchant.g); merchant = null; } if (typeof clearRealmCreatures === "function") clearRealmCreatures(); if (typeof clearRealmNPCs === "function") clearRealmNPCs(); battle = null; cmenuOpen = false; if (typeof hide === "function") { hide("battle"); hide("cmenu"); } if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
+function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } if (typeof skyBoss !== "undefined" && skyBoss) { scene.remove(skyBoss.g); skyBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (merchant) { scene.remove(merchant.g); merchant = null; } if (typeof clearRealmCreatures === "function") clearRealmCreatures(); if (typeof clearRealmNPCs === "function") clearRealmNPCs(); if (typeof clearRealmBosses === "function") clearRealmBosses(); battle = null; cmenuOpen = false; if (typeof hide === "function") { hide("battle"); hide("cmenu"); } if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
 function loadDimension(name, fromSave) {
   DIM = name; clearWorld(); clearEntities();
   if (name === "fire") achieve("firep", "Fire Portal Opened");
@@ -2618,10 +2618,12 @@ function spawnRealmCreature(id, x, z, level) {
   realmCreatures.push({ id, g, sp, level, fly, shiny, dir: Math.random() * 6.28, t: Math.random() * 6, soundCd: Math.random() * 8, walkT: 0 });
 }
 function enterRealm() {
-  clearRealmCreatures(); clearRealmNPCs(); encounterCd = 0;
+  clearRealmCreatures(); clearRealmNPCs(); clearRealmBosses(); encounterCd = 0; realmHinted = {};
   if (!cteam.length) { cteam.push(makeCreature("foxling", 5, { shiny: false })); cdex.add("foxling"); toast("Foxling joins you as your battle companion!"); }
   // hub NPCs near the spawn portal
   spawnRealmNPC("nurse", 3, 3); spawnRealmNPC("shop", 6, 3); spawnRealmNPC("trainer", -3, 4); spawnRealmNPC("badge", 0, 6);
+  spawnRealmBosses(); spawnSnoozer();
+  if (Math.random() < 0.5) { const a = Math.random() * 6.28, r = 18 + Math.random() * 16; spawnRealmCreature("mewling", Math.floor(player.pos.x + Math.cos(a) * r), Math.floor(player.pos.z + Math.sin(a) * r), 10); }   // rare playful legendary
   const roamers = ["voltmouse", "moonfox", "aurawolf", "museling", "landshark", "steelmind", "rocktitan"];
   for (let i = 0; i < 8; i++) { const a = Math.random() * 6.28, r = 8 + Math.random() * 22; spawnRealmCreature(roamers[Math.floor(Math.random() * roamers.length)], Math.floor(player.pos.x + Math.cos(a) * r), Math.floor(player.pos.z + Math.sin(a) * r), 3 + Math.floor(Math.random() * 5)); }
   for (let i = 0; i < 2; i++) { const a = Math.random() * 6.28, r = 16 + Math.random() * 12; spawnRealmCreature(Math.random() < 0.5 ? "emberwing" : "dragonox", Math.floor(player.pos.x + Math.cos(a) * r), Math.floor(player.pos.z + Math.sin(a) * r), 8); }
@@ -2640,6 +2642,9 @@ function updateRealm(dt) {
     }
     c.soundCd -= dt; if (c.soundCd <= 0) { c.soundCd = 6 + Math.random() * 8; if (dp < 14) creatureCry(c.sp.type); }
   }
+  // arena bosses idle with a glow bob; show a one-time challenge hint when Thomas gets close
+  for (const b of realmBosses) { b.t += dt; b.g.position.y = surfaceY(b.x, b.z) + Math.sin(b.t * 1.5) * 0.2; b.g.rotation.y += dt * 0.4; if (!battle && !cmenuOpen && b.g.position.distanceTo(player.pos) < 4 && !realmHinted[b.badge]) { realmHinted[b.badge] = 1; showBanner(b.label + " — press Use to challenge!"); } }
+  if (realmSnoozer && !battle && !cmenuOpen && realmSnoozer.g.position.distanceTo(player.pos) < 4 && !realmHinted.snoozer) { realmHinted.snoozer = 1; showBanner("A huge Snoozer blocks the path. Feed it Creature Food (press Use)."); }
   if (encounterCd > 0) encounterCd -= dt;
   const feet = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y), Math.floor(player.pos.z)), eye = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + 0.6), Math.floor(player.pos.z));
   if ((feet === TALLGRASS || eye === TALLGRASS) && encounterCd <= 0 && !cmenuOpen && !battle) { encounterCd = 1.4; if (Math.random() < 0.3) { SFX.mine(); openEncounter(makeCreature(WILD_POOL[Math.floor(Math.random() * WILD_POOL.length)], 3 + Math.floor(Math.random() * 5)), null); } }
@@ -2673,7 +2678,7 @@ function startBattle(wild, roamRef, opts) {
   opts = opts || {};
   if (!cteam.length) cteam.push(makeCreature("foxling", 5));
   let mine = cteam.find(c => c.hp > 0); if (!mine) { toast("Your creatures are too tired. Visit the Healing Nurse."); return; }
-  battle = { wild, mine, roam: roamRef, over: false, busy: false, trainer: !!opts.trainer, boss: opts.boss || null, badge: opts.badge || null, phase: 1, log: opts.intro || (opts.trainer ? "A Trainer sends out " + wild.name + "!" : "A wild " + wild.name + " challenges you!") };
+  battle = { wild, mine, roam: roamRef, over: false, busy: false, trainer: !!opts.trainer, boss: opts.boss || null, badge: opts.badge || null, bossRef: opts.bossRef || null, phase: 1, log: opts.intro || (opts.trainer ? "A Trainer sends out " + wild.name + "!" : "A wild " + wild.name + " challenges you!") };
   renderBattle(); show("battle"); document.exitPointerLock(); SFX.screech();
 }
 function renderBattle() {
@@ -2730,7 +2735,7 @@ function winBattle() {
   const ups = gainCreatureXP(b.mine, reward); b.mine.friendship++;
   cdex.add(b.wild.sp); addCoins(Math.round((b.wild.level + 4) * (b.boss ? 4 : b.trainer ? 2 : 1))); realmWins++;
   let extra = "";
-  if (b.boss && b.badge && !cbadges.has(b.badge)) { cbadges.add(b.badge); extra = " The " + b.badge + " badge is yours!"; showBanner("Badge earned: " + b.badge + "!"); if (typeof realmBossDown !== "undefined") realmBossDown[b.boss] = true; }
+  if (b.boss && b.badge) { if (!cbadges.has(b.badge)) { cbadges.add(b.badge); extra = " The " + b.badge + " badge is yours!"; showBanner("Badge earned: " + b.badge + "!"); } realmBossDown[b.badge] = true; if (b.bossRef) { scene.remove(b.bossRef.g); realmBosses = realmBosses.filter(x => x !== b.bossRef); } }
   b.log = "You defeated " + b.wild.name + "! +" + reward + " XP" + (ups ? ". Lv" + b.mine.level + "!" : "") + extra;
   if (b.roam) { scene.remove(b.roam.g); realmCreatures = realmCreatures.filter(c => c !== b.roam); }
   SFX.victory(); renderBattle();
@@ -2779,8 +2784,44 @@ function renderCTeam() {
 function toggleCTeam() { const o = $("cteamui"); const open = !o.classList.contains("hidden"); if (open) o.classList.add("hidden"); else { renderCTeam(); o.classList.remove("hidden"); } }
 function renderCDex() { const el = $("cdexList"); if (!el) return; el.innerHTML = ""; let n = 0; const ids = Object.keys(SPECIES); for (const id of ids) { const got = cdex.has(id); if (got) n++; const sp = SPECIES[id]; const row = document.createElement("div"); row.className = "craftRow" + (got ? "" : " no"); row.innerHTML = "<span><b>" + (got ? sp.name : "???") + "</b>" + (got ? " <span class='muted'>" + sp.type + (sp.legend ? " · legendary" : "") + "</span>" : "") + "</span>"; el.appendChild(row); } const h = $("cdexCount"); if (h) h.textContent = n + " / " + ids.length; }
 function toggleCDex() { const o = $("cdexui"); const open = !o.classList.contains("hidden"); if (open) o.classList.add("hidden"); else { renderCDex(); o.classList.remove("hidden"); } }
-function realmInteract() {   // Use near a realm NPC. returns true if handled
+// ---- arena bosses + legendary fights + the Snoozer road block ----
+let realmBosses = [], realmSnoozer = null, realmHinted = {};
+const BOSS_PLAN = [
+  { id: "shadeling", badge: "cave", x: -24, z: 6, name: "Shadeling, the Cave Phantom" },
+  { id: "emberwing", badge: "fire", x: 24, z: 6, name: "Emberwing, the Fire Drake" },
+  { id: "tidequeen", badge: "water", x: 8, z: 26, name: "Tidequeen of the Deep" },
+  { id: "terraking", badge: "lava", x: -8, z: -26, name: "Terraking of the Magma" },
+  { id: "psyclone", badge: "psychic", x: -26, z: -6, name: "Psyclone, the Mind Tyrant" },
+  { id: "skywyrm", badge: "sky", x: 26, z: -10, name: "Skywyrm, the Sky Serpent" }
+];
+function spawnRealmBoss(id, badge, x, z, label) {
+  const g = buildCreatureModel(id, false); g.scale.multiplyScalar(1.5); g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g);
+  realmBosses.push({ id, badge, g, x, z, label, t: Math.random() * 6, final: badge === "legendary" });
+}
+function spawnRealmBosses() {
+  for (const b of BOSS_PLAN) if (!realmBossDown[b.badge]) spawnRealmBoss(b.id, b.badge, b.x, b.z, b.name);
+  if (!realmBossDown.legendary) spawnRealmBoss("allbeast", "legendary", 0, 34, "Allbeast, the Creator");   // final, gated until others fall
+}
+function clearRealmBosses() { for (const b of realmBosses) scene.remove(b.g); realmBosses = []; if (realmSnoozer) { scene.remove(realmSnoozer.g); realmSnoozer = null; } }
+function spawnSnoozer() { if (realmBossDown.snoozer) return; const x = 0, z = 15; const g = buildCreatureModel("snoozer", false); g.scale.multiplyScalar(1.4); g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); g.rotation.y = Math.PI; scene.add(g); realmSnoozer = { g, x, z }; }
+function teamAvgLevel() { return cteam.length ? Math.round(cteam.reduce((a, c) => a + c.level, 0) / cteam.length) : 5; }
+function challengeBoss(b) {
+  if (b.final) {
+    const need = BOSS_PLAN.length, have = BOSS_PLAN.filter(p => realmBossDown[p.badge]).length;
+    if (have < need) { toast("The Allbeast slumbers. Defeat all " + need + " arena bosses first (" + have + "/" + need + ")."); return; }
+  }
+  const lvl = Math.max(12, teamAvgLevel() + 6) + (b.final ? 8 : 0);
+  startBattle(makeCreature(b.id, lvl), null, { boss: true, badge: b.badge, bossRef: b, intro: (b.label || b.id) + " rises to battle!" });
+}
+function feedSnoozer() {
+  if (citems.food > 0) { citems.food--; realmBossDown.snoozer = true; scene.remove(realmSnoozer.g); realmSnoozer = null; addCoins(20); showBanner("Snoozer waddles off! The path is clear."); toast("You fed Snoozer. It happily moves aside. +20 coins"); SFX.victory(); }
+  else { toast("Snoozer is fast asleep and hungry. Buy Creature Food from the Shop, then feed it."); }
+}
+function realmInteract() {   // Use near a realm NPC, boss, or the Snoozer. returns true if handled
   if (DIM !== "realm") return false;
+  if (realmSnoozer && realmSnoozer.g.position.distanceTo(player.pos) < 3.2) { feedSnoozer(); return true; }
+  let bb = null, bd = 3.6; for (const b of realmBosses) { const d = b.g.position.distanceTo(player.pos); if (d < bd) { bd = d; bb = b; } }
+  if (bb) { challengeBoss(bb); return true; }
   let np = null, nd = 3.4; for (const n of realmNPCs) { const d = n.g.position.distanceTo(player.pos); if (d < nd) { nd = d; np = n; } }
   if (!np) return false;
   if (np.kind === "nurse") healTeam(); else if (np.kind === "shop") openCShop(); else if (np.kind === "trainer") trainerBattle(); else if (np.kind === "badge") openBadgeCase();
