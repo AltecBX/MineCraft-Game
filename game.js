@@ -887,6 +887,7 @@ addEventListener("keydown", e => {
   keys[e.code] = true;
   if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code)) e.preventDefault();
   if (e.code === "KeyM") { settings.muted = !settings.muted; applyAudioGains(); saveSettings(); syncSettingsUI(); toast(settings.muted ? "Muted" : "Unmuted"); }
+  if (!running && deathT && !$("death").classList.contains("hidden") && (e.code === "Space" || e.code === "Enter") && performance.now() - deathT > 600) { doRespawn(); return; }
   if (!running) return;
   if (e.code.startsWith("Digit")) { const n = +e.code.slice(5) - 1; if (n >= 0 && n < 9) selectSlot(n); }
   const K = settings.keys;
@@ -1396,9 +1397,10 @@ function killMonster(m) {
   if (m.dead) return; m.dead = true; discoverMob(m.type);
   for (const [lid, lc, lp] of (m.loot || [])) if (Math.random() < (m.elite ? Math.min(1, lp + 0.3) : lp) + luckBonus * 0.05) addItem(lid, lc);   // Luck improves loot
   if (m.elite) { addItem(I_APPLE, 1); if (Math.random() < 0.55) givePowerup(randPowerup()); }
-  addCoins((m.elite ? 3 + Math.floor(Math.random() * 4) : 1 + Math.floor(Math.random() * 2)) + luckBonus);   // Luck adds coins
+  const ngB = 1 + ngLevel * 0.15;                                  // New Game Plus pays out more
+  addCoins(Math.round(((m.elite ? 3 + Math.floor(Math.random() * 4) : 1 + Math.floor(Math.random() * 2)) + luckBonus) * ngB));   // Luck adds coins
   if (!treasureKey && DIM === "overworld" && Math.random() < 0.03) { startTreasureHunt(); toast("A monster dropped a treasure map!"); }
-  addXP(m.xp || 10); onKill();
+  addXP(Math.round((m.xp || 10) * ngB)); onKill();
 }
 // Lightning Hammer chain shock: damages every monster near Thomas with a cooldown
 let hammerCd = 0;
@@ -2466,7 +2468,9 @@ function startGame() {
   clearObjective(); story.active = false;
   eventCd = 180; activeEvent = null; xpMult = 1; setEventTint(null);
   coins = 0; updateCoinUI(); spawnMerchant(7, 5); treasureKey = null;   // a friendly trader near camp
-  initDaily(); if (ngLevel > 0) setTimeout(() => toast("New Game Plus " + ngLevel + ". Monsters are tougher, rewards are bigger."), 900);
+  initDaily();
+  if (ngLevel > 0) setTimeout(() => toast("New Game Plus " + ngLevel + ". Monsters are tougher, rewards are bigger."), 900);
+  setTimeout(() => { if (daily && !daily.claimed) toast("Daily Challenge: " + daily.text + ". Open the Journal to track it."); }, 1600);
   const camp = buildSpawnCamp(); startStory(camp);            // opening cinematic + guided first 5 minutes
   renderHotbar(); updateVitals(); buildViewItem();
   camera.fov = settings.fov; camera.updateProjectionMatrix();
