@@ -2552,7 +2552,7 @@ function saveGame(silent) {
       side: [...sideDone],
       cats: cats.filter(c => c.tamed).map(c => ({ x: Math.round(c.g.position.x), z: Math.round(c.g.position.z), color: c.color, level: c.level, mode: c.mode })),
       edits: { overworld: [...editsByDim.overworld], fire: [...editsByDim.fire], end: [...editsByDim.end], sky: [...editsByDim.sky], realm: [...editsByDim.realm] },
-      cteam: cteam, cstorage: cstorage, cdex: [...cdex], cbadges: [...cbadges], citems: citems, realmWins: realmWins, realmBossDown: realmBossDown, fredaFound: fredaFound,
+      cteam: cteam, cstorage: cstorage, cdex: [...cdex], cbadges: [...cbadges], citems: citems, realmWins: realmWins, realmBossDown: realmBossDown, fredaFound: fredaFound, dexRewarded: dexRewarded,
       chests: [...chestStore] };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     if (!silent) toast("Game saved");
@@ -2578,7 +2578,7 @@ function loadGame() {
   editsByDim.sky = new Map((data.edits && data.edits.sky) || []);
   editsByDim.realm = new Map((data.edits && data.edits.realm) || []);
   cteam = data.cteam || []; cstorage = data.cstorage || []; cdex = new Set(data.cdex || []); cbadges = new Set(data.cbadges || []);
-  Object.assign(citems, data.citems || {}); realmWins = data.realmWins || 0; realmBossDown = data.realmBossDown || {}; fredaFound = data.fredaFound || 0;
+  Object.assign(citems, data.citems || {}); realmWins = data.realmWins || 0; realmBossDown = data.realmBossDown || {}; fredaFound = data.fredaFound || 0; dexRewarded = data.dexRewarded || 0;
   chestStore = new Map(data.chests || []);
   running = true; paused = false; wasNight = false; raidShown = false; dodge.t = 0; dodge.cd = 0; openChestK = null;
   story.active = false; clearObjective(); endCine();
@@ -2938,7 +2938,13 @@ function buildCreatureModel(id, shiny) {
 }
 // team + collection
 let cteam = [], cstorage = [], cdex = new Set(), cbadges = new Set();
-function addCreature(c) { cdex.add(c.sp); if (cteam.length < 6) { cteam.push(c); return "team"; } cstorage.push(c); return "storage"; }
+let dexRewarded = 0;
+function checkDex() {                                   // reward milestones for filling the creature collection book
+  const n = cdex.size, total = Object.keys(SPECIES).length;
+  const tiers = [[5, 30, [[CRYSTAL, 4]]], [10, 60, [[BRICK, 8], [CRYSTAL, 4]]], [15, 100, [[FIRE_CRYSTAL, 4]]], [total, 250, [[CRYSTAL, 20]]]];
+  for (const t of tiers) { if (n >= t[0] && dexRewarded < t[0]) { dexRewarded = t[0]; addCoins(t[1]); for (const it of t[2]) addItem(it[0], it[1]); showBanner("Creature Dex " + n + "/" + total + "! Collection reward unlocked."); SFX.treasure(); if (n >= total) achieve("dexmaster", "Creature Dex Complete"); } }
+}
+function addCreature(c) { cdex.add(c.sp); checkDex(); if (cteam.length < 6) { cteam.push(c); return "team"; } cstorage.push(c); return "storage"; }
 // roaming creatures in the realm
 let realmCreatures = [], encounterCd = 0;
 function clearRealmCreatures() { for (const c of realmCreatures) scene.remove(c.g); realmCreatures = []; }
@@ -3137,7 +3143,7 @@ function winBattle() {
   const b = battle; b.over = true;
   const reward = Math.round((14 + b.wild.level * 6) * (b.boss ? 3 : b.trainer ? 1.5 : 1));
   const ups = gainCreatureXP(b.mine, reward); b.mine.friendship++;
-  cdex.add(b.wild.sp); addCoins(Math.round((b.wild.level + 4) * (b.boss ? 4 : b.trainer ? 2 : 1))); realmWins++;
+  cdex.add(b.wild.sp); checkDex(); addCoins(Math.round((b.wild.level + 4) * (b.boss ? 4 : b.trainer ? 2 : 1))); realmWins++;
   let extra = "";
   if (b.boss && b.badge) { if (!cbadges.has(b.badge)) { cbadges.add(b.badge); extra = " The " + b.badge + " badge is yours!"; showBanner("Badge earned: " + b.badge + "!"); grantRealmReward(b.badge); } realmBossDown[b.badge] = true; if (b.bossRef) { scene.remove(b.bossRef.g); realmBosses = realmBosses.filter(x => x !== b.bossRef); } }
   b.log = "You defeated " + b.wild.name + "! +" + reward + " XP" + (ups ? ". Lv" + b.mine.level + "!" : "") + extra;
