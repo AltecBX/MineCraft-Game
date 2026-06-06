@@ -187,6 +187,10 @@
     background:radial-gradient(circle at 50% 50%, #b06ad0 0%, #5b21b6 45%, #160322 100%); }
   #battleWipe.go { animation:battleWipe .6s ease-out; }
   @keyframes battleWipe { 0%{opacity:0;} 12%{opacity:.95;} 28%{opacity:.15;} 46%{opacity:.95;} 64%{opacity:.25;} 100%{opacity:0;} }
+  /* per-move attack flash over the battle screen, tinted by the move's type */
+  #battleFx { position:fixed; inset:0; z-index:52; pointer-events:none; opacity:0; }
+  #battleFx.go { animation:battleFx .36s ease-out; }
+  @keyframes battleFx { 0%{opacity:0;} 30%{opacity:.5;} 100%{opacity:0;} }
   .mvBtn b { display:block; font-size:14px; } .mvBtn span { font-size:11px; opacity:.8; }
   #coins { position:absolute; right:12px; bottom:128px; background:rgba(20,12,40,.7); border:1px solid rgba(255,210,80,.55);
     color:#ffe9a8; font-weight:800; font-size:14px; padding:4px 10px; border-radius:999px; pointer-events:none; }

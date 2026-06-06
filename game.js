@@ -1971,7 +1971,8 @@ function spawnCompanion(x, z) {
   g.position.set(x + 1.2, surfaceY(x, z), z + 0.5); scene.add(g);
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(255,240,120,0.95)", "rgba(255,200,40,0)"), depthWrite: false, transparent: true, fog: false }));
   glow.scale.set(1.8, 1.8, 1); glow.position.y = 0.7; glow.visible = false; g.add(glow);
-  companion = { g, glow, vy: 0, walkT: 0, t: Math.random() * 6, jumpCd: 0, emoteCd: 4, cheer: 0, friendship: 0 };
+  const lamp = new THREE.PointLight(0xfff0a0, 0.55, 9); lamp.position.y = 1.0; g.add(lamp);   // Pikachu lights up its surroundings / dark caves
+  companion = { g, glow, lamp, vy: 0, walkT: 0, t: Math.random() * 6, jumpCd: 0, emoteCd: 4, cheer: 0, friendship: 0, alertCd: 4 };
 }
 function companionEmote(col) { if (companion) hitSpark(new THREE.Vector3(companion.g.position.x, companion.g.position.y + 1.2, companion.g.position.z), col || 0xffe14d); }
 function reactCompanion(kind) {        // "alert" when a wild creature appears, "cheer" for treasure/wins
@@ -1997,9 +1998,12 @@ function updateCompanion(dt) {
   const L = g.userData.legs; if (L) { if (moving) { const s = Math.sin(c.walkT) * 0.6; L[0].rotation.x = s; L[1].rotation.x = -s; L[2].rotation.x = -s; L[3].rotation.x = s; } else { for (const l of L) l.rotation.x *= 0.85; } }
   if (!moving && c.vy === 0) g.position.y = gy + Math.abs(Math.sin(c.t * 3)) * 0.05;     // cute idle bob
   if (c.cheer > 0) g.rotation.z = Math.sin(c.t * 24) * 0.18; else g.rotation.z = 0;       // wiggle when cheering
-  // glow slightly when a rare/legendary creature is near
-  let rare = false; for (const rc of realmCreatures) { if ((rc.sp.legend || rc.shiny) && rc.g.position.distanceTo(g.position) < 14) { rare = true; break; } }
+  // detect rare/legendary creatures: glow when close, alert (banner + sound) when one is roaming nearby
+  let rare = false, rareNear = false; for (const rc of realmCreatures) { if (rc.sp.legend || rc.shiny) { const dd = rc.g.position.distanceTo(g.position); if (dd < 14) rare = true; if (dd < 26) rareNear = true; } }
   c.glow.visible = rare; if (rare) c.glow.material.opacity = 0.45 + 0.4 * Math.sin(c.t * 6);
+  if (c.lamp) c.lamp.intensity = 0.5 + (rare ? 0.7 : 0) + 0.12 * Math.sin(c.t * 4);   // steady glow, brighter near rares
+  c.alertCd = Math.max(0, c.alertCd - dt);
+  if (rareNear && c.alertCd <= 0) { c.alertCd = 25; showBanner("Pikachu senses a rare creature nearby!"); SFX.screech(); reactCompanion("alert"); }
   // occasional happy spark emote
   c.emoteCd -= dt; if (c.emoteCd <= 0) { c.emoteCd = 6 + Math.random() * 7; companionEmote(0xffe14d); if (Math.random() < 0.4) blip(1000, 0.05, "square", 0.05, 1500); }
 }
@@ -2684,6 +2688,12 @@ function startStory(camp) {
     [12.6, () => { endCine(); showBanner("Chapter 1. The Block Forest"); setObjective(camp.chestX + 0.5, surfaceY(camp.chestX, camp.chestZ), camp.chestZ + 0.5); toast("Open the supply chest by the campfire. Look at it and press Use."); }]
   ];
 }
+let fredaPingCd = 0;
+function updateFredaPing(dt) {                          // soft chime when Thomas is near an unbroken Freda Box
+  fredaPingCd -= dt; if (fredaPingCd > 0 || !fredaLabelGroup) return;
+  let nearest = 99; for (const s of fredaLabelGroup.children) { const d = Math.hypot(s.position.x - player.pos.x, s.position.z - player.pos.z); if (d < nearest) nearest = d; }
+  if (nearest < 8) { fredaPingCd = 1.4; blip(880 + (8 - nearest) * 60, 0.05, "triangle", 0.06, 1320); }
+}
 function updateStory(dt) {
   if (objMarker && objMarker.visible) {                        // gentle pulse + bob
     const t = performance.now() * 0.004; const b = objMarker.children[0], s = objMarker.children[1];
@@ -3013,6 +3023,11 @@ function startBattle(wild, roamRef, opts) {
   showBattleWipe(); renderBattle(); show("battle"); document.exitPointerLock(); SFX.screech();
 }
 function showBattleWipe() { const w = $("battleWipe"); if (!w) return; w.classList.remove("go"); void w.offsetWidth; w.classList.add("go"); setTimeout(() => { if (w) w.classList.remove("go"); }, 620); }
+function battleFlash(type) {                          // colored attack burst over the battle screen, per move type
+  const f = $("battleFx"); if (!f) return; const col = TYPE_COLORS[type] || "#ffffff";
+  f.style.background = "radial-gradient(circle at 50% 42%, " + col + ", rgba(0,0,0,0) 62%)";
+  f.classList.remove("go"); void f.offsetWidth; f.classList.add("go");
+}
 function renderBattle() {
   const p = $("battlePanel"); if (!p || !battle) return; const b = battle;
   if (!b.menu) b.menu = "main";
@@ -3064,7 +3079,7 @@ function doMove(i) {
   const mv = MOVES[b.mine.moves[i]]; b.menu = "main";
   if (mv.heal) { b.mine.hp = Math.min(b.mine.maxHp, b.mine.hp + mv.heal); b.log = b.mine.name + " used " + mv.name + " and recovered."; }
   else if (mv.shield) { b.mine.shield = true; b.log = b.mine.name + " raised " + mv.name + "."; }
-  else { const r = calcDamage(b.mine, b.wild, mv); b.wild.hp -= r.dmg; b.log = b.mine.name + " used " + mv.name + "! " + (r.eff > 1 ? "Super effective! " : r.eff < 1 ? "Not very effective. " : "") + "(" + r.dmg + ")"; }
+  else { const r = calcDamage(b.mine, b.wild, mv); b.wild.hp -= r.dmg; b.log = b.mine.name + " used " + mv.name + "! " + (r.eff > 1 ? "Super effective! " : r.eff < 1 ? "Not very effective. " : "") + "(" + r.dmg + ")"; battleFlash(mv.type); }
   renderBattle();
   if (b.wild.hp <= 0) { return winBattle(); }
   setTimeout(() => { enemyTurn(); }, 600);
@@ -3075,7 +3090,7 @@ function enemyTurn() {
   const mid = b.wild.moves[Math.floor(Math.random() * b.wild.moves.length)], mv = MOVES[mid];
   if (mv.heal) { b.wild.hp = Math.min(b.wild.maxHp, b.wild.hp + mv.heal); b.log = b.wild.name + " used " + mv.name + "."; }
   else if (mv.shield) { b.wild.shield = true; b.log = b.wild.name + " braced with " + mv.name + "."; }
-  else { let r = calcDamage(b.wild, b.mine, mv); if (b.boss) r.dmg = Math.round(r.dmg * (1 + (b.phase - 1) * 0.2)); if (b.mine.shield) { r.dmg = Math.round(r.dmg * 0.5); b.mine.shield = false; } b.mine.hp -= r.dmg; b.log = (b.trainer ? "" : b.boss ? "" : "Wild ") + b.wild.name + " used " + mv.name + "! (" + r.dmg + ")"; }
+  else { let r = calcDamage(b.wild, b.mine, mv); if (b.boss) r.dmg = Math.round(r.dmg * (1 + (b.phase - 1) * 0.2)); if (b.mine.shield) { r.dmg = Math.round(r.dmg * 0.5); b.mine.shield = false; } b.mine.hp -= r.dmg; b.log = (b.trainer ? "" : b.boss ? "" : "Wild ") + b.wild.name + " used " + mv.name + "! (" + r.dmg + ")"; battleFlash(mv.type); }
   b.busy = false; renderBattle();
   if (b.mine.hp <= 0) {
     const next = cteam.find(c => c.hp > 0 && c !== b.mine);
@@ -3093,7 +3108,7 @@ function winBattle() {
   b.log = "You defeated " + b.wild.name + "! +" + reward + " XP" + (ups ? ". Lv" + b.mine.level + "!" : "") + extra;
   if (b.roam) { scene.remove(b.roam.g); realmCreatures = realmCreatures.filter(c => c !== b.roam); }
   if (companion) companion.friendship++;
-  reactCompanion("cheer");
+  reactCompanion("cheer"); battleFlash("electric");   // victory sparkle
   SFX.victory(); renderBattle();
 }
 function tryTameBattle() {
@@ -3393,6 +3408,7 @@ function loop() {
     if (isNight()) { wasNight = true; if (!raidShown) { raidShown = true; showBanner("Night Raid! Defend Thomas and the cats."); } }
     else { raidShown = false; if (wasNight) { if (!survivedNight) { survivedNight = true; achieve("night", "First Night Survived"); } const safe = cats.filter(c => c.tamed).length; const rew = 8 + safe * 6; addCoins(rew); addXP(15 + safe * 5); showBanner("Raid survived! +" + rew + " coins. Cats safe: " + safe); toast("You protected " + safe + " cat" + (safe === 1 ? "" : "s") + "."); achieve("raid", "Raid Defender"); wasNight = false; } }
     updateStory(dt);
+    updateFredaPing(dt);
     updatePowerups(dt);
     updateBlockPowers(dt);
     updateEvents(dt);
