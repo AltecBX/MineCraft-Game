@@ -175,7 +175,7 @@ function updateMusic(dt) {
 
 // ---------- BLOCKS ----------
 const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, LEAVES = 5, SAND = 6, WATER = 7, LAVA = 8,
-      FIRESTONE = 9, ENDSTONE = 10, PORTAL = 11, PLANKS = 12, COBBLE = 13, TORCH = 14, CHEST = 15, SNOW = 16, BRICK = 17, BED = 18, FIRE_CRYSTAL = 19, BOUNCE = 20, SPIKE = 21, ALARM = 22, FREDA = 23, MYCELIUM = 24, MUSHROOM = 25, CRYSTAL = 26, LAUNCH = 27, HEAL = 28, FROST = 29;
+      FIRESTONE = 9, ENDSTONE = 10, PORTAL = 11, PLANKS = 12, COBBLE = 13, TORCH = 14, CHEST = 15, SNOW = 16, BRICK = 17, BED = 18, FIRE_CRYSTAL = 19, BOUNCE = 20, SPIKE = 21, ALARM = 22, FREDA = 23, MYCELIUM = 24, MUSHROOM = 25, CRYSTAL = 26, LAUNCH = 27, HEAL = 28, FROST = 29, TALLGRASS = 30, CDOOR = 31;
 function C(hex) { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; }
 const BLOCKS = {
   [GRASS]:    { name: "Grass", solid: 1, opaque: 1, hard: 0.45, top: C(0x6cc24a), side: C(0x5aa83e), bot: C(0x8a5a2b), drop: DIRT, icon: "🟩" },
@@ -205,7 +205,9 @@ const BLOCKS = {
   [CRYSTAL]:  { name: "Crystal", solid: 1, opaque: 1, hard: 1.2, top: C(0x76e4ff), side: C(0x4fc8ef), bot: C(0x36a8d0), drop: CRYSTAL, tool: "pick", glow: 1, icon: "🔷" },
   [LAUNCH]:   { name: "Launch Pad", solid: 1, opaque: 1, hard: 0.4, top: C(0xffd23d), side: C(0xff9a2e), bot: C(0xc97a1e), drop: LAUNCH, launch: 1, icon: "🚀" },
   [HEAL]:     { name: "Heal Block", solid: 1, opaque: 1, hard: 0.5, top: C(0x7cf0a0), side: C(0x4fd07e), bot: C(0x36a85e), drop: HEAL, heal: 1, glow: 1, icon: "💚" },
-  [FROST]:    { name: "Frost Block", solid: 1, opaque: 1, hard: 0.5, top: C(0xbfe8ff), side: C(0x8fcff0), bot: C(0x6fb0d8), drop: FROST, frost: 1, glow: 1, icon: "🧊" }
+  [FROST]:    { name: "Frost Block", solid: 1, opaque: 1, hard: 0.5, top: C(0xbfe8ff), side: C(0x8fcff0), bot: C(0x6fb0d8), drop: FROST, frost: 1, glow: 1, icon: "🧊" },
+  [TALLGRASS]:{ name: "Tall Grass", solid: 0, opaque: 0, hard: 0.1, top: C(0x57c93e), side: C(0x49b432), bot: C(0x3a9a28), drop: TALLGRASS, tallgrass: 1, icon: "🌿" },
+  [CDOOR]:    { name: "Creature Door", solid: 1, opaque: 1, hard: 2, top: C(0x6a3df0), side: C(0x9b30ff), bot: C(0x3aa0ff), drop: CDOOR, glow: 1, icon: "🚪" }
 };
 function isOpaque(id) { return id !== AIR && id !== WATER && id !== PORTAL && BLOCKS[id] && BLOCKS[id].opaque; }
 function isSolidBlock(id) { return id !== AIR && id !== WATER && id !== PORTAL && BLOCKS[id] && BLOCKS[id].solid; }
@@ -371,6 +373,18 @@ function genChunk(cx, cz) {
       const cl = vn(x * 0.08 + 50, z * 0.08 + 50);
       if (cl > 0.88) setRaw(x, 46 + Math.floor(hsh(x, z) * 4), z, SNOW);                   // decorative clouds up high
     }
+  } else if (DIM === "realm") { // creature battle realm: bright grass plains, tall-grass zones, forests, hills, lakes
+    for (let x = x0; x < x0 + CH; x++) for (let z = z0; z < z0 + CH; z++) {
+      const base = fbm(x * 0.03 + 40, z * 0.03 + 40);
+      const h = Math.max(6, Math.min(WORLD_H - 6, Math.floor(SEA + 2 + (base - 0.5) * 22)));
+      for (let y = 0; y <= h; y++) { let id = STONE; if (y === h) id = (h <= SEA) ? SAND : (h > SEA + 14 ? SNOW : GRASS); else if (y > h - 3) id = DIRT; setRaw(x, y, z, id); }
+      for (let y = h + 1; y <= SEA; y++) setRaw(x, y, z, WATER);
+      if (h > SEA && h <= SEA + 14) {
+        const r = hsh(x * 3 + 9, z * 5 + 13);
+        if (r > 0.94) tree(x, h + 1, z);
+        else if (r > 0.5 && r < 0.86) setRaw(x, h + 1, z, TALLGRASS);   // wide tall-grass encounter zones
+      }
+    }
   } else { // end: large central island, floating islands, ruined pillars; void elsewhere
     for (let x = x0; x < x0 + CH; x++) for (let z = z0; z < z0 + CH; z++) {
       const d = Math.hypot(x, z);
@@ -425,13 +439,13 @@ function buildChunk(cx, cz) {
   const x0 = cx * CH, z0 = cz * CH;
   for (let x = x0; x < x0 + CH; x++) for (let z = z0; z < z0 + CH; z++) for (let y = 0; y < WORLD_H; y++) {
     const id = getBlock(x, y, z); if (id === AIR || id === PORTAL || id === TORCH) continue;
-    const def = BLOCKS[id]; const water = id === WATER;
+    const def = BLOCKS[id]; const water = id === WATER; const transp = water || id === TALLGRASS;   // tall grass renders as translucent foliage
     const tint = id === WATER ? 1 : (0.9 + 0.16 * hsh(x * 1.7 + y * 4.3, z * 2.9));
     for (let f = 0; f < 6; f++) {
       const F = FACES[f], nb = getBlock(x + F.d[0], y + F.d[1], z + F.d[2]);
-      const draw = water ? (nb === AIR) : !isOpaque(nb);
+      const draw = transp ? (nb === AIR || (!isOpaque(nb) && nb !== id)) : !isOpaque(nb);
       if (!draw) continue;
-      const t = water ? wa : op, base = t.pos.length / 3, col = faceCol(def, f);
+      const t = transp ? wa : op, base = t.pos.length / 3, col = faceCol(def, f);
       for (let k = 0; k < 4; k++) { const c = F.c[k]; t.pos.push(x + c[0], y + c[1], z + c[2]); t.nor.push(F.d[0], F.d[1], F.d[2]); t.col.push(col[0] * tint, col[1] * tint, col[2] * tint); }
       t.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
     }
@@ -546,7 +560,7 @@ function rebuildFredaLabels() {
 
 // chest storage (per dimension + position) and player block edits (for save/load)
 let chestStore = new Map();           // "dim:x,y,z" -> [9 stacks]
-const editsByDim = { overworld: new Map(), fire: new Map(), end: new Map(), sky: new Map() };
+const editsByDim = { overworld: new Map(), fire: new Map(), end: new Map(), sky: new Map(), realm: new Map() };
 function chestKey(x, y, z) { return DIM + ":" + bk(x, y, z); }
 function recordEdit(x, y, z, id) { const m = editsByDim[DIM]; if (m) m.set(bk(x, y, z), id); }
 // player axis-aligned box: HW half width, PH total height, EYE eye height (feet at pos.y)
@@ -1699,10 +1713,10 @@ function updateDayNight(dt) {
 
 // ---------- PORTALS + DIMENSIONS ----------
 let dragon = null, crystals = [], crystalsLeft = 0;
-function buildPortalFrame(cx, baseY, z, dir, dest) { // dir: 'x' plane; dest: dimension this portal leads to
+function buildPortalFrame(cx, baseY, z, dir, dest, edgeBlock) { // dir: 'x' plane; dest: dimension this portal leads to
   for (let dx = -1; dx <= 2; dx++) for (let dy = -1; dy <= 4; dy++) {
     const edge = dx === -1 || dx === 2 || dy === -1 || dy === 4;
-    setRaw(cx + dx, baseY + dy, z, edge ? COBBLE : PORTAL);
+    setRaw(cx + dx, baseY + dy, z, edge ? (edgeBlock || COBBLE) : PORTAL);
     if (!edge && dest) portalDest[bk(cx + dx, baseY + dy, z)] = dest;
   }
   rebuildPortalCells();
@@ -1724,7 +1738,7 @@ function transitionTo(name) {
   SFX.portal(); const fade = document.getElementById("fade"); fade.style.opacity = "1";
   setTimeout(() => { loadDimension(name); fade.style.opacity = "0"; }, 520);
 }
-function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } if (typeof skyBoss !== "undefined" && skyBoss) { scene.remove(skyBoss.g); skyBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (merchant) { scene.remove(merchant.g); merchant = null; } if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
+function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } if (typeof skyBoss !== "undefined" && skyBoss) { scene.remove(skyBoss.g); skyBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (merchant) { scene.remove(merchant.g); merchant = null; } if (typeof clearRealmCreatures === "function") clearRealmCreatures(); battle = null; cmenuOpen = false; if (typeof hide === "function") { hide("battle"); hide("cmenu"); } if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
 function loadDimension(name, fromSave) {
   DIM = name; clearWorld(); clearEntities();
   if (name === "fire") achieve("firep", "Fire Portal Opened");
@@ -1735,7 +1749,8 @@ function loadDimension(name, fromSave) {
   for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) buildChunk(dx, dz);
   if (!fromSave) { player.pos.y = surfaceY(0, 0) + 1; player.spawn.copy(player.pos); }
   // dimension setup
-  if (name === "overworld") { scene.fog = new THREE.Fog(0x9fd2ff, 20, GFX[settings.gfx].dist * CH); hemi.color.set(0xbfe3ff); sun.color.set(0xffffff); showBanner("Overworld"); buildPortalFrame(8, surfaceY(8, 0), 0, "x", "fire"); if (fireBossDown) { buildPortalFrame(-10, surfaceY(-10, 0), 0, "x", "sky"); } setQuest("Step through the purple portal to the Fire Dimension"); }
+  if (name === "overworld") { scene.fog = new THREE.Fog(0x9fd2ff, 20, GFX[settings.gfx].dist * CH); hemi.color.set(0xbfe3ff); sun.color.set(0xffffff); showBanner("Overworld"); buildPortalFrame(8, surfaceY(8, 0), 0, "x", "fire"); if (fireBossDown) { buildPortalFrame(-10, surfaceY(-10, 0), 0, "x", "sky"); } buildPortalFrame(12, surfaceY(12, -6), -6, "x", "realm", CDOOR); setQuest("Step through the purple portal to the Fire Dimension"); }
+  else if (name === "realm") { scene.background = new THREE.Color(0x8ad0ff); scene.fog = new THREE.Fog(0xbfeaff, 26, GFX[settings.gfx].dist * CH); hemi.color.set(0xdaf3ff); hemi.intensity = 0.95; sun.intensity = 1.0; sun.color.set(0xffffff); showBanner("The Creature Battle Realm"); buildPortalFrame(6, surfaceY(6, 0), 0, "x", "overworld", CDOOR); enterRealm(); }
   else if (name === "fire") { scene.background = new THREE.Color(0x2a0808); scene.fog = new THREE.Fog(0x551111, 8, 40); hemi.color.set(0xff7a3a); hemi.intensity = 0.6; sun.intensity = 0.5; sun.color.set(0xff8a4a); showBanner("Fire Dimension"); clearFirePad(0, 0); if (fireBossDown) { buildPortalFrame(0, surfaceY(0, -8), -8, "x", "end"); setRaw(0, surfaceY(0, -8) + 1, -8, PORTAL); setQuest("Enter the portal to reach the End"); } else { spawnFireBoss(); setQuest("Defeat the Fire Guardian. A Flame Charm will protect you from the heat"); } }
   else if (name === "sky") { scene.background = new THREE.Color(0x8fd0ff); scene.fog = new THREE.Fog(0xbfe3ff, 36, 150); hemi.color.set(0xdff1ff); hemi.intensity = 0.95; sun.intensity = 0.9; sun.color.set(0xffffff); showBanner("Sky Islands"); buildPortalFrame(6, surfaceY(6, 0), 0, "x", "overworld"); spawnSkySerpent(); setQuest("Glide the Sky Islands and defeat the Sky Serpent"); }
   else { scene.background = new THREE.Color(0x000000); scene.fog = new THREE.Fog(0x000000, 30, 120); hemi.color.set(0xffffff); hemi.intensity = 0.9; sun.intensity = 0.7; sun.color.set(0xeae6ff); showBanner("The End"); buildEndDragon(); setQuest("Destroy the End Crystals, then slay the Black Dragon"); }
@@ -2245,7 +2260,8 @@ function saveGame(silent) {
       qi: qi, ach: [...ach], day: day, timeOfDay: timeOfDay, hotbar: hotbar, coins: coins,
       side: [...sideDone],
       cats: cats.filter(c => c.tamed).map(c => ({ x: Math.round(c.g.position.x), z: Math.round(c.g.position.z), color: c.color, level: c.level, mode: c.mode })),
-      edits: { overworld: [...editsByDim.overworld], fire: [...editsByDim.fire], end: [...editsByDim.end], sky: [...editsByDim.sky] },
+      edits: { overworld: [...editsByDim.overworld], fire: [...editsByDim.fire], end: [...editsByDim.end], sky: [...editsByDim.sky], realm: [...editsByDim.realm] },
+      cteam: cteam, cstorage: cstorage, cdex: [...cdex], cbadges: [...cbadges],
       chests: [...chestStore] };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     if (!silent) toast("Game saved");
@@ -2268,6 +2284,8 @@ function loadGame() {
   editsByDim.fire = new Map((data.edits && data.edits.fire) || []);
   editsByDim.end = new Map((data.edits && data.edits.end) || []);
   editsByDim.sky = new Map((data.edits && data.edits.sky) || []);
+  editsByDim.realm = new Map((data.edits && data.edits.realm) || []);
+  cteam = data.cteam || []; cstorage = data.cstorage || []; cdex = new Set(data.cdex || []); cbadges = new Set(data.cbadges || []);
   chestStore = new Map(data.chests || []);
   running = true; paused = false; wasNight = false; raidShown = false; dodge.t = 0; dodge.cd = 0; openChestK = null;
   story.active = false; clearObjective(); endCine();
@@ -2489,6 +2507,217 @@ function startTreasureHunt() {
   showBanner("Treasure Hunt! X marks the spot."); toast("Follow the glowing marker and dig up the treasure."); SFX.power();
 }
 
+// ============================================================================
+// THE CREATURE BATTLE REALM: original creatures, turn-based battles, taming.
+// (Original designs/names inspired by classic creature-battler roles, no
+//  trademarked characters, so the public game stays legally clear.)
+// ============================================================================
+const MOVES = {
+  shock: { name: "Electric Shock", type: "electric", power: 18 }, fireblast: { name: "Fire Blast", type: "fire", power: 22 },
+  watersurge: { name: "Water Surge", type: "water", power: 20 }, shadowball: { name: "Shadow Ball", type: "ghost", power: 20 },
+  dragonstrike: { name: "Dragon Strike", type: "dragon", power: 24 }, psychicwave: { name: "Psychic Wave", type: "psychic", power: 20 },
+  steelslam: { name: "Steel Slam", type: "steel", power: 18 }, darkbite: { name: "Dark Bite", type: "dark", power: 18 },
+  iceslash: { name: "Ice Slash", type: "water", power: 18 }, healinglight: { name: "Healing Light", type: "fairy", power: 0, heal: 26 },
+  quickattack: { name: "Quick Attack", type: "normal", power: 12 }, thunderdash: { name: "Thunder Dash", type: "electric", power: 22 },
+  lavaburst: { name: "Lava Burst", type: "fire", power: 24 }, aquashield: { name: "Aqua Shield", type: "water", power: 0, shield: true },
+  meteorpunch: { name: "Meteor Punch", type: "rock", power: 22 }, punch: { name: "Power Punch", type: "fighting", power: 18 },
+  fairykiss: { name: "Fairy Kiss", type: "fairy", power: 18 }, earthslam: { name: "Earth Slam", type: "ground", power: 20 },
+  windgust: { name: "Wind Gust", type: "flying", power: 16 }
+};
+const TYPE_CHART = {
+  electric: { water: 2, flying: 2, ground: 0, grass: 0.5, dragon: 0.5, electric: 0.5 },
+  fire: { grass: 2, steel: 2, water: 0.5, fire: 0.5, rock: 0.5, dragon: 0.5 },
+  water: { fire: 2, ground: 2, rock: 2, water: 0.5, grass: 0.5, dragon: 0.5 },
+  grass: { water: 2, ground: 2, rock: 2, fire: 0.5, grass: 0.5, flying: 0.5, dragon: 0.5, steel: 0.5 },
+  psychic: { fighting: 2, psychic: 0.5, dark: 0 },
+  ghost: { psychic: 2, ghost: 2, dark: 0.5, normal: 0 },
+  dragon: { dragon: 2, steel: 0.5, fairy: 0 },
+  dark: { psychic: 2, ghost: 2, dark: 0.5, fighting: 0.5, fairy: 0.5 },
+  fighting: { normal: 2, rock: 2, steel: 2, dark: 2, psychic: 0.5, flying: 0.5, fairy: 0.5, ghost: 0 },
+  steel: { rock: 2, fairy: 2, steel: 0.5, fire: 0.5, water: 0.5, electric: 0.5 },
+  ground: { fire: 2, electric: 2, rock: 2, steel: 2, grass: 0.5, flying: 0 },
+  flying: { grass: 2, fighting: 2, electric: 0.5, rock: 0.5, steel: 0.5 },
+  fairy: { dragon: 2, dark: 2, fighting: 2, fire: 0.5, steel: 0.5 },
+  rock: { fire: 2, flying: 2, fighting: 0.5, ground: 0.5, steel: 0.5 },
+  normal: { rock: 0.5, ghost: 0, steel: 0.5 }
+};
+function typeMult(atk, def) { const m = TYPE_CHART[atk]; return (m && def in m) ? m[def] : 1; }
+const SPECIES = {
+  foxling: { name: "Foxling", type: "normal", role: "starter", col: 0xd8a24a, size: 0.85, hp: 42, moves: ["quickattack", "darkbite", "fairykiss", "iceslash"] },
+  voltmouse: { name: "Voltmouse", type: "electric", role: "grass", col: 0xf5d020, size: 0.65, hp: 34, moves: ["shock", "quickattack", "thunderdash"] },
+  aurawolf: { name: "Aurawolf", type: "fighting", role: "grass", col: 0x3a7bd5, size: 0.95, hp: 48, moves: ["punch", "steelslam", "quickattack"] },
+  moonfox: { name: "Moonfox", type: "dark", role: "grass", col: 0x2a2e3c, size: 0.8, hp: 44, moves: ["darkbite", "quickattack", "fairykiss"] },
+  frogblade: { name: "Frogblade", type: "water", role: "water", col: 0x2f8fd0, size: 0.9, hp: 46, moves: ["watersurge", "darkbite", "quickattack"] },
+  landshark: { name: "Landshark", type: "dragon", role: "grass", col: 0x4a6a8a, size: 1.1, hp: 56, moves: ["dragonstrike", "earthslam", "darkbite"] },
+  museling: { name: "Museling", type: "fairy", role: "grass", col: 0xe6a8d8, size: 0.95, hp: 50, moves: ["fairykiss", "psychicwave", "healinglight"] },
+  steelmind: { name: "Steelmind", type: "steel", role: "grass", col: 0x8a93a8, size: 1.1, hp: 58, moves: ["steelslam", "psychicwave", "meteorpunch"] },
+  emberwing: { name: "Emberwing", type: "fire", role: "fly", col: 0xff5a1e, size: 1.4, hp: 60, moves: ["fireblast", "lavaburst", "windgust", "dragonstrike"] },
+  dragonox: { name: "Dragonox", type: "dragon", role: "sky", col: 0xe8a23a, size: 1.3, hp: 62, moves: ["dragonstrike", "windgust", "quickattack"] },
+  shadeling: { name: "Shadeling", type: "ghost", role: "cave", col: 0x6a3aa0, size: 0.9, hp: 44, moves: ["shadowball", "darkbite", "psychicwave"] },
+  rocktitan: { name: "Rocktitan", type: "rock", role: "grass", col: 0x6a5a44, size: 1.2, hp: 64, moves: ["meteorpunch", "earthslam", "darkbite"] },
+  snoozer: { name: "Snoozer", type: "normal", role: "block", col: 0x3a5a6a, size: 1.6, hp: 90, moves: ["quickattack", "earthslam"] },
+  psyclone: { name: "Psyclone", type: "psychic", role: "legendary", col: 0xb06ad0, size: 1.4, hp: 95, moves: ["psychicwave", "shadowball", "dragonstrike", "healinglight"], legend: true },
+  mewling: { name: "Mewling", type: "psychic", role: "rare", col: 0xf3a6c8, size: 0.7, hp: 60, moves: ["psychicwave", "fairykiss", "quickattack"], legend: true },
+  terraking: { name: "Terraking", type: "ground", role: "lava", col: 0xd14a2a, size: 1.6, hp: 100, moves: ["lavaburst", "earthslam", "meteorpunch"], legend: true },
+  tidequeen: { name: "Tidequeen", type: "water", role: "water", col: 0x2a6ad0, size: 1.6, hp: 100, moves: ["watersurge", "aquashield", "iceslash"], legend: true },
+  skywyrm: { name: "Skywyrm", type: "dragon", role: "sky", col: 0x2faf6a, size: 1.8, hp: 110, moves: ["dragonstrike", "windgust", "lavaburst"], legend: true },
+  allbeast: { name: "Allbeast", type: "normal", role: "legendary", col: 0xeae0c0, size: 1.7, hp: 130, moves: ["dragonstrike", "psychicwave", "fairykiss", "earthslam"], legend: true }
+};
+const WILD_POOL = ["voltmouse", "moonfox", "aurawolf", "museling", "frogblade", "landshark", "rocktitan"];
+function makeCreature(id, level, opts) {
+  opts = opts || {}; const sp = SPECIES[id]; const lvl = level || 5; const maxHp = Math.round(sp.hp + lvl * 4);
+  const shiny = opts.shiny != null ? opts.shiny : (Math.random() < 0.03);
+  return { sp: id, name: opts.name || (shiny ? "Shiny " + sp.name : sp.name), type: sp.type, level: lvl, hp: maxHp, maxHp, moves: sp.moves.slice(0, 4), xp: 0, friendship: opts.friendship || 0, shiny };
+}
+function xpNeed(lvl) { return 18 + lvl * 12; }
+function gainCreatureXP(c, amt) { c.xp += amt; let ups = 0; while (c.xp >= xpNeed(c.level)) { c.xp -= xpNeed(c.level); c.level++; c.maxHp += 4; c.hp = Math.min(c.maxHp, c.hp + 6); ups++; } return ups; }
+function calcDamage(atk, def, mv) {
+  if (!mv.power) return 0;
+  const eff = typeMult(mv.type, SPECIES[def.sp].type);
+  const base = mv.power * (1 + atk.level * 0.06) * eff * (0.85 + Math.random() * 0.3);
+  return { dmg: Math.max(1, Math.round(base)), eff };
+}
+// creature 3D models (blocky, colourful, role-flavoured)
+function shinyTint(c) { const col = new THREE.Color(c); col.offsetHSL(0.12, 0.25, 0.12); return col.getHex(); }
+function creatureCry(type) { const base = { electric: 1200, fire: 300, water: 500, dragon: 160, ghost: 900, psychic: 760, normal: 600 }[type] || 600; blip(base, 0.1, "square", 0.07, base * 1.4); }
+function buildCreatureModel(id, shiny) {
+  const sp = SPECIES[id], s = sp.size || 1, col = shiny ? shinyTint(sp.col) : sp.col, ghost = sp.role === "cave" || sp.type === "ghost";
+  const g = new THREE.Group();
+  const mat = c => new THREE.MeshLambertMaterial({ color: c, transparent: ghost, opacity: ghost ? 0.7 : 1, emissive: sp.legend ? col : 0x000000, emissiveIntensity: sp.legend ? 0.3 : 0 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.6 * s, 0.5 * s, 0.8 * s), mat(col)); body.position.y = 0.5 * s; g.add(body);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.5 * s, 0.5 * s, 0.5 * s), mat(col)); head.position.set(0, 0.85 * s, 0.5 * s); g.add(head);
+  const eyeMat = new THREE.MeshLambertMaterial({ color: 0x111111, emissive: shiny ? 0xfff1a8 : 0x335577, emissiveIntensity: 0.6 });
+  const eL = new THREE.Mesh(new THREE.BoxGeometry(0.09 * s, 0.11 * s, 0.05), eyeMat); eL.position.set(-0.12 * s, 0.92 * s, 0.76 * s); g.add(eL); const eR = eL.clone(); eR.position.x = 0.12 * s; g.add(eR);
+  if (sp.type === "dragon" || sp.role === "sky") { const hL = new THREE.Mesh(new THREE.BoxGeometry(0.08 * s, 0.26 * s, 0.08 * s), mat(0xeeeeee)); hL.position.set(-0.14 * s, 1.18 * s, 0.5 * s); hL.rotation.z = 0.3; g.add(hL); const hR = hL.clone(); hR.position.x = 0.14 * s; hR.rotation.z = -0.3; g.add(hR); }
+  else { const eaL = new THREE.Mesh(new THREE.BoxGeometry(0.13 * s, 0.22 * s, 0.06 * s), mat(col)); eaL.position.set(-0.15 * s, 1.16 * s, 0.5 * s); g.add(eaL); const eaR = eaL.clone(); eaR.position.x = 0.15 * s; g.add(eaR); }
+  if (sp.role === "fly" || sp.role === "sky") { const wMat = mat(shiny ? 0xffffff : 0xcfeaff); const wl = new THREE.Mesh(new THREE.BoxGeometry(0.9 * s, 0.08, 0.6 * s), wMat); wl.position.set(-0.62 * s, 0.6 * s, 0); g.add(wl); const wr = wl.clone(); wr.position.x = 0.62 * s; g.add(wr); g.userData.wings = [wl, wr]; }
+  const legs = []; for (const lx of [-0.18 * s, 0.18 * s]) for (const lz of [0.25 * s, -0.25 * s]) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.14 * s, 0.3 * s, 0.14 * s), mat(col)); l.geometry.translate(0, -0.15 * s, 0); l.position.set(lx, 0.3 * s, lz); g.add(l); legs.push(l); }
+  g.userData.legs = legs;
+  if (sp.legend) { const aura = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(255,245,180,0.8)", "rgba(255,200,80,0)"), depthWrite: false, transparent: true, fog: false })); aura.scale.set(3.2 * s, 3.2 * s, 1); aura.position.y = 0.8 * s; g.add(aura); }
+  else if (shiny) { const sg = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(255,255,255,0.9)", "rgba(180,220,255,0)"), depthWrite: false, transparent: true, fog: false })); sg.scale.set(2 * s, 2 * s, 1); sg.position.y = 0.8 * s; g.add(sg); }
+  return g;
+}
+// team + collection
+let cteam = [], cstorage = [], cdex = new Set(), cbadges = new Set();
+function addCreature(c) { cdex.add(c.sp); if (cteam.length < 6) { cteam.push(c); return "team"; } cstorage.push(c); return "storage"; }
+// roaming creatures in the realm
+let realmCreatures = [], encounterCd = 0;
+function clearRealmCreatures() { for (const c of realmCreatures) scene.remove(c.g); realmCreatures = []; }
+function spawnRealmCreature(id, x, z, level) {
+  const shiny = Math.random() < 0.04, g = buildCreatureModel(id, shiny), sp = SPECIES[id], fly = sp.role === "fly" || sp.role === "sky";
+  g.position.set(x + 0.5, fly ? surfaceY(x, z) + 6 : surfaceY(x, z), z + 0.5); scene.add(g);
+  realmCreatures.push({ id, g, sp, level, fly, shiny, dir: Math.random() * 6.28, t: Math.random() * 6, soundCd: Math.random() * 8, walkT: 0 });
+}
+function enterRealm() {
+  clearRealmCreatures(); encounterCd = 0;
+  if (!cteam.length) { cteam.push(makeCreature("foxling", 5, { shiny: false })); cdex.add("foxling"); toast("Foxling joins you as your battle companion!"); }
+  const roamers = ["voltmouse", "moonfox", "aurawolf", "museling", "landshark", "steelmind", "rocktitan"];
+  for (let i = 0; i < 8; i++) { const a = Math.random() * 6.28, r = 8 + Math.random() * 22; spawnRealmCreature(roamers[Math.floor(Math.random() * roamers.length)], Math.floor(player.pos.x + Math.cos(a) * r), Math.floor(player.pos.z + Math.sin(a) * r), 3 + Math.floor(Math.random() * 5)); }
+  for (let i = 0; i < 2; i++) { const a = Math.random() * 6.28, r = 16 + Math.random() * 12; spawnRealmCreature(Math.random() < 0.5 ? "emberwing" : "dragonox", Math.floor(player.pos.x + Math.cos(a) * r), Math.floor(player.pos.z + Math.sin(a) * r), 8); }
+  setQuest("Walk through the tall grass to find wild creatures, then Battle and Tame them.");
+}
+function updateRealm(dt) {
+  for (const c of realmCreatures) {
+    const dpx = player.pos.x - c.g.position.x, dpz = player.pos.z - c.g.position.z, dp = Math.hypot(dpx, dpz) || 1;
+    if (c.fly) { c.t += dt; c.g.position.x += Math.cos(c.dir) * 1.4 * dt; c.g.position.z += Math.sin(c.dir) * 1.4 * dt; if (Math.random() < 0.012) c.dir += (Math.random() - .5); c.g.position.y = surfaceY(c.g.position.x, c.g.position.z) + 6 + Math.sin(c.t) * 0.6; if (c.g.userData.wings) { const f = Math.sin(c.t * 8) * 0.5; c.g.userData.wings[0].rotation.z = -f; c.g.userData.wings[1].rotation.z = f; } c.g.rotation.y = c.dir + Math.PI / 2; }
+    else {
+      if (dp < 6 && dp > 1.4) { c.dir = Math.atan2(c.g.position.x - player.pos.x, c.g.position.z - player.pos.z); c.g.position.x += Math.sin(c.dir) * 2.2 * dt; c.g.position.z += Math.cos(c.dir) * 2.2 * dt; }   // shy: drift away
+      else { if (Math.random() < 0.012) c.dir += (Math.random() - .5) * 1.5; c.g.position.x += Math.sin(c.dir) * 1.1 * dt; c.g.position.z += Math.cos(c.dir) * 1.1 * dt; }
+      c.g.rotation.y = c.dir; c.g.position.y = surfaceY(c.g.position.x, c.g.position.z);
+      c.walkT += dt * 8; const sw = Math.sin(c.walkT) * 0.5, L = c.g.userData.legs; if (L) { L[0].rotation.x = sw; L[1].rotation.x = -sw; L[2].rotation.x = -sw; L[3].rotation.x = sw; }
+      if (!cmenuOpen && !battle && encounterCd <= 0 && dp < 2.1) openEncounter(makeCreature(c.id, c.level, { shiny: c.shiny }), c);
+    }
+    c.soundCd -= dt; if (c.soundCd <= 0) { c.soundCd = 6 + Math.random() * 8; if (dp < 14) creatureCry(c.sp.type); }
+  }
+  if (encounterCd > 0) encounterCd -= dt;
+  const feet = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y), Math.floor(player.pos.z)), eye = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + 0.6), Math.floor(player.pos.z));
+  if ((feet === TALLGRASS || eye === TALLGRASS) && encounterCd <= 0 && !cmenuOpen && !battle) { encounterCd = 1.4; if (Math.random() < 0.3) { SFX.mine(); openEncounter(makeCreature(WILD_POOL[Math.floor(Math.random() * WILD_POOL.length)], 3 + Math.floor(Math.random() * 5)), null); } }
+}
+// ---- encounter menu (Battle / Tame / Feed / Run) ----
+let cmenuOpen = false, cmenu = null;
+function openEncounter(wild, roamRef) {
+  cmenu = { wild, roam: roamRef }; cmenuOpen = true; encounterCd = 3; creatureCry(wild.type);
+  const p = $("cmenuPanel"); if (p) {
+    p.innerHTML = "<h2>" + (wild.shiny ? "✨ " : "") + "A wild " + wild.name + " appeared!</h2><p class='muted'>Level " + wild.level + " · " + SPECIES[wild.sp].type + " type</p>";
+    const row = document.createElement("div"); row.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px";
+    const mk = (label, fn) => { const b = document.createElement("button"); b.className = "btn"; b.textContent = label; b.addEventListener("click", fn); row.appendChild(b); };
+    mk("Battle", () => { closeCMenu(); startBattle(wild, roamRef); });
+    mk("Tame", () => tryTameFromMenu());
+    mk("Feed", () => { wild.friendship += 2; toast(wild.name + " looks friendlier."); SFX.pickup(); });
+    mk("Run", closeCMenu);
+    p.appendChild(row);
+  }
+  show("cmenu"); document.exitPointerLock();
+}
+function closeCMenu() { cmenuOpen = false; cmenu = null; hide("cmenu"); if (!isTouch && running && !paused) canvas.requestPointerLock(); }
+function tameChance(wild) { return Math.min(0.92, 0.28 + (1 - wild.hp / wild.maxHp) * 0.5 + wild.friendship * 0.04 + (wild.shiny ? -0.1 : 0)); }
+function tryTameFromMenu() {
+  const wild = cmenu.wild, roam = cmenu.roam;
+  if (Math.random() < tameChance(wild)) { const where = addCreature(wild); SFX.victory(); showBanner("You befriended " + wild.name + "!"); toast(where === "team" ? wild.name + " joined your team." : wild.name + " went to your storage shrine."); if (roam) { scene.remove(roam.g); realmCreatures = realmCreatures.filter(c => c !== roam); } closeCMenu(); }
+  else { toast(wild.name + " broke free! Weaken it in battle first."); SFX.hurt(); }
+}
+// ---- turn-based battle ----
+let battle = null;
+function startBattle(wild, roamRef) {
+  if (!cteam.length) cteam.push(makeCreature("foxling", 5));
+  let mine = cteam.find(c => c.hp > 0); if (!mine) { toast("Your creatures are too tired. Visit a healing station."); return; }
+  battle = { wild, mine, roam: roamRef, over: false, log: "A wild " + wild.name + " challenges you!", busy: false };
+  renderBattle(); show("battle"); document.exitPointerLock(); SFX.screech();
+}
+function renderBattle() {
+  const p = $("battlePanel"); if (!p || !battle) return; const b = battle;
+  const bar = (c) => "<div class='cbar'><div class='cbarfill' style='width:" + Math.max(0, 100 * c.hp / c.maxHp) + "%'></div></div>";
+  let html = "<div class='battleRow'><div class='cbox'><b>" + (b.wild.shiny ? "✨" : "") + b.wild.name + "</b> Lv" + b.wild.level + bar(b.wild) + "<span class='muted'>" + Math.max(0, b.wild.hp | 0) + "/" + b.wild.maxHp + " · " + SPECIES[b.wild.sp].type + "</span></div>";
+  html += "<div class='cbox mine'><b>" + b.mine.name + "</b> Lv" + b.mine.level + bar(b.mine) + "<span class='muted'>" + Math.max(0, b.mine.hp | 0) + "/" + b.mine.maxHp + " · " + SPECIES[b.mine.sp].type + "</span></div></div>";
+  html += "<div class='battleLog'>" + b.log + "</div>";
+  p.innerHTML = html;
+  const grid = document.createElement("div"); grid.className = "moveGrid";
+  if (!b.over) {
+    b.mine.moves.forEach((mid, i) => { const mv = MOVES[mid]; const btn = document.createElement("button"); btn.className = "mvBtn"; btn.innerHTML = "<b>" + mv.name + "</b><span>" + mv.type + (mv.power ? " · " + mv.power : "") + "</span>"; btn.addEventListener("click", () => doMove(i)); grid.appendChild(btn); });
+  }
+  p.appendChild(grid);
+  const row = document.createElement("div"); row.style.cssText = "display:flex;gap:8px;justify-content:center;margin-top:8px";
+  const mk = (l, fn) => { const x = document.createElement("button"); x.className = "btn ghost"; x.textContent = l; x.addEventListener("click", fn); row.appendChild(x); };
+  if (!b.over) { mk("Tame", tryTameBattle); mk("Run", () => { battle = null; hide("battle"); closeCMenu(); }); }
+  else { mk("Continue", () => { battle = null; hide("battle"); closeCMenu(); }); }
+  p.appendChild(row);
+}
+function doMove(i) {
+  const b = battle; if (!b || b.over || b.busy) return; b.busy = true;
+  const mv = MOVES[b.mine.moves[i]];
+  if (mv.heal) { b.mine.hp = Math.min(b.mine.maxHp, b.mine.hp + mv.heal); b.log = b.mine.name + " used " + mv.name + " and recovered."; }
+  else if (mv.shield) { b.mine.shield = true; b.log = b.mine.name + " raised " + mv.name + "."; }
+  else { const r = calcDamage(b.mine, b.wild, mv); b.wild.hp -= r.dmg; b.log = b.mine.name + " used " + mv.name + "! " + (r.eff > 1 ? "Super effective! " : r.eff < 1 ? "Not very effective. " : "") + "(" + r.dmg + ")"; }
+  renderBattle();
+  if (b.wild.hp <= 0) { return winBattle(); }
+  setTimeout(() => { enemyTurn(); }, 600);
+}
+function enemyTurn() {
+  const b = battle; if (!b || b.over) return;
+  const mid = b.wild.moves[Math.floor(Math.random() * b.wild.moves.length)], mv = MOVES[mid];
+  if (mv.heal) { b.wild.hp = Math.min(b.wild.maxHp, b.wild.hp + mv.heal); b.log = b.wild.name + " used " + mv.name + "."; }
+  else { let r = calcDamage(b.wild, b.mine, mv); if (b.mine.shield) { r.dmg = Math.round(r.dmg * 0.5); b.mine.shield = false; } b.mine.hp -= r.dmg; b.log = "Wild " + b.wild.name + " used " + mv.name + "! (" + r.dmg + ")"; }
+  b.busy = false; renderBattle();
+  if (b.mine.hp <= 0) {
+    const next = cteam.find(c => c.hp > 0 && c !== b.mine);
+    if (next) { b.mine = next; b.log = "Your creature fainted. Go, " + next.name + "!"; renderBattle(); }
+    else { b.over = true; b.log = "All your creatures fainted! Heal at a station."; cteam.forEach(c => { c.hp = Math.max(1, Math.round(c.maxHp * 0.3)); }); renderBattle(); }
+  }
+}
+function winBattle() {
+  const b = battle; b.over = true;
+  const reward = 14 + b.wild.level * 6; const ups = gainCreatureXP(b.mine, reward); b.mine.friendship++;
+  cdex.add(b.wild.sp); addCoins(b.wild.level + 4);
+  b.log = "You defeated " + b.wild.name + "! +" + reward + " XP" + (ups ? ". " + b.mine.name + " grew to Lv" + b.mine.level + "!" : "");
+  if (b.roam) { scene.remove(b.roam.g); realmCreatures = realmCreatures.filter(c => c !== b.roam); }
+  SFX.victory(); renderBattle();
+}
+function tryTameBattle() {
+  const b = battle; if (!b || b.over || b.busy) return;
+  if (Math.random() < tameChance(b.wild)) { b.over = true; const where = addCreature(b.wild); b.log = "Gotcha! " + b.wild.name + (where === "team" ? " joined your team." : " went to storage."); SFX.victory(); showBanner("Befriended " + b.wild.name + "!"); if (b.roam) { scene.remove(b.roam.g); realmCreatures = realmCreatures.filter(c => c !== b.roam); } renderBattle(); }
+  else { b.log = b.wild.name + " broke free! Weaken it more."; b.busy = true; renderBattle(); setTimeout(enemyTurn, 600); }
+}
+
 // ---------- GAME START ----------
 // ---------- MINIMAP (UISystem) ----------
 const mmCv = document.getElementById("minimap"), mmx = mmCv.getContext("2d");
@@ -2551,7 +2780,8 @@ function startGame() {
   loadDimension("overworld");
   setQuest(quests[0].text); qi = 0; kills = 0; minedStone = 0; survivedNight = false; tamedCat = false; craftedPick = false; craftedPlanks = false; fireBossDown = false;
   xp = 0; level = 1; xpNext = 50; placedBlocks = 0; movedDist = 0; tameCount = 0; ach.clear(); loadAch(); dodge.t = 0; dodge.cd = 0; wasNight = false; raidShown = false; updateXPUI(); renderSkills();
-  editsByDim.overworld = new Map(); editsByDim.fire = new Map(); editsByDim.end = new Map(); editsByDim.sky = new Map(); chestStore = new Map(); openChestK = null; day = 1; timeOfDay = 0.28;
+  editsByDim.overworld = new Map(); editsByDim.fire = new Map(); editsByDim.end = new Map(); editsByDim.sky = new Map(); editsByDim.realm = new Map(); chestStore = new Map(); openChestK = null; day = 1; timeOfDay = 0.28;
+  cteam = []; cstorage = []; cdex = new Set(); cbadges = new Set(); battle = null; cmenuOpen = false;
   clearObjective(); story.active = false;
   eventCd = 180; activeEvent = null; xpMult = 1; setEventTint(null);
   coins = 0; updateCoinUI(); spawnMerchant(7, 5); treasureKey = null;   // a friendly trader near camp
@@ -2564,7 +2794,7 @@ function startGame() {
   if (!isTouch) canvas.requestPointerLock();
 }
 // panels that open during play; while any is open the world freezes so you cannot be killed in a menu
-const GAME_PANELS = ["inv", "skills", "journal", "chest", "shop", "ach", "collections", "trophies", "catwardrobe", "skinpicker", "settings"];
+const GAME_PANELS = ["inv", "skills", "journal", "chest", "shop", "ach", "collections", "trophies", "catwardrobe", "skinpicker", "settings", "cmenu", "battle"];
 function anyPanelOpen() { for (const id of GAME_PANELS) { const e = document.getElementById(id); if (e && !e.classList.contains("hidden")) return true; } return false; }
 function hideAllPanels() { for (const id of GAME_PANELS) { const e = document.getElementById(id); if (e) e.classList.add("hidden"); } }
 let deathT = 0;
@@ -2595,6 +2825,7 @@ function loop() {
     updateMining(dt);
     updateMonsters(dt);
     updateAnimals(dt);
+    if (DIM === "realm") updateRealm(dt);
     updateFireBoss(dt);
     updateSkyBoss(dt);
     updateProjectiles(dt);
