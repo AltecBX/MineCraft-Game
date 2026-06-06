@@ -3045,7 +3045,7 @@ function winBattle() {
   const ups = gainCreatureXP(b.mine, reward); b.mine.friendship++;
   cdex.add(b.wild.sp); addCoins(Math.round((b.wild.level + 4) * (b.boss ? 4 : b.trainer ? 2 : 1))); realmWins++;
   let extra = "";
-  if (b.boss && b.badge) { if (!cbadges.has(b.badge)) { cbadges.add(b.badge); extra = " The " + b.badge + " badge is yours!"; showBanner("Badge earned: " + b.badge + "!"); } realmBossDown[b.badge] = true; if (b.bossRef) { scene.remove(b.bossRef.g); realmBosses = realmBosses.filter(x => x !== b.bossRef); } }
+  if (b.boss && b.badge) { if (!cbadges.has(b.badge)) { cbadges.add(b.badge); extra = " The " + b.badge + " badge is yours!"; showBanner("Badge earned: " + b.badge + "!"); grantRealmReward(b.badge); } realmBossDown[b.badge] = true; if (b.bossRef) { scene.remove(b.bossRef.g); realmBosses = realmBosses.filter(x => x !== b.bossRef); } }
   b.log = "You defeated " + b.wild.name + "! +" + reward + " XP" + (ups ? ". Lv" + b.mine.level + "!" : "") + extra;
   if (b.roam) { scene.remove(b.roam.g); realmCreatures = realmCreatures.filter(c => c !== b.roam); }
   if (companion) companion.friendship++;
@@ -3083,8 +3083,27 @@ function renderCShop() {
 function openCShop() { renderCShop(); show("cshop"); document.exitPointerLock(); SFX.meow(); }
 function trainerBattle() { const ids = Object.keys(SPECIES).filter(s => !SPECIES[s].legend && SPECIES[s].role !== "block"); const id = ids[Math.floor(Math.random() * ids.length)]; const avg = Math.max(5, Math.round(cteam.reduce((a, c) => a + c.level, 0) / Math.max(1, cteam.length))); startBattle(makeCreature(id, avg + 1), null, { trainer: true, intro: "The Creature Trainer challenges you!" }); }
 const BADGES = [{ id: "forest", name: "Forest Badge", ic: "🌿" }, { id: "cave", name: "Cave Badge", ic: "👻" }, { id: "fire", name: "Fire Badge", ic: "🔥" }, { id: "water", name: "Water Badge", ic: "💧" }, { id: "sky", name: "Sky Badge", ic: "🌪️" }, { id: "psychic", name: "Mind Badge", ic: "🔮" }, { id: "lava", name: "Magma Badge", ic: "🌋" }, { id: "legendary", name: "Legend Badge", ic: "⭐" }];
+// each badge sends themed building blocks (plus coins/XP) back to Thomas's pack for use in the main world
+const BADGE_REWARDS = {
+  forest: { items: [[WOOD, 8], [LEAVES, 8]], coins: 15, xp: 30 },
+  cave: { items: [[CRYSTAL, 6]], coins: 20, xp: 40 },
+  fire: { items: [[FIRESTONE, 10]], coins: 20, xp: 40 },
+  water: { items: [[BRICK, 12]], coins: 20, xp: 40 },
+  lava: { items: [[FIRESTONE, 10], [COBBLE, 8]], coins: 25, xp: 50 },
+  psychic: { items: [[CRYSTAL, 8]], coins: 25, xp: 50 },
+  sky: { items: [[BOUNCE, 4], [LAUNCH, 2]], coins: 25, xp: 50 },
+  legendary: { items: [[CRYSTAL, 16], [BRICK, 16]], coins: 60, xp: 120 }
+};
+function grantRealmReward(badge) {
+  const r = BADGE_REWARDS[badge]; if (!r) return;
+  if (r.items) for (const it of r.items) addItem(it[0], it[1]);
+  if (r.coins) addCoins(r.coins);
+  if (r.xp) addXP(r.xp);
+  toast("Badge reward sent to your pack: build with these blocks back home!");
+  if (badge === "legendary") showBanner("Champion! Creature-realm blocks are yours to keep.");
+}
 function renderBadgeCase() { const el = $("badgeList"); if (!el) return; el.innerHTML = ""; let n = 0; for (const bd of BADGES) { const got = cbadges.has(bd.id); if (got) n++; const d = document.createElement("div"); d.className = "trophy" + (got ? " got" : ""); d.innerHTML = "<div class='ti'>" + (got ? bd.ic : "❔") + "</div><div class='tn'>" + (got ? bd.name : "???") + "</div>"; el.appendChild(d); } const h = $("badgeCount"); if (h) h.textContent = n + " / " + BADGES.length; }
-function openBadgeCase() { if (realmWins >= 3 && !cbadges.has("forest")) { cbadges.add("forest"); showBanner("Forest Badge earned!"); SFX.victory(); toast("Badge Master: you've proven yourself. Take the Forest Badge!"); } renderBadgeCase(); show("badgecase"); document.exitPointerLock(); }
+function openBadgeCase() { if (realmWins >= 3 && !cbadges.has("forest")) { cbadges.add("forest"); showBanner("Forest Badge earned!"); SFX.victory(); toast("Badge Master: you've proven yourself. Take the Forest Badge!"); grantRealmReward("forest"); } renderBadgeCase(); show("badgecase"); document.exitPointerLock(); }
 function renderCTeam() {
   const el = $("cteamList"); if (!el) return; el.innerHTML = "";
   const hd = t => { const h = document.createElement("div"); h.className = "muted"; h.style.cssText = "font-size:12px;letter-spacing:1px;margin:8px 0 4px"; h.textContent = t; el.appendChild(h); };
