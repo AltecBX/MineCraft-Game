@@ -656,6 +656,7 @@ const ACHDEFS = [
   { id: "fireboss", label: "Guardian Slayer", desc: "Defeat the Fire Guardian", test: () => fireBossDown },
   { id: "endin", label: "The End", desc: "Reach the End", test: () => DIM === "end" },
   { id: "skyboss", label: "Sky Beast Slain", desc: "Defeat the Sky Serpent", test: () => ach.has("skyboss") },
+  { id: "daily", label: "Daily Challenger", desc: "Complete a daily challenge", test: () => ach.has("daily") },
   { id: "treasure", label: "Treasure Hunter", desc: "Dig up buried treasure", test: () => ach.has("treasure") },
   { id: "cheeseking", label: "Cheese King Caught", desc: "Catch the Cheese King mouse", test: () => ach.has("cheeseking") },
   { id: "ninja", label: "Ninja Catcher", desc: "Catch a ninja mouse", test: () => ach.has("ninja") },
@@ -1014,7 +1015,7 @@ function placeBlock() {
   if (it.id === SPIKE || it.id === ALARM) rebuildDefenseCells();
   if (it.id === FREDA) rebuildFredaLabels();
   if (it.id === CHEST && !chestStore.has(chestKey(tx, ty, tz))) chestStore.set(chestKey(tx, ty, tz), new Array(9).fill(null));
-  removeItem(selSlot, 1); SFX.place(); placedBlocks++;
+  removeItem(selSlot, 1); SFX.place(); placedBlocks++; dailyTick("build", 1);
 }
 function blockParticles(x, y, z, col) {
   const c = new THREE.Color(col[0], col[1], col[2]);
@@ -1114,8 +1115,8 @@ function spawnMonster(x, z, type) {
   const bar = makeBar(); bar.sprite.position.y = (cfg.tall ? 2.6 : 2.25) * sc; g.add(bar.sprite);
   const mark = makeTag(monsterLabel(cfg, type) + (elite ? "+" : "")); mark.position.y = (cfg.tall ? 2.95 : 2.6) * sc; mark.visible = settings.cbMarkers; g.add(mark);
   g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g);
-  const hp = Math.max(1, Math.round(cfg.hp * (elite ? 2 : 1) * dayMul * 0.66));   // easier: less monster health
-  monsters.push({ g, type, hp, max: hp, speed: cfg.speed, dmg: Math.max(1, Math.round(cfg.dmg * (elite ? 1.5 : 1) * dayMul * 0.7)), xp: Math.round(cfg.xp * (elite ? 2.5 : 1)),
+  const hp = Math.max(1, Math.round(cfg.hp * (elite ? 2 : 1) * dayMul * 0.66 * ngMul));   // easier base, scaled up by New Game Plus
+  monsters.push({ g, type, hp, max: hp, speed: cfg.speed, dmg: Math.max(1, Math.round(cfg.dmg * (elite ? 1.5 : 1) * dayMul * 0.7 * (1 + (ngMul - 1) * 0.6))), xp: Math.round(cfg.xp * (elite ? 2.5 : 1)),
     ranged: !!cfg.ranged, ghost: !!cfg.ghost, slam: !!cfg.slam, summon: !!cfg.summon, digger: !!cfg.digger, flee: !!cfg.flee, elite,
     loot: cfg.loot || [], emBase, shootCd: 1.6, summonCd: 4 + Math.random() * 4, digCd: 1.5, touch: 0, flash: 0, windup: 0, slamCd: 0,
     bar, mark, body, legL, legR, armL, armR, moveT: 0, dir: Math.random() * 6.28, state: "idle", aggro: false, dead: false, dt: 0 });
@@ -1304,6 +1305,7 @@ function mouseCaught(ms) {
   else if (ms.ninja) { addCoins((ms.steal || 0) + 5); addXP(15); toast("Ninja mouse caught. Coins recovered plus a bonus."); SFX.pickup(); achieve("ninja", "Caught a Ninja Mouse"); }
   else if (ms.golden) { addXP(20); addItem(I_APPLE, 1); toast("A golden mouse. Lucky find."); SFX.pickup(); }
   else { SFX.squeak(); }
+  dailyTick("mouse", 1);
   removeMouse(ms);
 }
 function updateAnimals(dt) {
@@ -1822,7 +1824,7 @@ function updateDragon(dt) {
   }
 }
 function winDragon() {
-  dragon.dead = true; hideBoss(); achieve("dragon", "Dragon Defeated"); addXP(150); addShake(0.6); toast("The Black Dragon falls."); SFX.victory();
+  dragon.dead = true; hideBoss(); achieve("dragon", "Dragon Defeated"); addXP(150); addShake(0.6); toast("The Black Dragon falls."); SFX.victory(); bumpNG();
   for (let i = 0; i < 12; i++) hitSpark({ x: dragon.g.position.x + (Math.random() - .5) * 4, y: dragon.g.position.y + (Math.random() - .5) * 3, z: dragon.g.position.z + (Math.random() - .5) * 4 }, 0xb026ff);
   setTimeout(() => { running = false; document.exitPointerLock(); hide("touch"); document.getElementById("hud").classList.add("hidden"); show("win"); }, 2200);
 }
@@ -1885,9 +1887,36 @@ function updateQuests() {
 }
 function onCollect(id) {}
 function onCraft(out) { if (out === PLANKS) craftedPlanks = true; if (out === I_WPICK) { craftedPick = true; achieve("tool", "First Tool Crafted"); } }
-function onMine(id) { if (id === STONE || id === COBBLE) minedStone++; achieve("block", "First Block Broken"); addXP(id === STONE || id === COBBLE ? 2 : 1); }
-function onKill() { kills++; achieve("kill1", "First Monster Defeated"); addXP(10); }
-function onTame() { tamedCat = true; tameCount++; achieve("cat", "First Cat Tamed"); if (tameCount >= 3) achieve("cathero", "Cat Hero"); }
+function onMine(id) { if (id === STONE || id === COBBLE) { minedStone++; dailyTick("mine", 1); } achieve("block", "First Block Broken"); addXP(id === STONE || id === COBBLE ? 2 : 1); }
+function onKill() { kills++; achieve("kill1", "First Monster Defeated"); addXP(10); dailyTick("kill", 1); }
+function onTame() { tamedCat = true; tameCount++; achieve("cat", "First Cat Tamed"); if (tameCount >= 3) achieve("cathero", "Cat Hero"); dailyTick("tame", 1); }
+// ---------- DAILY CHALLENGE + NEW GAME PLUS (replay value) ----------
+const DAILY = [
+  { id: "kill", kind: "kill", text: "Defeat 12 monsters", target: 12, reward: () => { addCoins(25); addXP(40); } },
+  { id: "mine", kind: "mine", text: "Mine 25 stone or cobble", target: 25, reward: () => { addCoins(20); addItem(COBBLE, 16); } },
+  { id: "tame", kind: "tame", text: "Tame 2 cats", target: 2, reward: () => { addCoins(20); addXP(40); } },
+  { id: "mouse", kind: "mouse", text: "Catch 3 mice", target: 3, reward: () => { addCoins(20); addItem(I_APPLE, 2); } },
+  { id: "build", kind: "build", text: "Place 20 blocks", target: 20, reward: () => { addCoins(15); addItem(PLANKS, 8); } }
+];
+let daily = null;
+function todayStr() { const d = new Date(); return "" + d.getFullYear() + ("0" + (d.getMonth() + 1)).slice(-2) + ("0" + d.getDate()).slice(-2); }
+function saveDaily() { if (!daily) return; try { localStorage.setItem("thomas_voxel_daily", JSON.stringify({ date: daily.date, prog: daily.prog, claimed: daily.claimed })); } catch (e) {} }
+function initDaily() {
+  const date = todayStr(), dn = parseInt(date, 10) || 0;
+  const tmpl = DAILY[Math.floor(hsh(dn % 100000, 7) * DAILY.length) % DAILY.length] || DAILY[0];
+  let saved = {}; try { saved = JSON.parse(localStorage.getItem("thomas_voxel_daily")) || {}; } catch (e) {}
+  const same = saved.date === date;
+  daily = { date, id: tmpl.id, kind: tmpl.kind, text: tmpl.text, target: tmpl.target, reward: tmpl.reward, prog: same ? (saved.prog || 0) : 0, claimed: same ? !!saved.claimed : false };
+  saveDaily();
+}
+function dailyTick(kind, n) {
+  if (!daily || daily.claimed || daily.kind !== kind) return;
+  daily.prog = Math.min(daily.target, daily.prog + (n || 1)); saveDaily();
+  if (daily.prog >= daily.target && !daily.claimed) { daily.claimed = true; saveDaily(); toast("Daily Challenge complete!"); showBanner("Daily Challenge complete!"); SFX.victory(); if (daily.reward) daily.reward(); achieve("daily", "Daily Challenger"); }
+}
+let ngLevel = 0, ngMul = 1;     // New Game Plus: each dragon win makes the next run tougher
+function loadNG() { try { ngLevel = parseInt(localStorage.getItem("thomas_voxel_ngplus"), 10) || 0; } catch (e) { ngLevel = 0; } ngMul = 1 + ngLevel * 0.2; }
+function bumpNG() { ngLevel++; try { localStorage.setItem("thomas_voxel_ngplus", "" + ngLevel); } catch (e) {} ngMul = 1 + ngLevel * 0.2; }
 function onFireBoss() { fireBossDown = true; achieve("fireb", "Fire Boss Defeated"); addXP(60); }
 
 // ---------- UI ----------
@@ -1932,6 +1961,13 @@ function toggleSkills() { const el = $("skills"); if (el.classList.contains("hid
 function renderJournal() {
   const L = $("journalList"); if (!L) return; L.innerHTML = "";
   const hd = t => { const h = document.createElement("div"); h.className = "muted"; h.style.cssText = "font-size:12px;letter-spacing:1px;margin:6px 0 4px"; h.textContent = t; L.appendChild(h); };
+  if (daily) {
+    hd("DAILY CHALLENGE");
+    const dr = document.createElement("div"); dr.className = "craftRow" + (daily.claimed ? "" : " no");
+    dr.innerHTML = "<span><b>" + (daily.claimed ? "✓ " : "★ ") + daily.text + "</b><br><span class='muted'>" + (daily.claimed ? "Reward claimed. Come back tomorrow." : ("Progress " + daily.prog + "/" + daily.target)) + "</span></span>";
+    L.appendChild(dr);
+  }
+  if (ngLevel > 0) hd("NEW GAME PLUS " + ngLevel);
   hd("MAIN QUEST");
   quests.forEach((q, i) => {
     const row = document.createElement("div"); row.className = "craftRow" + (i > qi ? " no" : "");
@@ -2430,6 +2466,7 @@ function startGame() {
   clearObjective(); story.active = false;
   eventCd = 180; activeEvent = null; xpMult = 1; setEventTint(null);
   coins = 0; updateCoinUI(); spawnMerchant(7, 5); treasureKey = null;   // a friendly trader near camp
+  initDaily(); if (ngLevel > 0) setTimeout(() => toast("New Game Plus " + ngLevel + ". Monsters are tougher, rewards are bigger."), 900);
   const camp = buildSpawnCamp(); startStory(camp);            // opening cinematic + guided first 5 minutes
   renderHotbar(); updateVitals(); buildViewItem();
   camera.fov = settings.fov; camera.updateProjectionMatrix();
@@ -2515,6 +2552,8 @@ loadAch();
 loadColl();
 loadSkin();
 loadCatCosmetic();
+loadNG();
+initDaily();
 loadSettings();
 syncSettingsUI();
 applyGfx();
