@@ -128,6 +128,21 @@
   #flash { position:fixed; inset:0; z-index:26; pointer-events:none; opacity:0; transition:opacity .3s;
     background:radial-gradient(circle at 68% 28%, rgba(176,38,255,.6), rgba(120,0,200,.15) 45%, rgba(60,0,110,0) 70%); }
   #eventTint { position:fixed; inset:0; z-index:8; pointer-events:none; opacity:0; transition:opacity 1.2s; background:transparent; }
+  /* magical Freda sky announcement: floats high above the world, fades in fast, glows, fades out smooth */
+  #skyMsg { position:fixed; top:8%; left:50%; transform:translateX(-50%) translateY(-14px) scale(.92);
+    z-index:27; pointer-events:none; opacity:0; max-width:92vw; text-align:center;
+    transition:opacity .25s ease-out, transform .35s cubic-bezier(.2,1.3,.4,1); }
+  #skyMsg.show { opacity:1; transform:translateX(-50%) translateY(0) scale(1); }
+  #skyMsg.out { transition:opacity .8s ease-in, transform .8s ease-in; opacity:0; transform:translateX(-50%) translateY(-18px) scale(.97); }
+  #skyMsgText { display:inline-block; padding:6px 18px; font-weight:900; letter-spacing:.5px; line-height:1.15;
+    font-size:clamp(20px, 5.2vw, 46px);
+    background:linear-gradient(92deg,#ffe14d,#ff8ad6,#7af0ff,#b69bff,#ffe14d); background-size:300% 100%;
+    -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:#fff;
+    filter:drop-shadow(0 2px 6px rgba(0,0,0,.55)) drop-shadow(0 0 14px rgba(255,210,90,.7));
+    animation:skyShimmer 2.4s linear infinite, skyBob 3s ease-in-out infinite; }
+  #skyMsg.super #skyMsgText { font-size:clamp(26px, 7.5vw, 64px); filter:drop-shadow(0 3px 10px rgba(0,0,0,.6)) drop-shadow(0 0 22px rgba(255,140,60,.9)); }
+  @keyframes skyShimmer { to { background-position:300% 0; } }
+  @keyframes skyBob { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-4px); } }
   #cine { position:fixed; inset:0; z-index:60; pointer-events:none; display:flex; align-items:flex-end; justify-content:center; }
   #cine.hidden { display:none; }
   #cine::before,#cine::after { content:""; position:absolute; left:0; right:0; height:13vh; background:#000;

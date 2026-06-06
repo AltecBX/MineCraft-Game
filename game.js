@@ -138,7 +138,9 @@ const SFX = {
   power: () => { blip(440, 0.1, "triangle", 0.16, 660); setTimeout(() => blip(660, 0.12, "triangle", 0.16, 990), 80); },
   treasure: () => { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => blip(f, 0.16, "triangle", 0.16), i * 70)); },
   victory: () => { [392, 523, 659, 784, 1046].forEach((f, i) => setTimeout(() => blip(f, 0.22, "square", 0.18), i * 120)); },
-  boom: () => { noiseHit(0.45, 0.45); blip(64, 0.45, "sawtooth", 0.28, 28); setTimeout(() => noiseHit(0.3, 0.22), 70); setTimeout(() => blip(48, 0.3, "square", 0.18, 24), 40); }
+  boom: () => { noiseHit(0.45, 0.45); blip(64, 0.45, "sawtooth", 0.28, 28); setTimeout(() => noiseHit(0.3, 0.22), 70); setTimeout(() => blip(48, 0.3, "square", 0.18, 24), 40); },
+  roar: () => { blip(70, 0.5, "sawtooth", 0.12, 110); setTimeout(() => blip(55, 0.6, "sawtooth", 0.1, 95), 120); setTimeout(() => noiseHit(0.18, 0.4), 60); },
+  sparkle: () => { [880, 1175, 1568].forEach((f, i) => setTimeout(() => blip(f, 0.1, "triangle", 0.1), i * 60)); }
 };
 function stepSound() {
   const b = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.1), Math.floor(player.pos.z));
@@ -557,6 +559,20 @@ function rebuildFredaLabels() {
   for (const c of cells) { const s = makeTag("Freda"); s.scale.set(1.0, 0.26, 1); s.position.set(c[0] + 0.5, c[1] + 1.15, c[2] + 0.5); fredaLabelGroup.add(s); }
   scene.add(fredaLabelGroup);
 }
+// floating signs that hover over each portal so destinations are easy to find
+let portalSignGroup = null;
+function clearPortalSigns() { if (portalSignGroup) { scene.remove(portalSignGroup); portalSignGroup = null; } }
+function makeSign(text, col) {
+  const c = document.createElement("canvas"); c.width = 256; c.height = 40; const x = c.getContext("2d");
+  x.fillStyle = "rgba(0,0,0,.62)"; x.fillRect(0, 0, 256, 40);
+  x.fillStyle = col || "#ffe14d"; x.font = "bold 24px ui-monospace,monospace"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(text, 128, 21);
+  const t = new THREE.CanvasTexture(c);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: true, fog: false })); s.scale.set(3.2, 0.5, 1); return s;
+}
+function addPortalSign(cx, baseY, z, text, col) {
+  if (!portalSignGroup) { portalSignGroup = new THREE.Group(); scene.add(portalSignGroup); }
+  const s = makeSign(text, col); s.position.set(cx + 0.5, baseY + 5.2, z + 0.5); portalSignGroup.add(s);
+}
 
 // chest storage (per dimension + position) and player block edits (for save/load)
 let chestStore = new Map();           // "dim:x,y,z" -> [9 stacks]
@@ -939,9 +955,10 @@ addEventListener("keydown", e => {
   if (e.code === K.skills) toggleSkills();
   if (e.code === K.cat) catCommand();
   if (e.code === K.journal) toggleJournal();
+  if (e.code === "KeyH") primaryHeld = true;   // H breaks/hits just like the trackpad, without nudging the view
   if (e.code === "Escape") togglePause();
 });
-addEventListener("keyup", e => { keys[e.code] = false; });
+addEventListener("keyup", e => { keys[e.code] = false; if (e.code === "KeyH") { primaryHeld = false; mineReset(); } });
 canvas.addEventListener("mousedown", e => { if (!running || paused) return; if (!isTouch && !pointerLocked) { canvas.requestPointerLock(); return; } if (e.button === 0) { primaryHeld = true; } if (e.button === 2) placeBlock(); });
 canvas.addEventListener("mouseup", e => { if (e.button === 0) { primaryHeld = false; mineReset(); } });
 canvas.addEventListener("contextmenu", e => e.preventDefault());
@@ -1027,7 +1044,7 @@ function updateMining(dt) {
   if (mineProg >= need) {
     const drop = BLOCKS[r.id].drop;
     if (r.id === CHEST) collectChest(chestKey(r.x, r.y, r.z));
-    if (r.id === FREDA) { explode(r.x, r.y, r.z, 2); }
+    if (r.id === FREDA) { fredaEvent(r.x, r.y, r.z); }
     setRaw(r.x, r.y, r.z, AIR); recordEdit(r.x, r.y, r.z, AIR);
     if (r.id === PORTAL) rebuildPortalCells();
     if (r.id === TORCH) rebuildTorchCells();
@@ -1167,13 +1184,19 @@ function spawnMonster(x, z, type) {
     bar, mark, body, legL, legR, armL, armR, moveT: 0, dir: Math.random() * 6.28, state: "idle", aggro: false, dead: false, dt: 0 });
 }
 function surfaceY(x, z) { for (let y = WORLD_H - 1; y >= 0; y--) if (isSolidBlock(getBlock(Math.floor(x), y, Math.floor(z)))) return y + 1; return SEA + 1; }
+// gravity for creatures: fall with acceleration when unsupported (so they drop if you dig under them), step up onto ground
+function fallToGround(o, dt) {
+  const gy = surfaceY(o.g.position.x, o.g.position.z);
+  if (o.g.position.y > gy + 0.05) { o._vy = (o._vy || 0) - 26 * dt; o.g.position.y += o._vy * dt; if (o.g.position.y <= gy) { o.g.position.y = gy; o._vy = 0; } }
+  else { o.g.position.y += (gy - o.g.position.y) * Math.min(1, dt * 12); o._vy = 0; }
+}
 function updateMonsters(dt) {
   const night = isNight();
   for (let i = monsters.length - 1; i >= 0; i--) {
     const m = monsters[i];
     if (m.dead) { m.dt += dt; m.g.scale.multiplyScalar(Math.max(0.0001, 1 - dt * 3)); m.g.rotation.z += dt * 6; m.g.position.y -= dt * 1.5; if (m.dt > 0.5) { scene.remove(m.g); monsters.splice(i, 1); } continue; }
     const dx = player.pos.x - m.g.position.x, dz = player.pos.z - m.g.position.z, d = Math.hypot(dx, dz) || 0.0001;
-    const aggroR = (night ? 17 : 13) + (m.summon ? 5 : 0) + (m.elite ? 4 : 0);
+    const aggroR = (night ? 13 : 10) + (m.summon ? 4 : 0) + (m.elite ? 3 : 0);
     if (!m.aggro && d < aggroR) { m.aggro = true; m.summon ? SFX.screech() : SFX.growl(); }
     else if (m.aggro && d > aggroR * 1.7) { m.aggro = false; }
     if (m.flash > 0) m.flash -= dt;
@@ -1210,7 +1233,7 @@ function updateMonsters(dt) {
       if (m.slam && d < 2.7 && m.slamCd <= 0) { m.windup = 0.6; SFX.growl(); }
       else if (d > 1.1) { m.g.position.x += (dx / d) * m.speed * dt; m.g.position.z += (dz / d) * m.speed * dt; face(); moving = true; }
       else if (m.touch <= 0 && !m.slam) { damage(m.dmg); m.touch = 1.0; const k = new THREE.Vector3(-dx / d, 0, -dz / d); player.pos.addScaledVector(k, 0.3); }
-      if (m.summon && m.summonCd <= 0 && d < aggroR && monsters.length < (night ? 16 : 6)) { m.summonCd = 11; SFX.screech(); for (let s = 0; s < 2; s++) { const a = Math.random() * 6.28; spawnMonster(Math.floor(m.g.position.x + Math.cos(a) * 3), Math.floor(m.g.position.z + Math.sin(a) * 3), "crawler"); } }
+      if (m.summon && m.summonCd <= 0 && d < aggroR && monsters.length < (night ? 8 : 5)) { m.summonCd = 15; SFX.screech(); const a = Math.random() * 6.28; spawnMonster(Math.floor(m.g.position.x + Math.cos(a) * 3), Math.floor(m.g.position.z + Math.sin(a) * 3), "crawler"); }
       if (m.digger && m.digCd <= 0 && d > 1.2) {
         const bx = Math.floor(m.g.position.x + (dx / d) * 0.8), bz = Math.floor(m.g.position.z + (dz / d) * 0.8), by = Math.floor(m.g.position.y + 0.5);
         let dug = false;
@@ -1219,8 +1242,7 @@ function updateMonsters(dt) {
       }
     }
     if (m.body && m.body.material.emissive) m.body.material.emissive.setHex(m.flash > 0 ? 0x771018 : (m.emBase || 0x000000));
-    const ty = surfaceY(m.g.position.x, m.g.position.z);     // smooth ground follow
-    m.g.position.y += (ty - m.g.position.y) * Math.min(1, dt * 10);
+    fallToGround(m, dt);     // gravity: falls if the ground is dug out, steps up onto hills
     if (moving && m.windup <= 0) { m.moveT += dt * 9; const s = Math.sin(m.moveT) * 0.5; m.legL.rotation.x = s; m.legR.rotation.x = -s; m.armL.rotation.x = -s; m.armR.rotation.x = s; }
     else if (m.windup <= 0) { m.legL.rotation.x *= 0.8; m.legR.rotation.x *= 0.8; }
   }
@@ -1228,16 +1250,16 @@ function updateMonsters(dt) {
   spawnTimer -= dt;
   if (spawnTimer <= 0) {
     if (DIM === "overworld") {
-      spawnTimer = isNight() ? 4.6 : 12;
-      const cap = isNight() ? 8 : 4;             // gentler night raid: fewer monsters, slower spawns
+      spawnTimer = isNight() ? 6.5 : 16;
+      const cap = isNight() ? 5 : 3;             // gentler raids: fewer monsters, slower spawns, time to react
       if (monsters.length < cap) {
         const a = Math.random() * Math.PI * 2, r = 16 + Math.random() * 8;
         const sxp = Math.floor(player.pos.x + Math.cos(a) * r), szp = Math.floor(player.pos.z + Math.sin(a) * r);
         if (!nearTorch(sxp, szp, 9)) spawnMonster(sxp, szp);
       }
     } else if (DIM === "fire") {
-      spawnTimer = 5;
-      if (monsters.length < 7) {
+      spawnTimer = 7;
+      if (monsters.length < 4) {
         const a = Math.random() * Math.PI * 2, r = 14 + Math.random() * 8;
         const sxp = Math.floor(player.pos.x + Math.cos(a) * r), szp = Math.floor(player.pos.z + Math.sin(a) * r);
         spawnMonster(sxp, szp, Math.random() < 0.5 ? "firedemon" : "lavaworm");
@@ -1355,7 +1377,7 @@ function spawnMouse(x, z) {
   g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g);
   mice.push({ g, dir: Math.random() * 6.28, tail, golden, cheese, ninja, stolen: false, steal: 0, t: Math.random() * 6 });
 }
-function wander(o, dt, sp) { if (Math.random() < 0.012) o.dir += (Math.random() - .5) * 1.6; o.g.position.x += Math.sin(o.dir) * sp * dt; o.g.position.z += Math.cos(o.dir) * sp * dt; o.g.rotation.y = o.dir; o.g.position.y = surfaceY(o.g.position.x, o.g.position.z); }
+function wander(o, dt, sp) { if (Math.random() < 0.012) o.dir += (Math.random() - .5) * 1.6; o.g.position.x += Math.sin(o.dir) * sp * dt; o.g.position.z += Math.cos(o.dir) * sp * dt; o.g.rotation.y = o.dir; fallToGround(o, dt); }
 function removeMouse(ms) { scene.remove(ms.g); mice = mice.filter(x => x !== ms); spawnMouse((player.pos.x + (Math.random() - .5) * 30) | 0, (player.pos.z + (Math.random() - .5) * 30) | 0); }
 function mouseCaught(ms) {
   if (ms.cheese) { addCoins(25); addXP(60); addItem(I_APPLE, 3); toast("You caught the Cheese King! Huge reward."); SFX.treasure(); achieve("cheeseking", "Cheese King Caught"); }
@@ -1373,7 +1395,7 @@ function updateAnimals(dt) {
     if (dpm < 0.75) { mouseCaught(ms); continue; }            // Thomas catches a mouse by touching it
     if (ms.ninja && !ms.stolen) {                             // ninja darts straight at Thomas to grab coins
       const dx = player.pos.x - ms.g.position.x, dz = player.pos.z - ms.g.position.z, dd = Math.hypot(dx, dz) || 1;
-      ms.g.position.x += (dx / dd) * 4.2 * dt; ms.g.position.z += (dz / dd) * 4.2 * dt; ms.g.rotation.y = Math.atan2(dx, dz); ms.g.position.y = surfaceY(ms.g.position.x, ms.g.position.z);
+      ms.g.position.x += (dx / dd) * 4.2 * dt; ms.g.position.z += (dz / dd) * 4.2 * dt; ms.g.rotation.y = Math.atan2(dx, dz); fallToGround(ms, dt);
       if (dpm < 1.1) { if (coins > 0) { const steal = Math.min(coins, 3); coins -= steal; updateCoinUI(); ms.steal = steal; toast("A ninja mouse stole " + steal + " coins. Catch it!"); SFX.squeak(); } ms.stolen = true; }
     } else {                                                   // flee from cats and Thomas (ninja flees fastest after stealing)
       const fleeing = (near && nd < 6) || dpm < 5 || (ms.ninja && ms.stolen);
@@ -1406,17 +1428,18 @@ function updateAnimals(dt) {
         const dx = player.pos.x - c.g.position.x, dz = player.pos.z - c.g.position.z, d = Math.hypot(dx, dz);
         if (d > 2) { c.g.position.x += (dx / d) * 3.2 * dt; c.g.position.z += (dz / d) * 3.2 * dt; c.g.rotation.y = Math.atan2(dx, dz); c.moved = true; }
       }
-      c.g.position.y = surfaceY(c.g.position.x, c.g.position.z);
+      fallToGround(c, dt);
       // fight nearest monster (damage scales with cat level)
       let nm = null, nmd = 8; for (const m of monsters) if (!m.dead) { const md = m.g.position.distanceTo(c.g.position); if (md < nmd) { nmd = md; nm = m; } }
       if (nm && nmd < 1.3) { nm.hp -= 8 * dt * catMult * (1 + 0.25 * (c.level - 1)) * (c.ability === "fury" ? 1.5 : 1); nm.bar.up(Math.max(0, nm.hp / nm.max)); if (nm.hp <= 0 && !nm.dead) { nm.dead = true; discoverMob(nm.type); addXP(Math.round((nm.xp || 8) * 0.5)); onKill(); c.kills++; if (c.kills % 3 === 0) { c.level++; toast((c.name || (c.color + " cat")) + " reached level " + c.level); SFX.levelUp(); } } }
     } else if (c.friendly) {                                   // a friendly stray (Whiskers) trots over to Thomas
       const dx = player.pos.x - c.g.position.x, dz = player.pos.z - c.g.position.z, d = Math.hypot(dx, dz) || 1;
-      if (d > 1.7) { c.g.position.x += (dx / d) * 3.4 * dt; c.g.position.z += (dz / d) * 3.4 * dt; c.g.rotation.y = Math.atan2(dx, dz); c.g.position.y = surfaceY(c.g.position.x, c.g.position.z); c.moved = true; }
+      if (d > 1.7) { c.g.position.x += (dx / d) * 3.4 * dt; c.g.position.z += (dz / d) * 3.4 * dt; c.g.rotation.y = Math.atan2(dx, dz); c.moved = true; }
       else { c.g.rotation.y = Math.atan2(dx, dz); if (c.meow <= 0.05) { c.meow = 2.5 + Math.random() * 2; } }
+      fallToGround(c, dt);
     } else {
       let nd = 999, near = null; for (const ms of mice) { const d = ms.g.position.distanceTo(c.g.position); if (d < nd) { nd = d; near = ms; } }
-      if (near && nd < 12) { const dx = near.g.position.x - c.g.position.x, dz = near.g.position.z - c.g.position.z, d = Math.hypot(dx, dz) || 1; c.g.position.x += (dx / d) * 3 * dt; c.g.position.z += (dz / d) * 3 * dt; c.g.rotation.y = Math.atan2(dx, dz); c.g.position.y = surfaceY(c.g.position.x, c.g.position.z); c.moved = true; if (nd < 0.6) { mouseCaught(near); } }
+      if (near && nd < 12) { const dx = near.g.position.x - c.g.position.x, dz = near.g.position.z - c.g.position.z, d = Math.hypot(dx, dz) || 1; c.g.position.x += (dx / d) * 3 * dt; c.g.position.z += (dz / d) * 3 * dt; c.g.rotation.y = Math.atan2(dx, dz); fallToGround(c, dt); c.moved = true; if (nd < 0.6) { mouseCaught(near); } }
       else { wander(c, dt, 1.6); c.moved = true; }
     }
     if (c.moved) { c.walkT += dt * 10; const s = Math.sin(c.walkT) * 0.6; c.legs[0].rotation.x = s; c.legs[1].rotation.x = -s; c.legs[2].rotation.x = -s; c.legs[3].rotation.x = s; }
@@ -1545,6 +1568,101 @@ function explode(cx, cy, cz, power) {
   const pd = Math.hypot(player.pos.x - cxw, player.pos.z - czw); if (pd < 3 && !powerActive("shield")) { damage(4); const kx = player.pos.x - cxw, kz = player.pos.z - czw, kd = Math.hypot(kx, kz) || 1; player.vel.x += kx / kd * 4; player.vel.y += 3; player.vel.z += kz / kd * 4; }
   SFX.boom(); SFX.zap(); addShake(settings.reduceMotion ? 0.3 : 0.9);
 }
+// ---------- FREDA BLOCK: a magical show plus a funny sky message ----------
+const FREDA_MSGS = [
+  "Freda is playing with the cats.",
+  "Freda is with the dinosaurs.",
+  "Freda just opened a secret portal.",
+  "Freda made the cats dance.",
+  "Freda is riding a dragon.",
+  "Freda found the golden mouse.",
+  "Freda is hiding in the block forest.",
+  "Freda woke up the dinosaurs.",
+  "Freda gave the cats superpowers.",
+  "Freda is building a castle.",
+  "Freda is chasing rocket mice.",
+  "Freda found a treasure chest.",
+  "Freda is flying through the sky.",
+  "Freda is having a cat party.",
+  "Freda turned the monsters purple.",
+  "Freda is laughing in the clouds.",
+  "Freda found the secret Freda Cave.",
+  "Freda is feeding the dinosaurs.",
+  "Freda is guarding the magic door.",
+  "Freda just made everything sparkle.",
+  "Freda summoned the Cat Army.",
+  "Freda is dancing with the mice.",
+  "Freda is riding a giant Snorlax style creature.",
+  "Freda is hiding behind the moon.",
+  "Freda made the sky explode with magic."
+];
+let lastFredaMsg = -1;
+function randomFredaMsg() {
+  if (FREDA_MSGS.length < 2) return FREDA_MSGS[0];
+  let i = Math.floor(Math.random() * FREDA_MSGS.length);
+  if (i === lastFredaMsg) i = (i + 1) % FREDA_MSGS.length;   // avoid repeating the same line twice in a row
+  lastFredaMsg = i; return FREDA_MSGS[i];
+}
+function showSkyMessage(text, big) {
+  const el = $("skyMsg"), t = $("skyMsgText"); if (!el || !t) return;
+  t.textContent = text;
+  if (big) el.classList.add("super"); else el.classList.remove("super");
+  el.classList.remove("out"); el.classList.remove("show"); void el.offsetWidth; el.classList.add("show");  // restart the fade-in
+  clearTimeout(el._t1); clearTimeout(el._t2);
+  const hold = big ? 4600 : 3200 + Math.floor(Math.random() * 1500);   // stays 3 to 5 seconds
+  el._t1 = setTimeout(() => { el.classList.add("out"); el.classList.remove("show"); }, hold);
+  el._t2 = setTimeout(() => { el.classList.remove("out"); el.classList.remove("super"); }, hold + 900);
+}
+function fredaConfetti(cx, cy, cz) {
+  const cols = [0xff5d8f, 0xffd23d, 0x49e06a, 0x55b8ff, 0xb069ff, 0xff9a3d, 0xffffff];
+  for (let i = 0; i < 28; i++) { if (fxParts.length > FX_CAP) break;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.04), new THREE.MeshBasicMaterial({ color: cols[i % cols.length] }));
+    m.position.set(cx + (Math.random() - .5), cy + 1 + Math.random() * 2, cz + (Math.random() - .5)); scene.add(m);
+    fxParts.push({ mesh: m, life: 1.8, confetti: true, vel: new THREE.Vector3((Math.random() - .5) * 6, 3 + Math.random() * 5, (Math.random() - .5) * 6) });
+  }
+}
+function rainbowBeam(cx, cy, cz) {
+  const cols = [0xff4d4d, 0xff9a3d, 0xffe14d, 0x49e06a, 0x55b8ff, 0xb069ff];
+  for (let i = 0; i < cols.length; i++) { if (fxParts.length > FX_CAP) break;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.55, 1.5, 0.55), new THREE.MeshBasicMaterial({ color: cols[i], transparent: true, opacity: 0.7, depthWrite: false }));
+    m.position.set(cx, cy + 1 + i * 1.5, cz); scene.add(m);
+    fxParts.push({ mesh: m, life: 1.6, max: 1.6, beam: true, vel: new THREE.Vector3(0, 2.2, 0) });
+  }
+}
+function fredaSecretHole(x, y, z) {
+  for (let dy = 1; dy <= 3; dy++) { setRaw(x, y - dy, z, AIR); recordEdit(x, y - dy, z, AIR); }
+  const fy = y - 4; setRaw(x, fy, z, CHEST); recordEdit(x, fy, z, CHEST);
+  const key = chestKey(x, fy, z);
+  if (!chestStore.has(key)) chestStore.set(key, [{ id: CRYSTAL, count: 2 }, { id: I_APPLE, count: 3 }, { id: BRICK, count: 8 }, null, null, null, null, null, null]);
+  markDirty(x, z); markDirty(x + 1, z); markDirty(x - 1, z); markDirty(x, z + 1); markDirty(x, z - 1);
+  toast("A secret Freda treasure hole opened below!"); SFX.treasure();
+}
+// brief reactions: cats rush toward the blast, mice flee in panic (handled by updateFredaReactions)
+function fredaEvent(x, y, z) {
+  explode(x, y, z, 2);                                    // the bigger boom: clears blocks, debris, smoke, ring, shake, sound
+  const cx = x + 0.5, cy = y + 0.5, cz = z + 0.5;
+  const sup = Math.random() < 0.12;                       // rare SUPER FREDA BLOCK
+  fredaConfetti(cx, cy, cz);
+  SFX.sparkle();
+  showSkyMessage(sup ? "SUPER FREDA BLOCK!" : randomFredaMsg(), sup);
+  addShake(0.2);
+  if (sup || Math.random() < 0.4) rainbowBeam(cx, cy, cz);          // rainbow beam into the sky
+  const here = new THREE.Vector3(cx, cy, cz);
+  for (const c of cats) { if (c.g.position.distanceTo(here) < 16) { c._fredaRun = 3; c._fredaTo = { x: cx, z: cz }; if (Math.random() < 0.5) SFX.meow(); } }   // cats run over
+  for (const ms of mice) { if (ms.g.position.distanceTo(here) < 14) { ms.dir = Math.atan2(ms.g.position.x - cx, ms.g.position.z - cz); ms._panic = 2.5; } }   // mice panic
+  const roll = Math.random();                              // a small random reward
+  if (roll < 0.30) { const c = 5 + Math.floor(Math.random() * 8); addCoins(c); toast("Freda left you " + c + " coins!"); }
+  else if (roll < 0.55) { addXP(20 + Math.floor(Math.random() * 25)); }
+  else if (roll < 0.72) { addItem(I_APPLE, 1 + Math.floor(Math.random() * 2)); toast("Freda dropped cat treats!"); }
+  else if (roll < 0.82) { addItem(CRYSTAL, 1); toast("A rare crystal block popped out!"); }
+  if (sup || Math.random() < 0.08) fredaSecretHole(x, y, z);        // rare secret treasure hole
+  if (Math.random() < 0.15) setTimeout(() => SFX.roar(), 350);      // rare distant dinosaur roar
+  if (Math.random() < 0.10) { for (const c of cats) { c._fredaRun = 3.5; c._fredaTo = { x: cx, z: cz }; } toast("A cat parade marches by!"); SFX.meow(); }   // rare cat parade
+}
+function updateFredaReactions(dt) {
+  for (const c of cats) { if (c._fredaRun > 0) { c._fredaRun -= dt; const dx = c._fredaTo.x - c.g.position.x, dz = c._fredaTo.z - c.g.position.z, d = Math.hypot(dx, dz) || 1; if (d > 1.6) { c.g.position.x += dx / d * 4 * dt; c.g.position.z += dz / d * 4 * dt; c.g.rotation.y = Math.atan2(dx, dz); c.moved = true; } fallToGround(c, dt); } }
+  for (const ms of mice) { if (ms._panic > 0) { ms._panic -= dt; ms.g.position.x += Math.sin(ms.dir) * 5 * dt; ms.g.position.z += Math.cos(ms.dir) * 5 * dt; ms.g.rotation.y = ms.dir; fallToGround(ms, dt); } }
+}
 // player ranged shots: Ice Bow (slow) and Slime Launcher (knockback)
 let bowCd = 0;
 const playerShots = [];
@@ -1607,6 +1725,8 @@ function updateFx(dt) {
   for (let i = fxParts.length - 1; i >= 0; i--) {
     const p = fxParts[i]; p.life -= dt; p.mesh.position.addScaledVector(p.vel, dt);
     if (p.smoke) { p.mesh.scale.multiplyScalar(1 + dt * 1.6); p.vel.multiplyScalar(1 - dt * 1.2); if (p.mesh.material) p.mesh.material.opacity = Math.max(0, 0.55 * p.life / (p.max || 1)); }
+    else if (p.confetti) { p.vel.y -= 3.5 * dt; p.vel.x *= (1 - dt * 0.6); p.vel.z *= (1 - dt * 0.6); p.mesh.rotation.x += dt * 6; p.mesh.rotation.z += dt * 5; }   // flutters and falls slowly without shrinking
+    else if (p.beam) { p.vel.multiplyScalar(1 - dt * 0.4); if (p.mesh.material) p.mesh.material.opacity = Math.max(0, 0.7 * p.life / (p.max || 1)); }
     else { p.vel.y -= 9 * dt; p.mesh.scale.multiplyScalar(1 - dt * 2.5); }
     if (p.life <= 0) { scene.remove(p.mesh); fxParts.splice(i, 1); }
   }
@@ -1620,10 +1740,16 @@ function buildViewItem() {
   if (viewItem) vScene.remove(viewItem);
   const g = new THREE.Group(); const it = hotbar[selSlot];
   if (it && isItem(it.id)) {
-    if (ITEMS[it.id].tool === "sword") { const blade = box(0.06, 0.5, 0.06, ITEMS[it.id].special === "fire" ? 0xff7a2a : ITEMS[it.id].special === "pierce" ? 0x76e4ff : 0xd7dbe4); blade.position.y = 0.3; g.add(blade); const gu = box(0.2, 0.05, 0.08, 0xc9a227); gu.position.y = 0.05; g.add(gu); }
-    else if (ITEMS[it.id].tool === "hammer") { const head = box(0.26, 0.2, 0.18, 0x6fb7ff); head.position.y = 0.36; g.add(head); const trim = box(0.28, 0.06, 0.2, 0xffe066); trim.position.y = 0.36; g.add(trim); const stick = box(0.05, 0.36, 0.05, 0x6e4a25); stick.position.y = 0.12; g.add(stick); }
-    else if (ITEMS[it.id].tool === "bow") { const col = ITEMS[it.id].special === "slime" ? 0x49e06a : 0x9fe8ff; const arc = box(0.06, 0.5, 0.06, col); arc.position.y = 0.25; g.add(arc); const tip1 = box(0.05, 0.12, 0.05, 0xcfcfe0); tip1.position.set(0, 0.48, 0.04); tip1.rotation.x = 0.5; g.add(tip1); const tip2 = box(0.05, 0.12, 0.05, 0xcfcfe0); tip2.position.set(0, 0.02, 0.04); tip2.rotation.x = -0.5; g.add(tip2); }
-    else { const head = box(0.18, 0.1, 0.06, 0x9b9b9b); head.position.y = 0.34; g.add(head); const stick = box(0.05, 0.34, 0.05, 0x6e4a25); stick.position.y = 0.12; g.add(stick); }
+    const tool = ITEMS[it.id].tool, sp = ITEMS[it.id].special, tier = ITEMS[it.id].tier || 1;
+    // metal tone scales with tier so a stone tool reads grey and an iron/upgraded tool reads bright steel
+    const metal = sp === "fire" ? 0xff7a2a : sp === "pierce" ? 0x76e4ff : tier >= 2 ? 0xcfd6de : 0x8f8f8f;
+    const wood = 0x6e4a25;
+    if (tool === "sword") { const blade = box(0.06, 0.5, 0.06, metal); blade.position.y = 0.32; g.add(blade); const tip = box(0.06, 0.1, 0.06, metal); tip.position.y = 0.6; tip.rotation.z = 0.78; g.add(tip); const gu = box(0.22, 0.05, 0.08, 0xc9a227); gu.position.y = 0.06; g.add(gu); const grip = box(0.05, 0.14, 0.05, wood); grip.position.y = -0.04; g.add(grip); const pom = box(0.07, 0.05, 0.07, 0xc9a227); pom.position.y = -0.12; g.add(pom); }
+    else if (tool === "hammer") { const head = box(0.26, 0.2, 0.18, metal); head.position.y = 0.36; g.add(head); const trim = box(0.28, 0.06, 0.2, 0xffe066); trim.position.y = 0.36; g.add(trim); const stick = box(0.05, 0.42, 0.05, wood); stick.position.y = 0.1; g.add(stick); }
+    else if (tool === "bow") { const col = sp === "slime" ? 0x49e06a : 0x9fe8ff; const arc = box(0.06, 0.5, 0.06, col); arc.position.y = 0.25; g.add(arc); const tip1 = box(0.05, 0.12, 0.05, 0xcfcfe0); tip1.position.set(0, 0.48, 0.04); tip1.rotation.x = 0.5; g.add(tip1); const tip2 = box(0.05, 0.12, 0.05, 0xcfcfe0); tip2.position.set(0, 0.02, 0.04); tip2.rotation.x = -0.5; g.add(tip2); }
+    else if (tool === "pick") { const stick = box(0.05, 0.44, 0.05, wood); stick.position.y = 0.08; g.add(stick); const bar = box(0.34, 0.05, 0.05, metal); bar.position.y = 0.34; bar.rotation.z = 0.18; g.add(bar); const tL = box(0.05, 0.13, 0.05, metal); tL.position.set(-0.17, 0.3, 0); tL.rotation.z = 0.7; g.add(tL); const tR = box(0.05, 0.13, 0.05, metal); tR.position.set(0.17, 0.3, 0); tR.rotation.z = -0.7; g.add(tR); }
+    else if (tool === "axe") { const stick = box(0.05, 0.44, 0.05, wood); stick.position.y = 0.08; g.add(stick); const blade = box(0.04, 0.22, 0.22, metal); blade.position.set(0.13, 0.33, 0); g.add(blade); const edge = box(0.03, 0.26, 0.1, metal); edge.position.set(0.18, 0.33, 0); g.add(edge); const collar = box(0.08, 0.08, 0.08, metal); collar.position.set(0.04, 0.33, 0); g.add(collar); }
+    else { const head = box(0.18, 0.1, 0.06, metal); head.position.y = 0.34; g.add(head); const stick = box(0.05, 0.34, 0.05, wood); stick.position.y = 0.12; g.add(stick); }
     g.position.set(0.42, -0.42, -0.75); g.rotation.set(-0.4, -0.3, 0.25);
   } else if (it) {
     const c = BLOCKS[it.id]; const cube = box(0.32, 0.32, 0.32, new THREE.Color(c.top[0], c.top[1], c.top[2]).getHex()); g.add(cube); g.position.set(0.42, -0.4, -0.7); g.rotation.set(-0.4, 0.5, 0);
@@ -1742,7 +1868,7 @@ function transitionTo(name) {
 }
 function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } if (typeof skyBoss !== "undefined" && skyBoss) { scene.remove(skyBoss.g); skyBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (merchant) { scene.remove(merchant.g); merchant = null; } if (typeof clearRealmCreatures === "function") clearRealmCreatures(); if (typeof clearRealmNPCs === "function") clearRealmNPCs(); if (typeof clearRealmBosses === "function") clearRealmBosses(); battle = null; cmenuOpen = false; if (typeof hide === "function") { hide("battle"); hide("cmenu"); } if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
 function loadDimension(name, fromSave) {
-  DIM = name; clearWorld(); clearEntities();
+  DIM = name; clearWorld(); clearEntities(); clearPortalSigns();
   if (name === "fire") achieve("firep", "Fire Portal Opened");
   if (name === "end") achieve("endp", "End Portal Opened");
   player.pos.set(0.5, 50, 0.5); player.vel.set(0, 0, 0);
@@ -1751,10 +1877,10 @@ function loadDimension(name, fromSave) {
   for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) buildChunk(dx, dz);
   if (!fromSave) { player.pos.y = surfaceY(0, 0) + 1; player.spawn.copy(player.pos); }
   // dimension setup
-  if (name === "overworld") { scene.fog = new THREE.Fog(0x9fd2ff, 20, GFX[settings.gfx].dist * CH); hemi.color.set(0xbfe3ff); sun.color.set(0xffffff); showBanner("Overworld"); buildPortalFrame(8, surfaceY(8, 0), 0, "x", "fire"); if (fireBossDown) { buildPortalFrame(-10, surfaceY(-10, 0), 0, "x", "sky"); } buildPortalFrame(12, surfaceY(12, -6), -6, "x", "realm", CDOOR); setQuest("Step through the purple portal to the Fire Dimension"); }
-  else if (name === "realm") { scene.background = new THREE.Color(0x8ad0ff); scene.fog = new THREE.Fog(0xbfeaff, 26, GFX[settings.gfx].dist * CH); hemi.color.set(0xdaf3ff); hemi.intensity = 0.95; sun.intensity = 1.0; sun.color.set(0xffffff); showBanner("The Creature Battle Realm"); buildPortalFrame(6, surfaceY(6, 0), 0, "x", "overworld", CDOOR); enterRealm(); }
+  if (name === "overworld") { scene.fog = new THREE.Fog(0x9fd2ff, 20, GFX[settings.gfx].dist * CH); hemi.color.set(0xbfe3ff); sun.color.set(0xffffff); showBanner("Overworld"); buildPortalFrame(8, surfaceY(8, 0), 0, "x", "fire"); addPortalSign(8, surfaceY(8, 0), 0, "FIRE DIMENSION", "#ff8a4a"); if (fireBossDown) { buildPortalFrame(-10, surfaceY(-10, 0), 0, "x", "sky"); addPortalSign(-10, surfaceY(-10, 0), 0, "SKY ISLANDS", "#bfe3ff"); } buildPortalFrame(12, surfaceY(12, -6), -6, "x", "realm", CDOOR); addPortalSign(12, surfaceY(12, -6), -6, "CREATURE REALM", "#c79bff"); setQuest("Walk to the purple Creature Door (east) for the Creature Realm, or the orange portal for Fire"); }
+  else if (name === "realm") { scene.background = new THREE.Color(0x8ad0ff); scene.fog = new THREE.Fog(0xbfeaff, 26, GFX[settings.gfx].dist * CH); hemi.color.set(0xdaf3ff); hemi.intensity = 0.95; sun.intensity = 1.0; sun.color.set(0xffffff); showBanner("The Creature Battle Realm"); buildPortalFrame(6, surfaceY(6, 0), 0, "x", "overworld", CDOOR); addPortalSign(6, surfaceY(6, 0), 0, "BACK HOME", "#bfe3ff"); enterRealm(); }
   else if (name === "fire") { scene.background = new THREE.Color(0x2a0808); scene.fog = new THREE.Fog(0x551111, 8, 40); hemi.color.set(0xff7a3a); hemi.intensity = 0.6; sun.intensity = 0.5; sun.color.set(0xff8a4a); showBanner("Fire Dimension"); clearFirePad(0, 0); if (fireBossDown) { buildPortalFrame(0, surfaceY(0, -8), -8, "x", "end"); setRaw(0, surfaceY(0, -8) + 1, -8, PORTAL); setQuest("Enter the portal to reach the End"); } else { spawnFireBoss(); setQuest("Defeat the Fire Guardian. A Flame Charm will protect you from the heat"); } }
-  else if (name === "sky") { scene.background = new THREE.Color(0x8fd0ff); scene.fog = new THREE.Fog(0xbfe3ff, 36, 150); hemi.color.set(0xdff1ff); hemi.intensity = 0.95; sun.intensity = 0.9; sun.color.set(0xffffff); showBanner("Sky Islands"); buildPortalFrame(6, surfaceY(6, 0), 0, "x", "overworld"); spawnSkySerpent(); setQuest("Glide the Sky Islands and defeat the Sky Serpent"); }
+  else if (name === "sky") { scene.background = new THREE.Color(0x8fd0ff); scene.fog = new THREE.Fog(0xbfe3ff, 36, 150); hemi.color.set(0xdff1ff); hemi.intensity = 0.95; sun.intensity = 0.9; sun.color.set(0xffffff); showBanner("Sky Islands"); buildPortalFrame(6, surfaceY(6, 0), 0, "x", "overworld"); addPortalSign(6, surfaceY(6, 0), 0, "BACK HOME", "#bfe3ff"); spawnSkySerpent(); setQuest("Glide the Sky Islands and defeat the Sky Serpent"); }
   else { scene.background = new THREE.Color(0x000000); scene.fog = new THREE.Fog(0x000000, 30, 120); hemi.color.set(0xffffff); hemi.intensity = 0.9; sun.intensity = 0.7; sun.color.set(0xeae6ff); showBanner("The End"); buildEndDragon(); setQuest("Destroy the End Crystals, then slay the Black Dragon"); }
   // replay player block edits, then rebuild special blocks
   const ed = editsByDim[name]; if (ed) for (const [k, id] of ed) { const p = k.split(",").map(Number); setRaw(p[0], p[1], p[2], id); }
@@ -1787,8 +1913,8 @@ function spawnFireBoss() {
   for (let i = 0; i < 5; i++) { const c = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.4, 0.16), new THREE.MeshLambertMaterial({ color: 0xffb02a, emissive: 0xff7a1e })); const a = i / 5 * 6.28; c.position.set(Math.cos(a) * 0.5, 3.5, Math.sin(a) * 0.5); g.add(c); }
   clearFirePad(0, 6);
   g.position.set(0.5, surfaceY(0, 6) + 0.1, 6.5); scene.add(g);
-  const maxHp = 220;
-  fireBoss = { g, hp: maxHp, max: maxHp, touch: 0, atkCd: 2.5, slamCd: 4, summonCd: 9, windup: 0, phase: 1, intro: 2.6, armL, armR, body, flash: 0 };
+  const maxHp = 150;
+  fireBoss = { g, hp: maxHp, max: maxHp, touch: 0, atkCd: 3.2, slamCd: 6, summonCd: 14, windup: 0, phase: 1, intro: 3.4, armL, armR, body, flash: 0 };
   bossIntro("FIRE GUARDIAN", "Heat radiates from its core. Strike when the rings flash.");
   g.traverse(o => { o.userData.kind = "monster"; o.userData.m = { get hp() { return fireBoss.hp; }, set hp(v) { fireBoss.hp = v; }, get max() { return fireBoss.max; }, set flash(v) { if (fireBoss) fireBoss.flash = v; }, get flash() { return fireBoss ? fireBoss.flash : 0; }, bar: { up: () => {} }, get dead() { return !fireBoss || fireBoss.hp <= 0; }, get ghost() { return false; }, g } });
   showBoss("FIRE GUARDIAN", 1);
@@ -1807,17 +1933,17 @@ function updateFireBoss(dt) {
   if (fb.windup > 0) {                                       // ground slam telegraph
     fb.windup -= dt; fb.armL.rotation.x = -1.4; fb.armR.rotation.x = -1.4; fb.g.rotation.y = Math.atan2(dx, dz);
     if (fb.windup <= 0) {
-      SFX.slam(); addShake(0.6); if (d < 4) { damage(10); const k = new THREE.Vector3(-dx / d, 0, -dz / d); player.pos.addScaledVector(k, 0.8); }
-      for (let i = 0; i < 8; i++) { const a = i / 8 * 6.28; spawnProjectile(fb.g.position, { x: fb.g.position.x + Math.cos(a) * 4, y: player.pos.y, z: fb.g.position.z + Math.sin(a) * 4 }); } // shockwave
-      fb.armL.rotation.x = 0; fb.armR.rotation.x = 0; fb.slamCd = phase === 3 ? 3 : 5;
+      SFX.slam(); addShake(0.6); if (d < 4) { damage(6); const k = new THREE.Vector3(-dx / d, 0, -dz / d); player.pos.addScaledVector(k, 0.8); }
+      for (let i = 0; i < 6; i++) { const a = i / 6 * 6.28; spawnProjectile(fb.g.position, { x: fb.g.position.x + Math.cos(a) * 4, y: player.pos.y, z: fb.g.position.z + Math.sin(a) * 4 }); } // shockwave
+      fb.armL.rotation.x = 0; fb.armR.rotation.x = 0; fb.slamCd = phase === 3 ? 5 : 7;
     }
   } else {
     if (d > 3) { fb.g.position.x += dx / d * spd * dt; fb.g.position.z += dz / d * spd * dt; }
     fb.g.rotation.y = Math.atan2(dx, dz); fb.g.position.y = surfaceY(fb.g.position.x, fb.g.position.z);
-    fb.touch -= dt; if (d < 2.4 && fb.touch <= 0) { damage(8); fb.touch = 1; }
-    fb.atkCd -= dt; if (fb.atkCd <= 0) { fb.atkCd = phase === 3 ? 1.0 : 2.2; const volley = phase === 3 ? 3 : 1; for (let i = 0; i < volley; i++) { const off = (i - (volley - 1) / 2) * 2; spawnProjectile(fb.g.position, { x: player.pos.x + off, y: player.pos.y, z: player.pos.z }); } }
-    if (phase >= 2) { fb.slamCd -= dt; if (fb.slamCd <= 0 && d < 6) { fb.windup = 0.7; SFX.growl(); spawnTelegraph(player.pos.x, player.pos.z, 4, 0.7); } }
-    if (phase >= 2) { fb.summonCd -= dt; if (fb.summonCd <= 0 && monsters.length < 8) { fb.summonCd = 12; for (let s = 0; s < 2; s++) { const a = Math.random() * 6.28; spawnMonster(Math.floor(fb.g.position.x + Math.cos(a) * 3), Math.floor(fb.g.position.z + Math.sin(a) * 3), "lavaworm"); } toast("The Guardian summons lava worms"); } }
+    fb.touch -= dt; if (d < 2.4 && fb.touch <= 0) { damage(5); fb.touch = 1.2; }
+    fb.atkCd -= dt; if (fb.atkCd <= 0) { fb.atkCd = phase === 3 ? 1.8 : 3.0; const volley = phase === 3 ? 2 : 1; for (let i = 0; i < volley; i++) { const off = (i - (volley - 1) / 2) * 2; spawnProjectile(fb.g.position, { x: player.pos.x + off, y: player.pos.y, z: player.pos.z }); } }
+    if (phase >= 2) { fb.slamCd -= dt; if (fb.slamCd <= 0 && d < 6) { fb.windup = 0.9; SFX.growl(); spawnTelegraph(player.pos.x, player.pos.z, 4, 0.9); } }
+    if (phase >= 3) { fb.summonCd -= dt; if (fb.summonCd <= 0 && monsters.length < 3) { fb.summonCd = 18; const a = Math.random() * 6.28; spawnMonster(Math.floor(fb.g.position.x + Math.cos(a) * 3), Math.floor(fb.g.position.z + Math.sin(a) * 3), "lavaworm"); toast("The Guardian summons a lava worm"); } }
     fb.armL.rotation.x = Math.sin(performance.now() * 0.005) * 0.3; fb.armR.rotation.x = -fb.armL.rotation.x;
   }
   if (fb.hp <= 0) {
@@ -2273,7 +2399,8 @@ function saveGame(silent) {
       chests: [...chestStore] };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     if (!silent) toast("Game saved");
-  } catch (e) { if (!silent) toast("Saving is not available here"); }
+    return true;
+  } catch (e) { if (!silent) toast("Saving is not available here"); return false; }
 }
 function hasSave() { try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; } }
 function refreshContinue() { const b = $("contBtn"); if (b) b.style.display = hasSave() ? "" : "none"; }
@@ -2312,7 +2439,7 @@ function loadGame() {
   if (!isTouch) canvas.requestPointerLock();
 }
 $("contBtn").addEventListener("click", loadGame);
-$("saveBtn").addEventListener("click", () => saveGame(false));
+$("saveBtn").addEventListener("click", () => { const b = $("saveBtn"), prev = b.textContent, ok = saveGame(false); b.textContent = ok ? "Saved ✓" : "Save failed"; b.disabled = false; setTimeout(() => { b.textContent = prev; }, 1500); });
 $("closeChestBtn").addEventListener("click", closeChest);
 $("closeShopBtn").addEventListener("click", closeShop);
 
@@ -2449,8 +2576,8 @@ function meteorShower() {
 }
 const EVENTS = [
   { id: "meteor", name: "Meteor Shower", warn: "Meteors streak across the sky. Find the crash site.", dur: 25, tint: null, start() { meteorShower(); }, end() {} },
-  { id: "bloodmoon", name: "Blood Moon", warn: "A Blood Moon rises. Survive the horde.", dur: 36, tint: "rgba(180,0,0,.30)", night: true, start() { for (let i = 0; i < 4; i++) spawnRingMonster(18 + Math.random() * 6); }, end() { reward("You survived the Blood Moon.", () => { addXP(80); addItem(I_APPLE, 3); }); } },
-  { id: "storm", name: "Purple Storm", warn: "A corruption storm sweeps in. Hold out.", dur: 30, tint: "rgba(140,40,210,.24)", start() { for (let i = 0; i < 3; i++) spawnRingMonster(15 + Math.random() * 6); }, end() { reward("The storm passes.", () => { addXP(50); }); } },
+  { id: "bloodmoon", name: "Blood Moon", warn: "A Blood Moon rises. Survive the horde.", dur: 36, tint: "rgba(180,0,0,.30)", night: true, start() { for (let i = 0; i < 3; i++) spawnRingMonster(18 + Math.random() * 6); }, end() { reward("You survived the Blood Moon.", () => { addXP(80); addItem(I_APPLE, 3); }); } },
+  { id: "storm", name: "Purple Storm", warn: "A corruption storm sweeps in. Hold out.", dur: 30, tint: "rgba(140,40,210,.24)", start() { for (let i = 0; i < 2; i++) spawnRingMonster(15 + Math.random() * 6); }, end() { reward("The storm passes.", () => { addXP(50); }); } },
   { id: "golden", name: "Golden Forest Day", warn: "A Golden Day. Double XP while it lasts.", dur: 35, tint: "rgba(255,210,80,.18)", start() { xpMult = 2; }, end() { xpMult = 1; toast("The golden glow fades."); } },
   { id: "merchant", name: "Traveling Merchant", warn: "A traveling merchant left a care package nearby.", dur: 20, tint: null, start() { dropChestNear([{ id: I_APPLE, count: 2 }, { id: PLANKS, count: 6 }, { id: TORCH, count: 4 }, { id: I_STICK, count: 4 }], "A care package was left nearby."); }, end() {} }
 ];
@@ -2636,7 +2763,7 @@ function updateRealm(dt) {
     else {
       if (dp < 6 && dp > 1.4) { c.dir = Math.atan2(c.g.position.x - player.pos.x, c.g.position.z - player.pos.z); c.g.position.x += Math.sin(c.dir) * 2.2 * dt; c.g.position.z += Math.cos(c.dir) * 2.2 * dt; }   // shy: drift away
       else { if (Math.random() < 0.012) c.dir += (Math.random() - .5) * 1.5; c.g.position.x += Math.sin(c.dir) * 1.1 * dt; c.g.position.z += Math.cos(c.dir) * 1.1 * dt; }
-      c.g.rotation.y = c.dir; c.g.position.y = surfaceY(c.g.position.x, c.g.position.z);
+      c.g.rotation.y = c.dir; fallToGround(c, dt);
       c.walkT += dt * 8; const sw = Math.sin(c.walkT) * 0.5, L = c.g.userData.legs; if (L) { L[0].rotation.x = sw; L[1].rotation.x = -sw; L[2].rotation.x = -sw; L[3].rotation.x = sw; }
       if (!cmenuOpen && !battle && encounterCd <= 0 && dp < 2.1) openEncounter(makeCreature(c.id, c.level, { shiny: c.shiny }), c);
     }
@@ -2935,6 +3062,7 @@ function loop() {
     updateMining(dt);
     updateMonsters(dt);
     updateAnimals(dt);
+    updateFredaReactions(dt);
     if (DIM === "realm") updateRealm(dt);
     updateFireBoss(dt);
     updateSkyBoss(dt);

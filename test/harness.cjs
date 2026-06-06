@@ -37,7 +37,7 @@ function ctor(extra){return function(){return perm(typeof extra==='function'?ext
 const THREE=new Proxy({},{get(t,name){
  if(name==='Vector3')return V3; if(name==='Color')return Col;
  if(name==='Scene')return ctor({background:null,fog:{color:new Col(),near:0,far:0},add(){},remove(){}});
- if(name==='Group')return ctor({add(){},remove(){}});
+ if(name==='Group')return function(){const ch=[];return perm({children:ch,add(...o){for(const x of o)ch.push(x);},remove(x){const i=ch.indexOf(x);if(i>-1)ch.splice(i,1);}});};
  if(name==='BufferGeometry')return function(){const at={};return perm({attributes:at,setAttribute(n,a){at[n]=a;},setIndex(){},translate(){}});};
  if(name==='Float32BufferAttribute'||name==='BufferAttribute')return function(arr){return {array:arr,needsUpdate:false,count:(arr&&arr.length)||0};};
  if(name==='InstancedMesh')return ctor({instanceMatrix:{needsUpdate:false},setMatrixAt(){},count:0});
