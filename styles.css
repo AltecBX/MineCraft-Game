@@ -170,6 +170,23 @@
   .moveGrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
   .mvBtn { pointer-events:auto; cursor:pointer; border:none; border-radius:12px; padding:11px; background:rgba(124,58,237,.5); color:#fff; box-shadow:inset 0 0 0 1px rgba(255,255,255,.18); text-align:left; }
   .mvBtn:active { transform:scale(.97); }
+  .mvBtn span { display:block; font-size:11px; opacity:.85; margin-top:3px; }
+  /* classic 2x2 command menu (Fight / Bag / Creature / Run) */
+  .battleMenu { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px; }
+  .bcmd { pointer-events:auto; cursor:pointer; border:none; border-radius:14px; padding:16px 12px; font-size:17px; font-weight:800; color:#fff;
+    background:linear-gradient(180deg,rgba(124,58,237,.62),rgba(91,33,182,.62)); box-shadow:inset 0 0 0 1px rgba(255,255,255,.2); }
+  .bcmd:active { transform:scale(.97); }
+  .bagList { display:flex; flex-direction:column; gap:8px; margin-top:8px; }
+  .bagRow { pointer-events:auto; cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:10px; border:none; border-radius:12px;
+    padding:12px; background:rgba(255,255,255,.08); color:#fff; box-shadow:inset 0 0 0 1px rgba(255,255,255,.14); text-align:left; }
+  .bagRow:active { transform:scale(.99); }
+  .bagRow.no { opacity:.45; cursor:default; }
+  .tchip { display:inline-block; width:12px; height:12px; border-radius:3px; vertical-align:middle; box-shadow:inset 0 0 0 1px rgba(0,0,0,.35); }
+  /* battle entry transition: a couple of bright flashes that resolve into the battle screen */
+  #battleWipe { position:fixed; inset:0; z-index:50; pointer-events:none; opacity:0;
+    background:radial-gradient(circle at 50% 50%, #b06ad0 0%, #5b21b6 45%, #160322 100%); }
+  #battleWipe.go { animation:battleWipe .6s ease-out; }
+  @keyframes battleWipe { 0%{opacity:0;} 12%{opacity:.95;} 28%{opacity:.15;} 46%{opacity:.95;} 64%{opacity:.25;} 100%{opacity:0;} }
   .mvBtn b { display:block; font-size:14px; } .mvBtn span { font-size:11px; opacity:.8; }
   #coins { position:absolute; right:12px; bottom:128px; background:rgba(20,12,40,.7); border:1px solid rgba(255,210,80,.55);
     color:#ffe9a8; font-weight:800; font-size:14px; padding:4px 10px; border-radius:999px; pointer-events:none; }

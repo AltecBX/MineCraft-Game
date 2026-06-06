@@ -2787,6 +2787,9 @@ const TYPE_CHART = {
   normal: { rock: 0.5, ghost: 0, steel: 0.5 }
 };
 function typeMult(atk, def) { const m = TYPE_CHART[atk]; return (m && def in m) ? m[def] : 1; }
+const TYPE_COLORS = { electric: "#f6d02e", fire: "#f07b28", water: "#3aa0d8", grass: "#5fbf4f", psychic: "#f361a6", ghost: "#7a5aa8", dragon: "#6a5cf0", dark: "#5a5466", fighting: "#c0392b", steel: "#9aa7b8", ground: "#d1a14a", flying: "#9fb6e6", fairy: "#f0a6d8", rock: "#b9a06a", ice: "#8fe0e8", normal: "#c8c8c8" };
+function typeChip(t) { return "<i class='tchip' style='background:" + (TYPE_COLORS[t] || "#888") + "'></i>"; }
+function moveAcc(mv) { return mv.acc != null ? mv.acc : (mv.power >= 22 ? 0.9 : mv.power >= 18 ? 0.95 : 1); }
 const SPECIES = {
   foxling: { name: "Eevee", type: "normal", role: "starter", col: 0xc99a5a, size: 0.85, hp: 42, moves: ["quickattack", "darkbite", "fairykiss", "iceslash"] },
   voltmouse: { name: "Pikachu", type: "electric", role: "grass", col: 0xf6d02e, size: 0.65, hp: 34, moves: ["shock", "quickattack", "thunderdash"] },
@@ -2962,37 +2965,59 @@ function startBattle(wild, roamRef, opts) {
   opts = opts || {};
   if (!cteam.length) cteam.push(makeCreature("foxling", 5));
   let mine = cteam.find(c => c.hp > 0); if (!mine) { toast("Your creatures are too tired. Visit the Healing Nurse."); return; }
-  battle = { wild, mine, roam: roamRef, over: false, busy: false, trainer: !!opts.trainer, boss: opts.boss || null, badge: opts.badge || null, bossRef: opts.bossRef || null, phase: 1, log: opts.intro || (opts.trainer ? "A Trainer sends out " + wild.name + "!" : "A wild " + wild.name + " challenges you!") };
-  renderBattle(); show("battle"); document.exitPointerLock(); SFX.screech();
+  battle = { wild, mine, roam: roamRef, over: false, busy: false, menu: "main", trainer: !!opts.trainer, boss: opts.boss || null, badge: opts.badge || null, bossRef: opts.bossRef || null, phase: 1, log: opts.intro || (opts.trainer ? "A Trainer sends out " + wild.name + "!" : "A wild " + wild.name + " challenges you!") };
+  showBattleWipe(); renderBattle(); show("battle"); document.exitPointerLock(); SFX.screech();
 }
+function showBattleWipe() { const w = $("battleWipe"); if (!w) return; w.classList.remove("go"); void w.offsetWidth; w.classList.add("go"); setTimeout(() => { if (w) w.classList.remove("go"); }, 620); }
 function renderBattle() {
   const p = $("battlePanel"); if (!p || !battle) return; const b = battle;
+  if (!b.menu) b.menu = "main";
   const bar = (c) => "<div class='cbar'><div class='cbarfill' style='width:" + Math.max(0, 100 * c.hp / c.maxHp) + "%'></div></div>";
-  let html = "<div class='battleRow'><div class='cbox'><b>" + (b.wild.shiny ? "✨" : "") + b.wild.name + "</b> Lv" + b.wild.level + bar(b.wild) + "<span class='muted'>" + Math.max(0, b.wild.hp | 0) + "/" + b.wild.maxHp + " · " + SPECIES[b.wild.sp].type + "</span></div>";
-  html += "<div class='cbox mine'><b>" + b.mine.name + "</b> Lv" + b.mine.level + bar(b.mine) + "<span class='muted'>" + Math.max(0, b.mine.hp | 0) + "/" + b.mine.maxHp + " · " + SPECIES[b.mine.sp].type + "</span></div></div>";
-  html += "<div class='battleLog'>" + b.log + "</div>";
-  p.innerHTML = html;
-  const grid = document.createElement("div"); grid.className = "moveGrid";
-  if (!b.over) {
-    b.mine.moves.forEach((mid, i) => { const mv = MOVES[mid]; const btn = document.createElement("button"); btn.className = "mvBtn"; btn.innerHTML = "<b>" + mv.name + "</b><span>" + mv.type + (mv.power ? " · " + mv.power : "") + "</span>"; btn.addEventListener("click", () => doMove(i)); grid.appendChild(btn); });
+  const head = (c, side) => "<div class='cbox" + (side ? " mine" : "") + "'><b>" + (c.shiny ? "✨" : "") + c.name + "</b> Lv" + c.level + " " + typeChip(SPECIES[c.sp].type) + bar(c) + "<span class='muted'>" + Math.max(0, c.hp | 0) + "/" + c.maxHp + " · " + SPECIES[c.sp].type + (c.shield ? " · shielded" : "") + "</span></div>";
+  p.innerHTML = "<div class='battleRow'>" + head(b.wild, false) + head(b.mine, true) + "</div><div class='battleLog'>" + b.log + "</div>";
+  if (b.over) { const r = document.createElement("div"); r.style.cssText = "text-align:center;margin-top:8px"; const x = document.createElement("button"); x.className = "btn"; x.textContent = "Continue"; x.addEventListener("click", () => { battle = null; hide("battle"); closeCMenu(); }); r.appendChild(x); p.appendChild(r); return; }
+  if (b.busy) return;   // enemy is acting; hide controls until their turn resolves
+  if (b.menu === "main") {
+    const wrap = document.createElement("div"); wrap.className = "battleMenu";
+    const cmd = (l, fn) => { const x = document.createElement("button"); x.className = "bcmd"; x.innerHTML = l; x.addEventListener("click", fn); wrap.appendChild(x); };
+    cmd("⚔️ Fight", () => { b.menu = "fight"; renderBattle(); });
+    cmd("🎒 Bag", () => { b.menu = "bag"; renderBattle(); });
+    cmd("🐾 Creature", () => { b.menu = "creature"; renderBattle(); });
+    cmd(b.trainer || b.boss ? "🏳️ Forfeit" : "🏃 Run", () => { battle = null; hide("battle"); closeCMenu(); });
+    p.appendChild(wrap);
+  } else if (b.menu === "fight") {
+    const grid = document.createElement("div"); grid.className = "moveGrid";
+    b.mine.moves.forEach((mid, i) => { const mv = MOVES[mid]; const btn = document.createElement("button"); btn.className = "mvBtn"; btn.innerHTML = "<b>" + typeChip(mv.type) + " " + mv.name + "</b><span>" + mv.type + (mv.power ? " · POW " + mv.power : mv.heal ? " · heal" : mv.shield ? " · guard" : "") + " · ACC " + Math.round(moveAcc(mv) * 100) + "%</span>"; btn.addEventListener("click", () => doMove(i)); grid.appendChild(btn); });
+    p.appendChild(grid); battleBack(p, b);
+  } else if (b.menu === "bag") {
+    const list = document.createElement("div"); list.className = "bagList";
+    bagItem(list, "🧪 Potion", citems.potion, "Heal a creature 30 HP", useBattlePotion);
+    if (!b.trainer && !b.boss) bagItem(list, "💎 Capture Crystal", citems.capture, "Try to catch this creature", tryTameBattle);
+    bagItem(list, "🍎 Creature Treat", citems.food, "Heal 12 HP and raise friendship", useBattleTreat);
+    p.appendChild(list); battleBack(p, b);
+  } else if (b.menu === "creature") {
+    const list = document.createElement("div"); list.className = "bagList";
+    cteam.forEach((c) => { const row = document.createElement("button"); row.className = "bagRow" + (c === b.mine || c.hp <= 0 ? " no" : ""); row.innerHTML = "<span><b>" + c.name + "</b> Lv" + c.level + " " + typeChip(SPECIES[c.sp].type) + "</span><span class='muted'>" + Math.max(0, c.hp | 0) + "/" + c.maxHp + (c === b.mine ? " · active" : c.hp <= 0 ? " · fainted" : "") + "</span>"; if (c !== b.mine && c.hp > 0) row.addEventListener("click", () => switchCreature(c)); list.appendChild(row); });
+    p.appendChild(list); battleBack(p, b);
   }
-  p.appendChild(grid);
-  const row = document.createElement("div"); row.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px";
-  const mk = (l, fn) => { const x = document.createElement("button"); x.className = "btn ghost"; x.textContent = l; x.addEventListener("click", fn); row.appendChild(x); };
-  if (!b.over) {
-    if (!b.trainer && !b.boss) mk("Tame" + (citems.capture > 0 ? " (💎" + citems.capture + ")" : ""), tryTameBattle);
-    if (citems.potion > 0) mk("Potion (" + citems.potion + ")", useBattlePotion);
-    mk(b.trainer || b.boss ? "Forfeit" : "Run", () => { battle = null; hide("battle"); closeCMenu(); });
-  } else mk("Continue", () => { battle = null; hide("battle"); closeCMenu(); });
-  p.appendChild(row);
 }
+function battleBack(p, b) { const r = document.createElement("div"); r.style.cssText = "text-align:center;margin-top:8px"; const x = document.createElement("button"); x.className = "btn ghost"; x.textContent = "◀ Back"; x.addEventListener("click", () => { b.menu = "main"; renderBattle(); }); r.appendChild(x); p.appendChild(r); }
+function bagItem(list, label, count, desc, fn) { const row = document.createElement("button"); row.className = "bagRow" + ((count | 0) <= 0 ? " no" : ""); row.innerHTML = "<span><b>" + label + "</b> x" + (count | 0) + "<br><span class='muted'>" + desc + "</span></span>"; if ((count | 0) > 0) row.addEventListener("click", fn); list.appendChild(row); }
 function useBattlePotion() {
   const b = battle; if (!b || b.over || b.busy || citems.potion <= 0) return;
-  citems.potion--; b.mine.hp = Math.min(b.mine.maxHp, b.mine.hp + 30); b.log = "You used a Healing Potion on " + b.mine.name + ". (+30)"; b.busy = true; renderBattle(); setTimeout(enemyTurn, 600);
+  citems.potion--; b.mine.hp = Math.min(b.mine.maxHp, b.mine.hp + 30); b.log = "You used a Potion on " + b.mine.name + ". (+30)"; b.busy = true; b.menu = "main"; renderBattle(); setTimeout(enemyTurn, 600);
+}
+function useBattleTreat() {
+  const b = battle; if (!b || b.over || b.busy || citems.food <= 0) return;
+  citems.food--; b.mine.hp = Math.min(b.mine.maxHp, b.mine.hp + 12); b.mine.friendship = (b.mine.friendship || 0) + 1; b.log = "You gave " + b.mine.name + " a treat. (+12 HP, friendlier)"; b.busy = true; b.menu = "main"; renderBattle(); setTimeout(enemyTurn, 600);
+}
+function switchCreature(c) {
+  const b = battle; if (!b || b.over || b.busy || c.hp <= 0 || c === b.mine) return;
+  b.mine = c; b.log = "Go, " + c.name + "!"; b.busy = true; b.menu = "main"; renderBattle(); setTimeout(enemyTurn, 600);
 }
 function doMove(i) {
   const b = battle; if (!b || b.over || b.busy) return; b.busy = true;
-  const mv = MOVES[b.mine.moves[i]];
+  const mv = MOVES[b.mine.moves[i]]; b.menu = "main";
   if (mv.heal) { b.mine.hp = Math.min(b.mine.maxHp, b.mine.hp + mv.heal); b.log = b.mine.name + " used " + mv.name + " and recovered."; }
   else if (mv.shield) { b.mine.shield = true; b.log = b.mine.name + " raised " + mv.name + "."; }
   else { const r = calcDamage(b.mine, b.wild, mv); b.wild.hp -= r.dmg; b.log = b.mine.name + " used " + mv.name + "! " + (r.eff > 1 ? "Super effective! " : r.eff < 1 ? "Not very effective. " : "") + "(" + r.dmg + ")"; }
@@ -3005,6 +3030,7 @@ function enemyTurn() {
   if (b.boss) { const frac = b.wild.hp / b.wild.maxHp, ph = frac > 0.66 ? 1 : frac > 0.33 ? 2 : 3; if (ph > b.phase) { b.phase = ph; b.wild.hp = Math.min(b.wild.maxHp, b.wild.hp + 8); b.log = b.wild.name + " powers up to phase " + ph + "!"; renderBattle(); } }
   const mid = b.wild.moves[Math.floor(Math.random() * b.wild.moves.length)], mv = MOVES[mid];
   if (mv.heal) { b.wild.hp = Math.min(b.wild.maxHp, b.wild.hp + mv.heal); b.log = b.wild.name + " used " + mv.name + "."; }
+  else if (mv.shield) { b.wild.shield = true; b.log = b.wild.name + " braced with " + mv.name + "."; }
   else { let r = calcDamage(b.wild, b.mine, mv); if (b.boss) r.dmg = Math.round(r.dmg * (1 + (b.phase - 1) * 0.2)); if (b.mine.shield) { r.dmg = Math.round(r.dmg * 0.5); b.mine.shield = false; } b.mine.hp -= r.dmg; b.log = (b.trainer ? "" : b.boss ? "" : "Wild ") + b.wild.name + " used " + mv.name + "! (" + r.dmg + ")"; }
   b.busy = false; renderBattle();
   if (b.mine.hp <= 0) {
@@ -3030,7 +3056,7 @@ function tryTameBattle() {
   const b = battle; if (!b || b.over || b.busy || b.trainer || b.boss) return;
   let chance = tameChance(b.wild); if (citems.capture > 0) { citems.capture--; chance = Math.min(0.97, chance + 0.28); }
   if (Math.random() < chance) { b.over = true; const where = addCreature(b.wild); b.log = "Gotcha! " + b.wild.name + (where === "team" ? " joined your team." : " went to storage."); SFX.victory(); showBanner("Befriended " + b.wild.name + "!"); if (b.roam) { scene.remove(b.roam.g); realmCreatures = realmCreatures.filter(c => c !== b.roam); } renderBattle(); }
-  else { b.log = b.wild.name + " broke free! Weaken it more."; b.busy = true; renderBattle(); setTimeout(enemyTurn, 600); }
+  else { b.log = b.wild.name + " broke free! Weaken it more."; b.busy = true; b.menu = "main"; renderBattle(); setTimeout(enemyTurn, 600); }
 }
 
 // ---- Creature Realm: NPCs, healing, items, shop, badges, team/dex menus ----
