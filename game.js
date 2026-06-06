@@ -1635,6 +1635,8 @@ function updateViewItem(dt) { if (!viewItem) return; if (swing > 0) swing = Math
 
 // ---------- INTERACT (use) ----------
 function interact() {
+  // creature realm: talk to the nearest NPC (Nurse, Shop, Trainer, Badge Master)
+  if (DIM === "realm" && realmInteract()) return;
   // open a chest if aiming at one
   const look = voxelRaycast(4);
   if (look && look.id === CHEST) { openChest(chestKey(look.x, look.y, look.z)); return; }
@@ -1738,7 +1740,7 @@ function transitionTo(name) {
   SFX.portal(); const fade = document.getElementById("fade"); fade.style.opacity = "1";
   setTimeout(() => { loadDimension(name); fade.style.opacity = "0"; }, 520);
 }
-function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } if (typeof skyBoss !== "undefined" && skyBoss) { scene.remove(skyBoss.g); skyBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (merchant) { scene.remove(merchant.g); merchant = null; } if (typeof clearRealmCreatures === "function") clearRealmCreatures(); battle = null; cmenuOpen = false; if (typeof hide === "function") { hide("battle"); hide("cmenu"); } if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
+function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } if (typeof skyBoss !== "undefined" && skyBoss) { scene.remove(skyBoss.g); skyBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (merchant) { scene.remove(merchant.g); merchant = null; } if (typeof clearRealmCreatures === "function") clearRealmCreatures(); if (typeof clearRealmNPCs === "function") clearRealmNPCs(); battle = null; cmenuOpen = false; if (typeof hide === "function") { hide("battle"); hide("cmenu"); } if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
 function loadDimension(name, fromSave) {
   DIM = name; clearWorld(); clearEntities();
   if (name === "fire") achieve("firep", "Fire Portal Opened");
@@ -2188,6 +2190,12 @@ $("pTrophyBtn").addEventListener("click", () => { hide("pause"); paused = false;
 $("closeTrophyBtn").addEventListener("click", () => hide("trophies"));
 $("pCatsBtn").addEventListener("click", () => { hide("pause"); paused = false; toggleWardrobe(); });
 $("closeCatsBtn").addEventListener("click", () => hide("catwardrobe"));
+$("pCteamBtn").addEventListener("click", () => { hide("pause"); paused = false; toggleCTeam(); });
+$("closeCteamBtn").addEventListener("click", () => hide("cteamui"));
+$("pCdexBtn").addEventListener("click", () => { hide("pause"); paused = false; toggleCDex(); });
+$("closeCdexBtn").addEventListener("click", () => hide("cdexui"));
+$("closeCshopBtn").addEventListener("click", () => { hide("cshop"); if (!isTouch && running && !paused) canvas.requestPointerLock(); });
+$("closeBadgeBtn").addEventListener("click", () => hide("badgecase"));
 $("pSkinsBtn").addEventListener("click", () => { hide("pause"); paused = false; openCharacter(); });
 $("closeSkinBtn").addEventListener("click", closeCharacter);
 $("sSfx").addEventListener("input", e => { settings.sfxVol = e.target.value / 100; applyAudioGains(); });
@@ -2261,7 +2269,7 @@ function saveGame(silent) {
       side: [...sideDone],
       cats: cats.filter(c => c.tamed).map(c => ({ x: Math.round(c.g.position.x), z: Math.round(c.g.position.z), color: c.color, level: c.level, mode: c.mode })),
       edits: { overworld: [...editsByDim.overworld], fire: [...editsByDim.fire], end: [...editsByDim.end], sky: [...editsByDim.sky], realm: [...editsByDim.realm] },
-      cteam: cteam, cstorage: cstorage, cdex: [...cdex], cbadges: [...cbadges],
+      cteam: cteam, cstorage: cstorage, cdex: [...cdex], cbadges: [...cbadges], citems: citems, realmWins: realmWins, realmBossDown: realmBossDown,
       chests: [...chestStore] };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     if (!silent) toast("Game saved");
@@ -2286,6 +2294,7 @@ function loadGame() {
   editsByDim.sky = new Map((data.edits && data.edits.sky) || []);
   editsByDim.realm = new Map((data.edits && data.edits.realm) || []);
   cteam = data.cteam || []; cstorage = data.cstorage || []; cdex = new Set(data.cdex || []); cbadges = new Set(data.cbadges || []);
+  Object.assign(citems, data.citems || {}); realmWins = data.realmWins || 0; realmBossDown = data.realmBossDown || {};
   chestStore = new Map(data.chests || []);
   running = true; paused = false; wasNight = false; raidShown = false; dodge.t = 0; dodge.cd = 0; openChestK = null;
   story.active = false; clearObjective(); endCine();
@@ -2609,8 +2618,10 @@ function spawnRealmCreature(id, x, z, level) {
   realmCreatures.push({ id, g, sp, level, fly, shiny, dir: Math.random() * 6.28, t: Math.random() * 6, soundCd: Math.random() * 8, walkT: 0 });
 }
 function enterRealm() {
-  clearRealmCreatures(); encounterCd = 0;
+  clearRealmCreatures(); clearRealmNPCs(); encounterCd = 0;
   if (!cteam.length) { cteam.push(makeCreature("foxling", 5, { shiny: false })); cdex.add("foxling"); toast("Foxling joins you as your battle companion!"); }
+  // hub NPCs near the spawn portal
+  spawnRealmNPC("nurse", 3, 3); spawnRealmNPC("shop", 6, 3); spawnRealmNPC("trainer", -3, 4); spawnRealmNPC("badge", 0, 6);
   const roamers = ["voltmouse", "moonfox", "aurawolf", "museling", "landshark", "steelmind", "rocktitan"];
   for (let i = 0; i < 8; i++) { const a = Math.random() * 6.28, r = 8 + Math.random() * 22; spawnRealmCreature(roamers[Math.floor(Math.random() * roamers.length)], Math.floor(player.pos.x + Math.cos(a) * r), Math.floor(player.pos.z + Math.sin(a) * r), 3 + Math.floor(Math.random() * 5)); }
   for (let i = 0; i < 2; i++) { const a = Math.random() * 6.28, r = 16 + Math.random() * 12; spawnRealmCreature(Math.random() < 0.5 ? "emberwing" : "dragonox", Math.floor(player.pos.x + Math.cos(a) * r), Math.floor(player.pos.z + Math.sin(a) * r), 8); }
@@ -2658,10 +2669,11 @@ function tryTameFromMenu() {
 }
 // ---- turn-based battle ----
 let battle = null;
-function startBattle(wild, roamRef) {
+function startBattle(wild, roamRef, opts) {
+  opts = opts || {};
   if (!cteam.length) cteam.push(makeCreature("foxling", 5));
-  let mine = cteam.find(c => c.hp > 0); if (!mine) { toast("Your creatures are too tired. Visit a healing station."); return; }
-  battle = { wild, mine, roam: roamRef, over: false, log: "A wild " + wild.name + " challenges you!", busy: false };
+  let mine = cteam.find(c => c.hp > 0); if (!mine) { toast("Your creatures are too tired. Visit the Healing Nurse."); return; }
+  battle = { wild, mine, roam: roamRef, over: false, busy: false, trainer: !!opts.trainer, boss: opts.boss || null, badge: opts.badge || null, phase: 1, log: opts.intro || (opts.trainer ? "A Trainer sends out " + wild.name + "!" : "A wild " + wild.name + " challenges you!") };
   renderBattle(); show("battle"); document.exitPointerLock(); SFX.screech();
 }
 function renderBattle() {
@@ -2676,11 +2688,18 @@ function renderBattle() {
     b.mine.moves.forEach((mid, i) => { const mv = MOVES[mid]; const btn = document.createElement("button"); btn.className = "mvBtn"; btn.innerHTML = "<b>" + mv.name + "</b><span>" + mv.type + (mv.power ? " · " + mv.power : "") + "</span>"; btn.addEventListener("click", () => doMove(i)); grid.appendChild(btn); });
   }
   p.appendChild(grid);
-  const row = document.createElement("div"); row.style.cssText = "display:flex;gap:8px;justify-content:center;margin-top:8px";
+  const row = document.createElement("div"); row.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px";
   const mk = (l, fn) => { const x = document.createElement("button"); x.className = "btn ghost"; x.textContent = l; x.addEventListener("click", fn); row.appendChild(x); };
-  if (!b.over) { mk("Tame", tryTameBattle); mk("Run", () => { battle = null; hide("battle"); closeCMenu(); }); }
-  else { mk("Continue", () => { battle = null; hide("battle"); closeCMenu(); }); }
+  if (!b.over) {
+    if (!b.trainer && !b.boss) mk("Tame" + (citems.capture > 0 ? " (💎" + citems.capture + ")" : ""), tryTameBattle);
+    if (citems.potion > 0) mk("Potion (" + citems.potion + ")", useBattlePotion);
+    mk(b.trainer || b.boss ? "Forfeit" : "Run", () => { battle = null; hide("battle"); closeCMenu(); });
+  } else mk("Continue", () => { battle = null; hide("battle"); closeCMenu(); });
   p.appendChild(row);
+}
+function useBattlePotion() {
+  const b = battle; if (!b || b.over || b.busy || citems.potion <= 0) return;
+  citems.potion--; b.mine.hp = Math.min(b.mine.maxHp, b.mine.hp + 30); b.log = "You used a Healing Potion on " + b.mine.name + ". (+30)"; b.busy = true; renderBattle(); setTimeout(enemyTurn, 600);
 }
 function doMove(i) {
   const b = battle; if (!b || b.over || b.busy) return; b.busy = true;
@@ -2694,9 +2713,10 @@ function doMove(i) {
 }
 function enemyTurn() {
   const b = battle; if (!b || b.over) return;
+  if (b.boss) { const frac = b.wild.hp / b.wild.maxHp, ph = frac > 0.66 ? 1 : frac > 0.33 ? 2 : 3; if (ph > b.phase) { b.phase = ph; b.wild.hp = Math.min(b.wild.maxHp, b.wild.hp + 8); b.log = b.wild.name + " powers up to phase " + ph + "!"; renderBattle(); } }
   const mid = b.wild.moves[Math.floor(Math.random() * b.wild.moves.length)], mv = MOVES[mid];
   if (mv.heal) { b.wild.hp = Math.min(b.wild.maxHp, b.wild.hp + mv.heal); b.log = b.wild.name + " used " + mv.name + "."; }
-  else { let r = calcDamage(b.wild, b.mine, mv); if (b.mine.shield) { r.dmg = Math.round(r.dmg * 0.5); b.mine.shield = false; } b.mine.hp -= r.dmg; b.log = "Wild " + b.wild.name + " used " + mv.name + "! (" + r.dmg + ")"; }
+  else { let r = calcDamage(b.wild, b.mine, mv); if (b.boss) r.dmg = Math.round(r.dmg * (1 + (b.phase - 1) * 0.2)); if (b.mine.shield) { r.dmg = Math.round(r.dmg * 0.5); b.mine.shield = false; } b.mine.hp -= r.dmg; b.log = (b.trainer ? "" : b.boss ? "" : "Wild ") + b.wild.name + " used " + mv.name + "! (" + r.dmg + ")"; }
   b.busy = false; renderBattle();
   if (b.mine.hp <= 0) {
     const next = cteam.find(c => c.hp > 0 && c !== b.mine);
@@ -2706,16 +2726,65 @@ function enemyTurn() {
 }
 function winBattle() {
   const b = battle; b.over = true;
-  const reward = 14 + b.wild.level * 6; const ups = gainCreatureXP(b.mine, reward); b.mine.friendship++;
-  cdex.add(b.wild.sp); addCoins(b.wild.level + 4);
-  b.log = "You defeated " + b.wild.name + "! +" + reward + " XP" + (ups ? ". " + b.mine.name + " grew to Lv" + b.mine.level + "!" : "");
+  const reward = Math.round((14 + b.wild.level * 6) * (b.boss ? 3 : b.trainer ? 1.5 : 1));
+  const ups = gainCreatureXP(b.mine, reward); b.mine.friendship++;
+  cdex.add(b.wild.sp); addCoins(Math.round((b.wild.level + 4) * (b.boss ? 4 : b.trainer ? 2 : 1))); realmWins++;
+  let extra = "";
+  if (b.boss && b.badge && !cbadges.has(b.badge)) { cbadges.add(b.badge); extra = " The " + b.badge + " badge is yours!"; showBanner("Badge earned: " + b.badge + "!"); if (typeof realmBossDown !== "undefined") realmBossDown[b.boss] = true; }
+  b.log = "You defeated " + b.wild.name + "! +" + reward + " XP" + (ups ? ". Lv" + b.mine.level + "!" : "") + extra;
   if (b.roam) { scene.remove(b.roam.g); realmCreatures = realmCreatures.filter(c => c !== b.roam); }
   SFX.victory(); renderBattle();
 }
 function tryTameBattle() {
-  const b = battle; if (!b || b.over || b.busy) return;
-  if (Math.random() < tameChance(b.wild)) { b.over = true; const where = addCreature(b.wild); b.log = "Gotcha! " + b.wild.name + (where === "team" ? " joined your team." : " went to storage."); SFX.victory(); showBanner("Befriended " + b.wild.name + "!"); if (b.roam) { scene.remove(b.roam.g); realmCreatures = realmCreatures.filter(c => c !== b.roam); } renderBattle(); }
+  const b = battle; if (!b || b.over || b.busy || b.trainer || b.boss) return;
+  let chance = tameChance(b.wild); if (citems.capture > 0) { citems.capture--; chance = Math.min(0.97, chance + 0.28); }
+  if (Math.random() < chance) { b.over = true; const where = addCreature(b.wild); b.log = "Gotcha! " + b.wild.name + (where === "team" ? " joined your team." : " went to storage."); SFX.victory(); showBanner("Befriended " + b.wild.name + "!"); if (b.roam) { scene.remove(b.roam.g); realmCreatures = realmCreatures.filter(c => c !== b.roam); } renderBattle(); }
   else { b.log = b.wild.name + " broke free! Weaken it more."; b.busy = true; renderBattle(); setTimeout(enemyTurn, 600); }
+}
+
+// ---- Creature Realm: NPCs, healing, items, shop, badges, team/dex menus ----
+let realmNPCs = [], realmWins = 0, realmBossDown = {};
+const citems = { potion: 0, capture: 0, food: 0 };
+const NPC_DEFS = { nurse: { name: "Healing Nurse", col: 0xff8aa0, hat: 0xffffff }, shop: { name: "Shopkeeper", col: 0x4a7ec2, hat: 0x2c4d80 }, trainer: { name: "Creature Trainer", col: 0x6abf6a, hat: 0x2f7a2f }, badge: { name: "Badge Master", col: 0xe8b23a, hat: 0xc98a1e } };
+function buildNPC(kind) {
+  const d = NPC_DEFS[kind], g = new THREE.Group();
+  const robe = box(0.5, 0.85, 0.36, d.col); robe.position.y = 0.62; g.add(robe);
+  const head = box(0.4, 0.4, 0.4, 0xe8b98a); head.position.y = 1.26; g.add(head);
+  const hat = box(0.62, 0.18, 0.62, d.hat); hat.position.y = 1.5; g.add(hat);
+  const eL = box(0.06, 0.06, 0.04, 0x111114); eL.position.set(-0.1, 1.28, 0.2); g.add(eL); const eR = eL.clone(); eR.position.x = 0.1; g.add(eR);
+  const sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(255,235,150,0.95)", "rgba(255,200,80,0)"), depthWrite: false, transparent: true, fog: false })); sign.scale.set(1.1, 1.1, 1); sign.position.y = 2.05; g.add(sign);
+  return g;
+}
+function spawnRealmNPC(kind, x, z) { const g = buildNPC(kind); g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g); realmNPCs.push({ kind, g }); }
+function clearRealmNPCs() { for (const n of realmNPCs) scene.remove(n.g); realmNPCs = []; }
+function healTeam() { cteam.forEach(c => c.hp = c.maxHp); cstorage.forEach(c => c.hp = c.maxHp); toast("Your creatures are fully healed!"); showBanner("Team healed"); SFX.levelUp(); }
+const CSHOP = [{ k: "potion", name: "Healing Potion", cost: 8, desc: "Heal a creature 30 HP in battle" }, { k: "capture", name: "Capture Crystal", cost: 12, desc: "Big taming boost" }, { k: "food", name: "Creature Food", cost: 6, desc: "Raise friendship / move Snoozer" }];
+function renderCShop() {
+  const sc = $("cshopCoins"); if (sc) sc.textContent = "you have 🪙 " + coins; const l = $("cshopList"); if (!l) return; l.innerHTML = "";
+  for (const s of CSHOP) { const ok = coins >= s.cost; const row = document.createElement("div"); row.className = "craftRow" + (ok ? "" : " no"); row.innerHTML = "<span><b>" + s.name + "</b> x" + (citems[s.k] || 0) + "<br><span class='muted'>🪙 " + s.cost + " · " + s.desc + "</span></span>"; const b = document.createElement("button"); b.className = "mk"; b.textContent = "Buy"; b.addEventListener("pointerdown", e => { e.preventDefault(); if (coins >= s.cost) { coins -= s.cost; citems[s.k] = (citems[s.k] || 0) + 1; SFX.pickup(); updateCoinUI(); renderCShop(); } else toast("Not enough coins"); }); row.appendChild(b); l.appendChild(row); }
+}
+function openCShop() { renderCShop(); show("cshop"); document.exitPointerLock(); SFX.meow(); }
+function trainerBattle() { const ids = Object.keys(SPECIES).filter(s => !SPECIES[s].legend && SPECIES[s].role !== "block"); const id = ids[Math.floor(Math.random() * ids.length)]; const avg = Math.max(5, Math.round(cteam.reduce((a, c) => a + c.level, 0) / Math.max(1, cteam.length))); startBattle(makeCreature(id, avg + 1), null, { trainer: true, intro: "The Creature Trainer challenges you!" }); }
+const BADGES = [{ id: "forest", name: "Forest Badge", ic: "🌿" }, { id: "cave", name: "Cave Badge", ic: "👻" }, { id: "fire", name: "Fire Badge", ic: "🔥" }, { id: "water", name: "Water Badge", ic: "💧" }, { id: "sky", name: "Sky Badge", ic: "🌪️" }, { id: "psychic", name: "Mind Badge", ic: "🔮" }, { id: "lava", name: "Magma Badge", ic: "🌋" }, { id: "legendary", name: "Legend Badge", ic: "⭐" }];
+function renderBadgeCase() { const el = $("badgeList"); if (!el) return; el.innerHTML = ""; let n = 0; for (const bd of BADGES) { const got = cbadges.has(bd.id); if (got) n++; const d = document.createElement("div"); d.className = "trophy" + (got ? " got" : ""); d.innerHTML = "<div class='ti'>" + (got ? bd.ic : "❔") + "</div><div class='tn'>" + (got ? bd.name : "???") + "</div>"; el.appendChild(d); } const h = $("badgeCount"); if (h) h.textContent = n + " / " + BADGES.length; }
+function openBadgeCase() { if (realmWins >= 3 && !cbadges.has("forest")) { cbadges.add("forest"); showBanner("Forest Badge earned!"); SFX.victory(); toast("Badge Master: you've proven yourself. Take the Forest Badge!"); } renderBadgeCase(); show("badgecase"); document.exitPointerLock(); }
+function renderCTeam() {
+  const el = $("cteamList"); if (!el) return; el.innerHTML = "";
+  const hd = t => { const h = document.createElement("div"); h.className = "muted"; h.style.cssText = "font-size:12px;letter-spacing:1px;margin:8px 0 4px"; h.textContent = t; el.appendChild(h); };
+  hd("TEAM (" + cteam.length + "/6)");
+  if (!cteam.length) { const e = document.createElement("div"); e.className = "muted"; e.textContent = "No creatures yet. Tame some in the realm!"; el.appendChild(e); }
+  cteam.forEach((c, i) => { const row = document.createElement("div"); row.className = "craftRow"; row.innerHTML = "<span><b>" + (i === 0 ? "★ " : "") + (c.shiny ? "✨" : "") + c.name + "</b> Lv" + c.level + " " + SPECIES[c.sp].type + "<br><span class='muted'>HP " + (c.hp | 0) + "/" + c.maxHp + " · ♥" + c.friendship + " · " + c.moves.map(m => MOVES[m].name).join(", ") + "</span></span>"; if (i > 0) { const b = document.createElement("button"); b.className = "mk"; b.textContent = "Lead"; b.addEventListener("pointerdown", e => { e.preventDefault(); cteam.unshift(cteam.splice(i, 1)[0]); renderCTeam(); }); row.appendChild(b); } el.appendChild(row); });
+  if (cstorage.length) { hd("STORAGE SHRINE (" + cstorage.length + ")"); cstorage.forEach((c, i) => { const row = document.createElement("div"); row.className = "craftRow no"; row.innerHTML = "<span><b>" + (c.shiny ? "✨" : "") + c.name + "</b> Lv" + c.level + " " + SPECIES[c.sp].type + "</span>"; if (cteam.length < 6) { const b = document.createElement("button"); b.className = "mk"; b.textContent = "Take"; b.addEventListener("pointerdown", e => { e.preventDefault(); cteam.push(cstorage.splice(i, 1)[0]); renderCTeam(); }); row.appendChild(b); } el.appendChild(row); }); }
+}
+function toggleCTeam() { const o = $("cteamui"); const open = !o.classList.contains("hidden"); if (open) o.classList.add("hidden"); else { renderCTeam(); o.classList.remove("hidden"); } }
+function renderCDex() { const el = $("cdexList"); if (!el) return; el.innerHTML = ""; let n = 0; const ids = Object.keys(SPECIES); for (const id of ids) { const got = cdex.has(id); if (got) n++; const sp = SPECIES[id]; const row = document.createElement("div"); row.className = "craftRow" + (got ? "" : " no"); row.innerHTML = "<span><b>" + (got ? sp.name : "???") + "</b>" + (got ? " <span class='muted'>" + sp.type + (sp.legend ? " · legendary" : "") + "</span>" : "") + "</span>"; el.appendChild(row); } const h = $("cdexCount"); if (h) h.textContent = n + " / " + ids.length; }
+function toggleCDex() { const o = $("cdexui"); const open = !o.classList.contains("hidden"); if (open) o.classList.add("hidden"); else { renderCDex(); o.classList.remove("hidden"); } }
+function realmInteract() {   // Use near a realm NPC. returns true if handled
+  if (DIM !== "realm") return false;
+  let np = null, nd = 3.4; for (const n of realmNPCs) { const d = n.g.position.distanceTo(player.pos); if (d < nd) { nd = d; np = n; } }
+  if (!np) return false;
+  if (np.kind === "nurse") healTeam(); else if (np.kind === "shop") openCShop(); else if (np.kind === "trainer") trainerBattle(); else if (np.kind === "badge") openBadgeCase();
+  return true;
 }
 
 // ---------- GAME START ----------
@@ -2781,7 +2850,7 @@ function startGame() {
   setQuest(quests[0].text); qi = 0; kills = 0; minedStone = 0; survivedNight = false; tamedCat = false; craftedPick = false; craftedPlanks = false; fireBossDown = false;
   xp = 0; level = 1; xpNext = 50; placedBlocks = 0; movedDist = 0; tameCount = 0; ach.clear(); loadAch(); dodge.t = 0; dodge.cd = 0; wasNight = false; raidShown = false; updateXPUI(); renderSkills();
   editsByDim.overworld = new Map(); editsByDim.fire = new Map(); editsByDim.end = new Map(); editsByDim.sky = new Map(); editsByDim.realm = new Map(); chestStore = new Map(); openChestK = null; day = 1; timeOfDay = 0.28;
-  cteam = []; cstorage = []; cdex = new Set(); cbadges = new Set(); battle = null; cmenuOpen = false;
+  cteam = []; cstorage = []; cdex = new Set(); cbadges = new Set(); battle = null; cmenuOpen = false; citems.potion = citems.capture = citems.food = 0; realmWins = 0; realmBossDown = {};
   clearObjective(); story.active = false;
   eventCd = 180; activeEvent = null; xpMult = 1; setEventTint(null);
   coins = 0; updateCoinUI(); spawnMerchant(7, 5); treasureKey = null;   // a friendly trader near camp
@@ -2794,7 +2863,7 @@ function startGame() {
   if (!isTouch) canvas.requestPointerLock();
 }
 // panels that open during play; while any is open the world freezes so you cannot be killed in a menu
-const GAME_PANELS = ["inv", "skills", "journal", "chest", "shop", "ach", "collections", "trophies", "catwardrobe", "skinpicker", "settings", "cmenu", "battle"];
+const GAME_PANELS = ["inv", "skills", "journal", "chest", "shop", "ach", "collections", "trophies", "catwardrobe", "skinpicker", "settings", "cmenu", "battle", "cshop", "cteamui", "cdexui", "badgecase"];
 function anyPanelOpen() { for (const id of GAME_PANELS) { const e = document.getElementById(id); if (e && !e.classList.contains("hidden")) return true; } return false; }
 function hideAllPanels() { for (const id of GAME_PANELS) { const e = document.getElementById(id); if (e) e.classList.add("hidden"); } }
 let deathT = 0;
