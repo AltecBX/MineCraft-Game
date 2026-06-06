@@ -140,7 +140,8 @@ const SFX = {
   victory: () => { [392, 523, 659, 784, 1046].forEach((f, i) => setTimeout(() => blip(f, 0.22, "square", 0.18), i * 120)); },
   boom: () => { noiseHit(0.45, 0.45); blip(64, 0.45, "sawtooth", 0.28, 28); setTimeout(() => noiseHit(0.3, 0.22), 70); setTimeout(() => blip(48, 0.3, "square", 0.18, 24), 40); },
   roar: () => { blip(70, 0.5, "sawtooth", 0.12, 110); setTimeout(() => blip(55, 0.6, "sawtooth", 0.1, 95), 120); setTimeout(() => noiseHit(0.18, 0.4), 60); },
-  sparkle: () => { [880, 1175, 1568].forEach((f, i) => setTimeout(() => blip(f, 0.1, "triangle", 0.1), i * 60)); }
+  sparkle: () => { [880, 1175, 1568].forEach((f, i) => setTimeout(() => blip(f, 0.1, "triangle", 0.1), i * 60)); },
+  gun: () => { noiseHit(0.05, 0.06); blip(180, 0.04, "square", 0.12, 60); }
 };
 function stepSound() {
   const b = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.1), Math.floor(player.pos.z));
@@ -215,7 +216,7 @@ function isOpaque(id) { return id !== AIR && id !== WATER && id !== PORTAL && BL
 function isSolidBlock(id) { return id !== AIR && id !== WATER && id !== PORTAL && BLOCKS[id] && BLOCKS[id].solid; }
 
 // ITEMS (tools/food), ids offset 100
-const I_HAND = 100, I_WPICK = 101, I_SPICK = 102, I_SWORD = 103, I_AXE = 104, I_FIRECHARM = 105, I_FIRESWORD = 106, I_LIGHTHAMMER = 107, I_BOOMPICK = 108, I_ICEBOW = 109, I_APPLE = 110, I_STICK = 111, I_SLIMELAUNCH = 112, I_CRYSTALSPEAR = 113;
+const I_HAND = 100, I_WPICK = 101, I_SPICK = 102, I_SWORD = 103, I_AXE = 104, I_FIRECHARM = 105, I_FIRESWORD = 106, I_LIGHTHAMMER = 107, I_BOOMPICK = 108, I_ICEBOW = 109, I_APPLE = 110, I_STICK = 111, I_SLIMELAUNCH = 112, I_CRYSTALSPEAR = 113, I_MACHINEGUN = 114;
 const ITEMS = {
   [I_WPICK]: { name: "Wood Pickaxe", tool: "pick", tier: 1, dmg: 2, icon: "⛏️" },
   [I_SPICK]: { name: "Stone Pickaxe", tool: "pick", tier: 2, dmg: 3, icon: "⛏️" },
@@ -228,6 +229,7 @@ const ITEMS = {
   [I_ICEBOW]: { name: "Ice Bow", tool: "bow", dmg: 1, special: "ice", icon: "🏹" },
   [I_SLIMELAUNCH]: { name: "Slime Launcher", tool: "bow", dmg: 1, special: "slime", icon: "🟢" },
   [I_CRYSTALSPEAR]: { name: "Crystal Spear", tool: "sword", tier: 3, dmg: 8, special: "pierce", icon: "🔱" },
+  [I_MACHINEGUN]: { name: "Machine Gun", tool: "gun", dmg: 4, icon: "🔫" },
   [I_APPLE]: { name: "Apple", food: 4, icon: "🍎" },
   [I_STICK]: { name: "Stick", icon: "➖" }
 };
@@ -334,6 +336,7 @@ function genChunk(cx, cz) {
         if (mush) { if (hsh(x * 3 + 7, z * 5 + 11) > 0.93) giantMushroom(x, h + 1, z); else if (hsh(x * 2 + 1, z * 2 + 3) > 0.9) setRaw(x, h + 1, z, MUSHROOM); }
         else if (swamp) { if (hsh(x * 3 + 2, z * 3 + 5) > 0.86) setRaw(x, h + 1, z, BOUNCE); else if (hsh(x * 5 + 1, z * 7 + 2) > 0.9) bush(x, h + 1, z); }
         else if (!desert) { const tr = hsh(x * 3 + 7, z * 5 + 11); if (tr > (forest ? 0.86 : 0.95)) tree(x, h + 1, z); else if (forest && tr > 0.8) bush(x, h + 1, z); }
+        if (getBlock(x, h + 1, z) === AIR && hsh(x * 13 + 31, z * 17 + 19) > 0.9955) setRaw(x, h + 1, z, FREDA);   // scattered Freda Boxes to discover
       }
     }
     // rare ruin landmark per chunk (exploration reward)
@@ -359,6 +362,7 @@ function genChunk(cx, cz) {
       if (vn(x * 0.04 + 9, z * 0.04 + 9) > 0.7) setRaw(x, h, z, LAVA);                              // lava rivers/pools
       else if (hsh(x * 13 + 2, z * 17 + 5) > 0.985) setRaw(x, h + 1, z, FIRE_CRYSTAL);              // surface crystal clusters
       if (hsh(x * 7 + 1, z * 9 + 3) > 0.987) { for (let y = h + 1; y < h + 4; y++) setRaw(x, y, z, WOOD); setRaw(x, h + 4, z, FIRE_CRYSTAL); }  // burning tree with ember
+      if (getBlock(x, h + 1, z) === AIR && hsh(x * 19 + 7, z * 23 + 11) > 0.994) setRaw(x, h + 1, z, FREDA);   // Freda Boxes in the fire dimension
     }
   } else if (DIM === "sky") { // sky islands: a central spawn island plus scattered floating islands and clouds
     for (let x = x0; x < x0 + CH; x++) for (let z = z0; z < z0 + CH; z++) {
@@ -385,12 +389,14 @@ function genChunk(cx, cz) {
         const r = hsh(x * 3 + 9, z * 5 + 13);
         if (r > 0.94) tree(x, h + 1, z);
         else if (r > 0.5 && r < 0.86) setRaw(x, h + 1, z, TALLGRASS);   // wide tall-grass encounter zones
+        if (getBlock(x, h + 1, z) === AIR && hsh(x * 29 + 3, z * 31 + 7) > 0.995) setRaw(x, h + 1, z, FREDA);   // Freda Boxes hidden in the valley
       }
     }
   } else { // end: large central island, floating islands, ruined pillars; void elsewhere
     for (let x = x0; x < x0 + CH; x++) for (let z = z0; z < z0 + CH; z++) {
       const d = Math.hypot(x, z);
       if (d < 46) for (let y = 13; y <= 16; y++) setRaw(x, y, z, ENDSTONE);                 // big thick main island
+      if (d < 44 && hsh(x * 37 + 5, z * 41 + 9) > 0.99) setRaw(x, 17, z, FREDA);            // Freda Boxes on the End island
       const fi = vn(x * 0.05 + 700, z * 0.05 + 700);
       if (d > 26 && d < 120 && fi > 0.82) { const fy = 24 + Math.floor(hsh((x / 6) | 0, (z / 6) | 0) * 18); for (let y = fy; y <= fy + 1; y++) setRaw(x, y, z, ENDSTONE); }  // floating islands
     }
@@ -1029,6 +1035,7 @@ function updateMining(dt) {
   // ranged weapons fire instead of mining/meleeing
   const tBow = currentTool();
   if (tBow && tBow.tool === "bow") { if (bowCd <= 0) { bowCd = 0.55; firePlayerShot(tBow.special); } return; }
+  if (tBow && tBow.tool === "gun") { if (bowCd <= 0) { bowCd = 0.11; firePlayerShot("bullet"); swing = 0.4; addShake(0.05); } return; }   // rapid fire
   // attack entities first
   const hit = aimEntity();
   if (hit) { attackEntity(hit); return; }
@@ -1118,6 +1125,7 @@ const RECIPES = [
   { out: ALARM, n: 1, need: [[COBBLE, 3], [I_STICK, 1]] },
   { out: FREDA, n: 1, need: [[COBBLE, 3], [FIRE_CRYSTAL, 1]] },
   { out: I_CRYSTALSPEAR, n: 1, need: [[CRYSTAL, 3], [I_STICK, 2]] },
+  { out: I_MACHINEGUN, n: 1, need: [[COBBLE, 6], [CRYSTAL, 2], [FIRE_CRYSTAL, 1]] },
   { out: LAUNCH, n: 1, need: [[BOUNCE, 1], [FIRE_CRYSTAL, 1]] },
   { out: HEAL, n: 1, need: [[CRYSTAL, 1], [I_APPLE, 2]] },
   { out: FROST, n: 1, need: [[CRYSTAL, 2], [SNOW, 2]] }
@@ -1594,7 +1602,12 @@ const FREDA_MSGS = [
   "Freda is dancing with the mice.",
   "Freda is riding a giant Snorlax style creature.",
   "Freda is hiding behind the moon.",
-  "Freda made the sky explode with magic."
+  "Freda made the sky explode with magic.",
+  "Freda found a secret Pokemon.",
+  "Freda opened a treasure portal.",
+  "Freda made Pikachu dance.",
+  "Freda is hiding in the tall grass.",
+  "Freda made the monsters run away."
 ];
 let lastFredaMsg = -1;
 function randomFredaMsg() {
@@ -1658,7 +1671,12 @@ function fredaEvent(x, y, z) {
   if (sup || Math.random() < 0.08) fredaSecretHole(x, y, z);        // rare secret treasure hole
   if (Math.random() < 0.15) setTimeout(() => SFX.roar(), 350);      // rare distant dinosaur roar
   if (Math.random() < 0.10) { for (const c of cats) { c._fredaRun = 3.5; c._fredaTo = { x: cx, z: cz }; } toast("A cat parade marches by!"); SFX.meow(); }   // rare cat parade
+  // collectible counter: every Freda Box found counts toward milestone rewards
+  fredaFound++;
+  if (fredaFound % 10 === 0) { addCoins(50); addXP(80); showBanner("Freda Box Collector: " + fredaFound + " found! +50 coins"); SFX.treasure(); achieve("fredacollect", "Freda Box Collector"); }
+  else if (fredaFound % 5 === 0) { addItem(CRYSTAL, 2); toast("Freda Boxes found: " + fredaFound + ". Bonus crystals!"); }
 }
+let fredaFound = 0;
 function updateFredaReactions(dt) {
   for (const c of cats) { if (c._fredaRun > 0) { c._fredaRun -= dt; const dx = c._fredaTo.x - c.g.position.x, dz = c._fredaTo.z - c.g.position.z, d = Math.hypot(dx, dz) || 1; if (d > 1.6) { c.g.position.x += dx / d * 4 * dt; c.g.position.z += dz / d * 4 * dt; c.g.rotation.y = Math.atan2(dx, dz); c.moved = true; } fallToGround(c, dt); } }
   for (const ms of mice) { if (ms._panic > 0) { ms._panic -= dt; ms.g.position.x += Math.sin(ms.dir) * 5 * dt; ms.g.position.z += Math.cos(ms.dir) * 5 * dt; ms.g.rotation.y = ms.dir; fallToGround(ms, dt); } }
@@ -1669,6 +1687,14 @@ const playerShots = [];
 const pshotGeo = new THREE.SphereGeometry(0.16, 8, 8);
 function firePlayerShot(kind) {
   const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+  if (kind === "bullet") {                              // small fast tracer with a little spread
+    dir.x += (Math.random() - .5) * 0.04; dir.y += (Math.random() - .5) * 0.04; dir.z += (Math.random() - .5) * 0.04; dir.normalize();
+    const m = new THREE.Mesh(pshotGeo, new THREE.MeshBasicMaterial({ color: 0xffe14d })); m.scale.set(0.5, 0.5, 0.5);
+    m.position.set(camera.position.x + dir.x, camera.position.y + dir.y, camera.position.z + dir.z); scene.add(m);
+    playerShots.push({ mesh: m, vel: dir.clone().multiplyScalar(46), life: 1.2, kind });
+    hitSpark(m.position, 0xffd24a); SFX.gun();
+    return;
+  }
   const m = new THREE.Mesh(pshotGeo, new THREE.MeshBasicMaterial({ color: kind === "slime" ? 0x6fe06a : 0x9fe8ff }));
   m.position.set(camera.position.x + dir.x, camera.position.y + dir.y, camera.position.z + dir.z); scene.add(m);
   playerShots.push({ mesh: m, vel: dir.clone().multiplyScalar(24), life: 2, kind });
@@ -1680,10 +1706,10 @@ function updatePlayerShots(dt) {
     let hitM = null; for (const m of monsters) { if (m.dead) continue; if (m.g.position.distanceTo(p.mesh.position) < 1.2) { hitM = m; break; } }
     const ground = isSolidBlock(getBlock(Math.floor(p.mesh.position.x), Math.floor(p.mesh.position.y), Math.floor(p.mesh.position.z)));
     if (hitM) {
-      const dmg = 6 + swordBonus; hitM.hp -= dmg; hitM.flash = 0.15; hitM.bar.up(Math.max(0, hitM.hp / hitM.max));
-      hitSpark(p.mesh.position, p.kind === "slime" ? 0x6fe06a : 0x9fe8ff); dmgNumber(p.mesh.position, dmg, false);
+      const dmg = p.kind === "bullet" ? 4 : 6 + swordBonus; hitM.hp -= dmg; hitM.flash = 0.15; hitM.bar.up(Math.max(0, hitM.hp / hitM.max));
+      hitSpark(p.mesh.position, p.kind === "slime" ? 0x6fe06a : p.kind === "bullet" ? 0xffd24a : 0x9fe8ff); dmgNumber(p.mesh.position, dmg, false);
       if (p.kind === "ice") { if (!hitM._bspd) hitM._bspd = hitM.speed; hitM.speed = hitM._bspd * 0.4; hitM.slow = 2.8; }
-      else { knock(hitM.g, 1.6); }
+      else { knock(hitM.g, p.kind === "bullet" ? 0.5 : 1.6); }
       if (hitM.hp <= 0 && !hitM.dead) killMonster(hitM);
     }
     if (hitM || ground || p.life <= 0) { scene.remove(p.mesh); playerShots.splice(i, 1); }
@@ -1740,49 +1766,67 @@ function buildViewItem() {
   if (viewItem) vScene.remove(viewItem);
   const g = new THREE.Group(); const it = hotbar[selSlot];
   if (it && isItem(it.id)) {
-    const tool = ITEMS[it.id].tool, sp = ITEMS[it.id].special, tier = ITEMS[it.id].tier || 1;
-    // metal tone scales with tier so a stone tool reads grey and an iron/upgraded tool reads bright steel
-    const metal = sp === "fire" ? 0xff7a2a : sp === "pierce" ? 0x76e4ff : tier >= 2 ? 0xcfd6de : 0x9a9aa2;
-    const hi = sp === "fire" ? 0xffd24a : sp === "pierce" ? 0xd6f7ff : 0xeef1f6;   // bright edge highlight
+    const info = ITEMS[it.id], tool = info.tool, sp = info.special, tier = info.tier || 1;
     const wood = 0x6e4a25, dark = 0x4a3318, gold = 0xc9a227;
-    if (tool === "sword") {
-      const blade = box(0.085, 0.52, 0.028, metal); blade.position.y = 0.36; g.add(blade);              // flat blade
-      const fuller = box(0.02, 0.44, 0.032, hi); fuller.position.set(0, 0.34, 0.002); g.add(fuller);     // center groove highlight
-      const edge = box(0.015, 0.5, 0.03, hi); edge.position.set(0.05, 0.36, 0); g.add(edge);             // bright cutting edge
-      const tip = box(0.085, 0.1, 0.028, metal); tip.position.set(0, 0.63, 0); tip.rotation.z = 0.785; g.add(tip);
+    // head + highlight colours follow the tool TIER: wood=tan, stone=grey, iron+=steel. No stray white boxes on wood/stone tools.
+    const head = sp === "fire" ? 0xff7a2a : sp === "pierce" ? 0x76e4ff : tier >= 3 ? 0xd2d8e0 : tier === 2 ? 0x8c8c92 : 0xa9844e;
+    const hi = sp === "fire" ? 0xffd24a : sp === "pierce" ? 0xd6f7ff : tier >= 3 ? 0xeef2f8 : tier === 2 ? 0xb4b4bc : 0xc7a467;
+    if (info.food) {                                   // apple-style food
+      g.add(box(0.22, 0.2, 0.22, 0xd83a2e)); const stem = box(0.03, 0.08, 0.03, wood); stem.position.y = 0.15; g.add(stem); const leaf = box(0.1, 0.04, 0.06, 0x49b04a); leaf.position.set(0.07, 0.15, 0); g.add(leaf);
+      g.position.set(0.4, -0.4, -0.7); g.rotation.set(-0.2, 0.4, 0);
+    } else if (tool === "sword") {
+      const blade = box(0.085, 0.52, 0.028, head); blade.position.y = 0.36; g.add(blade);
+      const edge = box(0.02, 0.5, 0.032, hi); edge.position.set(0.045, 0.36, 0); g.add(edge);            // cutting edge
+      const tip = box(0.085, 0.1, 0.028, head); tip.position.set(0, 0.63, 0); tip.rotation.z = 0.785; g.add(tip);
       const gu = box(0.26, 0.055, 0.09, gold); gu.position.y = 0.08; g.add(gu);                          // crossguard
-      const grip = box(0.05, 0.16, 0.05, dark); grip.position.y = -0.03; g.add(grip);                    // wrapped grip
-      const pom = box(0.08, 0.06, 0.08, gold); pom.position.y = -0.13; g.add(pom);
-    }
-    else if (tool === "hammer") { const head = box(0.28, 0.22, 0.2, metal); head.position.y = 0.38; g.add(head); const face = box(0.06, 0.24, 0.22, hi); face.position.set(0.15, 0.38, 0); g.add(face); const trim = box(0.3, 0.06, 0.22, 0xffe066); trim.position.y = 0.38; g.add(trim); const stick = box(0.05, 0.46, 0.05, wood); stick.position.y = 0.1; g.add(stick); }
-    else if (tool === "bow") {
+      const grip = box(0.05, 0.16, 0.05, dark); grip.position.y = -0.03; g.add(grip); const pom = box(0.08, 0.06, 0.08, gold); pom.position.y = -0.13; g.add(pom);
+      g.position.set(0.42, -0.42, -0.75); g.rotation.set(-0.45, -0.32, 0.22);
+    } else if (tool === "pick") {                       // wooden handle + a clear horizontal pick head with two angled points
+      const stick = box(0.05, 0.52, 0.05, wood); stick.position.y = 0.02; g.add(stick);
+      const bar = box(0.44, 0.08, 0.08, head); bar.position.y = 0.34; g.add(bar);
+      const tL = box(0.13, 0.08, 0.08, head); tL.position.set(-0.26, 0.31, 0); tL.rotation.z = 0.55; g.add(tL);
+      const tR = box(0.13, 0.08, 0.08, head); tR.position.set(0.26, 0.31, 0); tR.rotation.z = -0.55; g.add(tR);
+      const collar = box(0.085, 0.09, 0.085, dark); collar.position.y = 0.31; g.add(collar);             // binding where head meets handle
+      g.position.set(0.42, -0.42, -0.75); g.rotation.set(-0.45, -0.32, 0.22);
+    } else if (tool === "axe") {
+      const stick = box(0.05, 0.52, 0.05, wood); stick.position.y = 0.02; g.add(stick);
+      const cheek = box(0.06, 0.26, 0.18, head); cheek.position.set(0.12, 0.34, 0); g.add(cheek);
+      const edge = box(0.035, 0.32, 0.12, hi); edge.position.set(0.2, 0.34, 0); g.add(edge);
+      const beard = box(0.05, 0.12, 0.13, head); beard.position.set(0.16, 0.2, 0); g.add(beard);
+      const collar = box(0.085, 0.09, 0.085, dark); collar.position.set(0.04, 0.34, 0); g.add(collar);
+      g.position.set(0.42, -0.42, -0.75); g.rotation.set(-0.45, -0.32, 0.22);
+    } else if (tool === "hammer") {
+      const headB = box(0.28, 0.22, 0.2, head); headB.position.y = 0.38; g.add(headB); const face = box(0.06, 0.24, 0.22, hi); face.position.set(0.15, 0.38, 0); g.add(face);
+      const trim = box(0.3, 0.06, 0.22, gold); trim.position.y = 0.38; g.add(trim); const stick = box(0.05, 0.46, 0.05, wood); stick.position.y = 0.1; g.add(stick);
+      g.position.set(0.42, -0.42, -0.75); g.rotation.set(-0.45, -0.32, 0.22);
+    } else if (tool === "bow") {
       const col = sp === "slime" ? 0x49e06a : sp === "ice" ? 0x9fe8ff : 0xb5793a;
       const grip = box(0.06, 0.16, 0.06, dark); grip.position.y = 0.25; g.add(grip);
-      const uL = box(0.05, 0.26, 0.05, col); uL.position.set(-0.02, 0.42, 0); uL.rotation.z = -0.45; g.add(uL);    // upper limb
-      const uT = box(0.045, 0.16, 0.045, col); uT.position.set(-0.12, 0.6, 0); uT.rotation.z = -0.95; g.add(uT);   // upper recurve tip
-      const lL = box(0.05, 0.26, 0.05, col); lL.position.set(-0.02, 0.08, 0); lL.rotation.z = 0.45; g.add(lL);     // lower limb
-      const lT = box(0.045, 0.16, 0.045, col); lT.position.set(-0.12, -0.1, 0); lT.rotation.z = 0.95; g.add(lT);
+      const uL = box(0.05, 0.26, 0.05, col); uL.position.set(-0.02, 0.42, 0); uL.rotation.z = -0.45; g.add(uL); const uT = box(0.045, 0.16, 0.045, col); uT.position.set(-0.12, 0.6, 0); uT.rotation.z = -0.95; g.add(uT);
+      const lL = box(0.05, 0.26, 0.05, col); lL.position.set(-0.02, 0.08, 0); lL.rotation.z = 0.45; g.add(lL); const lT = box(0.045, 0.16, 0.045, col); lT.position.set(-0.12, -0.1, 0); lT.rotation.z = 0.95; g.add(lT);
       const string = box(0.012, 0.66, 0.012, 0xf2f2f2); string.position.set(-0.16, 0.25, 0); g.add(string);
+      g.position.set(0.42, -0.42, -0.75); g.rotation.set(-0.45, -0.05, 0.05);
+    } else if (tool === "gun") {                        // voxel machine gun: receiver, barrel, magazine, grip, stock
+      g.add(box(0.1, 0.13, 0.42, 0x2b2f36));
+      const barrel = box(0.05, 0.05, 0.5, 0x14171b); barrel.position.set(0, 0.02, 0.44); g.add(barrel);
+      const muzzle = box(0.075, 0.075, 0.08, 0x0c0d10); muzzle.position.set(0, 0.02, 0.7); g.add(muzzle);
+      const mag = box(0.08, 0.24, 0.1, 0x3a4049); mag.position.set(0, -0.18, 0.06); mag.rotation.x = 0.18; g.add(mag);
+      const grip = box(0.08, 0.17, 0.1, 0x20242a); grip.position.set(0, -0.13, -0.16); grip.rotation.x = 0.32; g.add(grip);
+      const stock = box(0.07, 0.11, 0.2, 0x23272d); stock.position.set(0, -0.02, -0.28); g.add(stock);
+      const sight = box(0.03, 0.05, 0.06, 0x14171b); sight.position.set(0, 0.11, -0.04); g.add(sight);
+      g.position.set(0.32, -0.34, -0.62); g.rotation.set(0.02, -0.04, 0);
+    } else if (it.id === I_STICK) {
+      const stick = box(0.05, 0.5, 0.05, wood); stick.position.y = 0.1; g.add(stick); g.position.set(0.42, -0.42, -0.75); g.rotation.set(-0.4, -0.3, 0.22);
+    } else {                                            // charm / orb item, never the pickaxe boxes
+      g.add(box(0.16, 0.16, 0.16, sp === "fire" ? 0xff7a2a : 0x9bd0ff)); const rim = box(0.2, 0.05, 0.2, gold); g.add(rim); g.position.set(0.4, -0.42, -0.7); g.rotation.set(-0.3, 0.3, 0);
     }
-    else if (tool === "pick") {
-      const stick = box(0.05, 0.5, 0.05, wood); stick.position.y = 0.06; g.add(stick);
-      const collar = box(0.09, 0.09, 0.09, dark); collar.position.y = 0.36; g.add(collar);
-      const tL = box(0.24, 0.06, 0.06, metal); tL.position.set(-0.12, 0.4, 0); tL.rotation.z = 0.42; g.add(tL);    // left arm sweeping up
-      const tR = box(0.24, 0.06, 0.06, metal); tR.position.set(0.12, 0.4, 0); tR.rotation.z = -0.42; g.add(tR);    // right arm
-      const pL = box(0.06, 0.1, 0.06, hi); pL.position.set(-0.23, 0.5, 0); pL.rotation.z = 0.42; g.add(pL);        // sharp tips
-      const pR = box(0.06, 0.1, 0.06, hi); pR.position.set(0.23, 0.5, 0); pR.rotation.z = -0.42; g.add(pR);
-    }
-    else if (tool === "axe") {
-      const stick = box(0.05, 0.5, 0.05, wood); stick.position.y = 0.06; g.add(stick);
-      const cheek = box(0.06, 0.24, 0.18, metal); cheek.position.set(0.12, 0.36, 0); g.add(cheek);                 // axe head body
-      const edge = box(0.035, 0.3, 0.12, hi); edge.position.set(0.2, 0.36, 0); g.add(edge);                        // flared cutting edge
-      const beard = box(0.05, 0.1, 0.13, metal); beard.position.set(0.17, 0.24, 0); g.add(beard);                  // beard (lower edge)
-      const poll = box(0.07, 0.12, 0.12, metal); poll.position.set(0.02, 0.36, 0); g.add(poll);                    // back poll
-    }
-    else { const head = box(0.2, 0.1, 0.06, metal); head.position.y = 0.34; g.add(head); const stick = box(0.05, 0.36, 0.05, wood); stick.position.y = 0.12; g.add(stick); }
-    g.position.set(0.42, -0.42, -0.75); g.rotation.set(-0.45, tool === "bow" ? -0.05 : -0.32, tool === "bow" ? 0.05 : 0.22);
   } else if (it) {
-    const c = BLOCKS[it.id]; const cube = box(0.32, 0.32, 0.32, new THREE.Color(c.top[0], c.top[1], c.top[2]).getHex()); g.add(cube); g.position.set(0.42, -0.4, -0.7); g.rotation.set(-0.4, 0.5, 0);
+    if (it.id === TORCH) {                              // torch: stick + glowing ember
+      const stick = box(0.06, 0.34, 0.06, 0x6e4a25); g.add(stick); const ember = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.11, 0.11), new THREE.MeshBasicMaterial({ color: 0xffd24a })); ember.position.y = 0.21; g.add(ember);
+      g.position.set(0.42, -0.4, -0.7); g.rotation.set(-0.2, 0.2, 0.05);
+    } else {
+      const c = BLOCKS[it.id]; const cube = box(0.32, 0.32, 0.32, new THREE.Color(c.top[0], c.top[1], c.top[2]).getHex()); g.add(cube); g.position.set(0.42, -0.4, -0.7); g.rotation.set(-0.4, 0.5, 0);
+    }
   } else { const fist = box(0.18, 0.2, 0.2, 0xd9a06b); g.add(fist); g.position.set(0.4, -0.42, -0.7); g.rotation.set(-0.3, 0, 0); }
   viewItem = g; vScene.add(g);
 }
@@ -2504,7 +2548,7 @@ function saveGame(silent) {
       side: [...sideDone],
       cats: cats.filter(c => c.tamed).map(c => ({ x: Math.round(c.g.position.x), z: Math.round(c.g.position.z), color: c.color, level: c.level, mode: c.mode })),
       edits: { overworld: [...editsByDim.overworld], fire: [...editsByDim.fire], end: [...editsByDim.end], sky: [...editsByDim.sky], realm: [...editsByDim.realm] },
-      cteam: cteam, cstorage: cstorage, cdex: [...cdex], cbadges: [...cbadges], citems: citems, realmWins: realmWins, realmBossDown: realmBossDown,
+      cteam: cteam, cstorage: cstorage, cdex: [...cdex], cbadges: [...cbadges], citems: citems, realmWins: realmWins, realmBossDown: realmBossDown, fredaFound: fredaFound,
       chests: [...chestStore] };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     if (!silent) toast("Game saved");
@@ -2530,7 +2574,7 @@ function loadGame() {
   editsByDim.sky = new Map((data.edits && data.edits.sky) || []);
   editsByDim.realm = new Map((data.edits && data.edits.realm) || []);
   cteam = data.cteam || []; cstorage = data.cstorage || []; cdex = new Set(data.cdex || []); cbadges = new Set(data.cbadges || []);
-  Object.assign(citems, data.citems || {}); realmWins = data.realmWins || 0; realmBossDown = data.realmBossDown || {};
+  Object.assign(citems, data.citems || {}); realmWins = data.realmWins || 0; realmBossDown = data.realmBossDown || {}; fredaFound = data.fredaFound || 0;
   chestStore = new Map(data.chests || []);
   running = true; paused = false; wasNight = false; raidShown = false; dodge.t = 0; dodge.cd = 0; openChestK = null;
   story.active = false; clearObjective(); endCine();
@@ -3214,7 +3258,14 @@ function mmDot(W, span, cx, cz, ex, ez, color, r) {
 function drawMinimap() {
   const W = mmCv.width, span = mmBig ? 160 : 96, N = mmBig ? 64 : 52, step = span / N, px = W / N, cx = player.pos.x, cz = player.pos.z;
   mmx.clearRect(0, 0, W, W);
-  if (DIM !== "overworld") { mmx.fillStyle = DIM === "fire" ? "#3a0d0d" : DIM === "sky" ? "#5aa0e0" : "#0c0c14"; mmx.fillRect(0, 0, W, W); }
+  if (DIM === "realm") {                               // colourful Creature-valley map instead of a black screen
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const wx = cx + (i - N / 2) * step, wz = cz + (j - N / 2) * step, n = vn(wx * 0.06 + 5, wz * 0.06 + 5);
+      let col;
+      if (n < 0.33) col = [60, 150, 210]; else if (n < 0.4) col = [224, 210, 150]; else if (n > 0.72) col = [40, 120, 46]; else col = [96, 188, 98];
+      mmx.fillStyle = "rgb(" + col[0] + "," + col[1] + "," + col[2] + ")"; mmx.fillRect(i * px, j * px, px + 1.2, px + 1.2);
+    }
+  } else if (DIM !== "overworld") { mmx.fillStyle = DIM === "fire" ? "#3a0d0d" : DIM === "sky" ? "#5aa0e0" : "#0c0c14"; mmx.fillRect(0, 0, W, W); }
   else {
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const wx = cx + (i - N / 2) * step, wz = cz + (j - N / 2) * step;   // j=0 north (-z), i=0 west (-x)
@@ -3235,6 +3286,13 @@ function drawMinimap() {
   if (typeof cats !== "undefined") for (const c of cats) mmDot(W, span, cx, cz, c.g.position.x, c.g.position.z, c.tamed ? "#6cff6c" : "#bfffbf", 3);
   if (typeof merchant !== "undefined" && merchant) mmDot(W, span, cx, cz, merchant.g.position.x, merchant.g.position.z, "#ffe066", 3.5);
   if (typeof objMarker !== "undefined" && objMarker && objMarker.visible) mmDot(W, span, cx, cz, objMarker.position.x, objMarker.position.z, "#fff14a", 4);
+  if (DIM === "realm") {                               // realm icons: wild creatures, bosses, NPCs (healers/shops/trainers), Snorlax, Pikachu
+    if (typeof realmCreatures !== "undefined") for (const c of realmCreatures) mmDot(W, span, cx, cz, c.g.position.x, c.g.position.z, (c.sp.legend || c.shiny) ? "#ffd24a" : "#9be86b", 2.5);
+    if (typeof realmBosses !== "undefined") for (const b of realmBosses) mmDot(W, span, cx, cz, b.g.position.x, b.g.position.z, b.final ? "#ffd24a" : "#ff5a5a", 4.5);
+    if (typeof realmNPCs !== "undefined") for (const n of realmNPCs) mmDot(W, span, cx, cz, n.g.position.x, n.g.position.z, n.kind === "nurse" ? "#ff8ad6" : n.kind === "shop" ? "#ffe066" : "#7af0ff", 3.5);
+    if (typeof realmSnoozer !== "undefined" && realmSnoozer) mmDot(W, span, cx, cz, realmSnoozer.g.position.x, realmSnoozer.g.position.z, "#cdb88a", 4.5);
+    if (typeof companion !== "undefined" && companion) mmDot(W, span, cx, cz, companion.g.position.x, companion.g.position.z, "#ffe14d", 3.2);
+  }
   // player arrow at centre, pointing where Thomas faces
   const c = W / 2;
   mmx.save(); mmx.translate(c, c); mmx.rotate(-player.yaw);
