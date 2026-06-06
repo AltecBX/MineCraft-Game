@@ -559,6 +559,20 @@ function rebuildFredaLabels() {
   for (const c of cells) { const s = makeTag("Freda"); s.scale.set(1.0, 0.26, 1); s.position.set(c[0] + 0.5, c[1] + 1.15, c[2] + 0.5); fredaLabelGroup.add(s); }
   scene.add(fredaLabelGroup);
 }
+// floating signs that hover over each portal so destinations are easy to find
+let portalSignGroup = null;
+function clearPortalSigns() { if (portalSignGroup) { scene.remove(portalSignGroup); portalSignGroup = null; } }
+function makeSign(text, col) {
+  const c = document.createElement("canvas"); c.width = 256; c.height = 40; const x = c.getContext("2d");
+  x.fillStyle = "rgba(0,0,0,.62)"; x.fillRect(0, 0, 256, 40);
+  x.fillStyle = col || "#ffe14d"; x.font = "bold 24px ui-monospace,monospace"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(text, 128, 21);
+  const t = new THREE.CanvasTexture(c);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: true, fog: false })); s.scale.set(3.2, 0.5, 1); return s;
+}
+function addPortalSign(cx, baseY, z, text, col) {
+  if (!portalSignGroup) { portalSignGroup = new THREE.Group(); scene.add(portalSignGroup); }
+  const s = makeSign(text, col); s.position.set(cx + 0.5, baseY + 5.2, z + 0.5); portalSignGroup.add(s);
+}
 
 // chest storage (per dimension + position) and player block edits (for save/load)
 let chestStore = new Map();           // "dim:x,y,z" -> [9 stacks]
@@ -1854,7 +1868,7 @@ function transitionTo(name) {
 }
 function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } if (typeof skyBoss !== "undefined" && skyBoss) { scene.remove(skyBoss.g); skyBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (merchant) { scene.remove(merchant.g); merchant = null; } if (typeof clearRealmCreatures === "function") clearRealmCreatures(); if (typeof clearRealmNPCs === "function") clearRealmNPCs(); if (typeof clearRealmBosses === "function") clearRealmBosses(); battle = null; cmenuOpen = false; if (typeof hide === "function") { hide("battle"); hide("cmenu"); } if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
 function loadDimension(name, fromSave) {
-  DIM = name; clearWorld(); clearEntities();
+  DIM = name; clearWorld(); clearEntities(); clearPortalSigns();
   if (name === "fire") achieve("firep", "Fire Portal Opened");
   if (name === "end") achieve("endp", "End Portal Opened");
   player.pos.set(0.5, 50, 0.5); player.vel.set(0, 0, 0);
@@ -1863,10 +1877,10 @@ function loadDimension(name, fromSave) {
   for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) buildChunk(dx, dz);
   if (!fromSave) { player.pos.y = surfaceY(0, 0) + 1; player.spawn.copy(player.pos); }
   // dimension setup
-  if (name === "overworld") { scene.fog = new THREE.Fog(0x9fd2ff, 20, GFX[settings.gfx].dist * CH); hemi.color.set(0xbfe3ff); sun.color.set(0xffffff); showBanner("Overworld"); buildPortalFrame(8, surfaceY(8, 0), 0, "x", "fire"); if (fireBossDown) { buildPortalFrame(-10, surfaceY(-10, 0), 0, "x", "sky"); } buildPortalFrame(12, surfaceY(12, -6), -6, "x", "realm", CDOOR); setQuest("Step through the purple portal to the Fire Dimension"); }
-  else if (name === "realm") { scene.background = new THREE.Color(0x8ad0ff); scene.fog = new THREE.Fog(0xbfeaff, 26, GFX[settings.gfx].dist * CH); hemi.color.set(0xdaf3ff); hemi.intensity = 0.95; sun.intensity = 1.0; sun.color.set(0xffffff); showBanner("The Creature Battle Realm"); buildPortalFrame(6, surfaceY(6, 0), 0, "x", "overworld", CDOOR); enterRealm(); }
+  if (name === "overworld") { scene.fog = new THREE.Fog(0x9fd2ff, 20, GFX[settings.gfx].dist * CH); hemi.color.set(0xbfe3ff); sun.color.set(0xffffff); showBanner("Overworld"); buildPortalFrame(8, surfaceY(8, 0), 0, "x", "fire"); addPortalSign(8, surfaceY(8, 0), 0, "FIRE DIMENSION", "#ff8a4a"); if (fireBossDown) { buildPortalFrame(-10, surfaceY(-10, 0), 0, "x", "sky"); addPortalSign(-10, surfaceY(-10, 0), 0, "SKY ISLANDS", "#bfe3ff"); } buildPortalFrame(12, surfaceY(12, -6), -6, "x", "realm", CDOOR); addPortalSign(12, surfaceY(12, -6), -6, "CREATURE REALM", "#c79bff"); setQuest("Walk to the purple Creature Door (east) for the Creature Realm, or the orange portal for Fire"); }
+  else if (name === "realm") { scene.background = new THREE.Color(0x8ad0ff); scene.fog = new THREE.Fog(0xbfeaff, 26, GFX[settings.gfx].dist * CH); hemi.color.set(0xdaf3ff); hemi.intensity = 0.95; sun.intensity = 1.0; sun.color.set(0xffffff); showBanner("The Creature Battle Realm"); buildPortalFrame(6, surfaceY(6, 0), 0, "x", "overworld", CDOOR); addPortalSign(6, surfaceY(6, 0), 0, "BACK HOME", "#bfe3ff"); enterRealm(); }
   else if (name === "fire") { scene.background = new THREE.Color(0x2a0808); scene.fog = new THREE.Fog(0x551111, 8, 40); hemi.color.set(0xff7a3a); hemi.intensity = 0.6; sun.intensity = 0.5; sun.color.set(0xff8a4a); showBanner("Fire Dimension"); clearFirePad(0, 0); if (fireBossDown) { buildPortalFrame(0, surfaceY(0, -8), -8, "x", "end"); setRaw(0, surfaceY(0, -8) + 1, -8, PORTAL); setQuest("Enter the portal to reach the End"); } else { spawnFireBoss(); setQuest("Defeat the Fire Guardian. A Flame Charm will protect you from the heat"); } }
-  else if (name === "sky") { scene.background = new THREE.Color(0x8fd0ff); scene.fog = new THREE.Fog(0xbfe3ff, 36, 150); hemi.color.set(0xdff1ff); hemi.intensity = 0.95; sun.intensity = 0.9; sun.color.set(0xffffff); showBanner("Sky Islands"); buildPortalFrame(6, surfaceY(6, 0), 0, "x", "overworld"); spawnSkySerpent(); setQuest("Glide the Sky Islands and defeat the Sky Serpent"); }
+  else if (name === "sky") { scene.background = new THREE.Color(0x8fd0ff); scene.fog = new THREE.Fog(0xbfe3ff, 36, 150); hemi.color.set(0xdff1ff); hemi.intensity = 0.95; sun.intensity = 0.9; sun.color.set(0xffffff); showBanner("Sky Islands"); buildPortalFrame(6, surfaceY(6, 0), 0, "x", "overworld"); addPortalSign(6, surfaceY(6, 0), 0, "BACK HOME", "#bfe3ff"); spawnSkySerpent(); setQuest("Glide the Sky Islands and defeat the Sky Serpent"); }
   else { scene.background = new THREE.Color(0x000000); scene.fog = new THREE.Fog(0x000000, 30, 120); hemi.color.set(0xffffff); hemi.intensity = 0.9; sun.intensity = 0.7; sun.color.set(0xeae6ff); showBanner("The End"); buildEndDragon(); setQuest("Destroy the End Crystals, then slay the Black Dragon"); }
   // replay player block edits, then rebuild special blocks
   const ed = editsByDim[name]; if (ed) for (const [k, id] of ed) { const p = k.split(",").map(Number); setRaw(p[0], p[1], p[2], id); }
