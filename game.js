@@ -2788,25 +2788,25 @@ const TYPE_CHART = {
 };
 function typeMult(atk, def) { const m = TYPE_CHART[atk]; return (m && def in m) ? m[def] : 1; }
 const SPECIES = {
-  foxling: { name: "Foxling", type: "normal", role: "starter", col: 0xd8a24a, size: 0.85, hp: 42, moves: ["quickattack", "darkbite", "fairykiss", "iceslash"] },
-  voltmouse: { name: "Voltmouse", type: "electric", role: "grass", col: 0xf5d020, size: 0.65, hp: 34, moves: ["shock", "quickattack", "thunderdash"] },
-  aurawolf: { name: "Aurawolf", type: "fighting", role: "grass", col: 0x3a7bd5, size: 0.95, hp: 48, moves: ["punch", "steelslam", "quickattack"] },
-  moonfox: { name: "Moonfox", type: "dark", role: "grass", col: 0x2a2e3c, size: 0.8, hp: 44, moves: ["darkbite", "quickattack", "fairykiss"] },
-  frogblade: { name: "Frogblade", type: "water", role: "water", col: 0x2f8fd0, size: 0.9, hp: 46, moves: ["watersurge", "darkbite", "quickattack"] },
-  landshark: { name: "Landshark", type: "dragon", role: "grass", col: 0x4a6a8a, size: 1.1, hp: 56, moves: ["dragonstrike", "earthslam", "darkbite"] },
-  museling: { name: "Museling", type: "fairy", role: "grass", col: 0xe6a8d8, size: 0.95, hp: 50, moves: ["fairykiss", "psychicwave", "healinglight"] },
-  steelmind: { name: "Steelmind", type: "steel", role: "grass", col: 0x8a93a8, size: 1.1, hp: 58, moves: ["steelslam", "psychicwave", "meteorpunch"] },
-  emberwing: { name: "Emberwing", type: "fire", role: "fly", col: 0xff5a1e, size: 1.4, hp: 60, moves: ["fireblast", "lavaburst", "windgust", "dragonstrike"] },
-  dragonox: { name: "Dragonox", type: "dragon", role: "sky", col: 0xe8a23a, size: 1.3, hp: 62, moves: ["dragonstrike", "windgust", "quickattack"] },
-  shadeling: { name: "Shadeling", type: "ghost", role: "cave", col: 0x6a3aa0, size: 0.9, hp: 44, moves: ["shadowball", "darkbite", "psychicwave"] },
-  rocktitan: { name: "Rocktitan", type: "rock", role: "grass", col: 0x6a5a44, size: 1.2, hp: 64, moves: ["meteorpunch", "earthslam", "darkbite"] },
-  snoozer: { name: "Snoozer", type: "normal", role: "block", col: 0x3a5a6a, size: 1.6, hp: 90, moves: ["quickattack", "earthslam"] },
-  psyclone: { name: "Psyclone", type: "psychic", role: "legendary", col: 0xb06ad0, size: 1.4, hp: 95, moves: ["psychicwave", "shadowball", "dragonstrike", "healinglight"], legend: true },
-  mewling: { name: "Mewling", type: "psychic", role: "rare", col: 0xf3a6c8, size: 0.7, hp: 60, moves: ["psychicwave", "fairykiss", "quickattack"], legend: true },
-  terraking: { name: "Terraking", type: "ground", role: "lava", col: 0xd14a2a, size: 1.6, hp: 100, moves: ["lavaburst", "earthslam", "meteorpunch"], legend: true },
-  tidequeen: { name: "Tidequeen", type: "water", role: "water", col: 0x2a6ad0, size: 1.6, hp: 100, moves: ["watersurge", "aquashield", "iceslash"], legend: true },
-  skywyrm: { name: "Skywyrm", type: "dragon", role: "sky", col: 0x2faf6a, size: 1.8, hp: 110, moves: ["dragonstrike", "windgust", "lavaburst"], legend: true },
-  allbeast: { name: "Allbeast", type: "normal", role: "legendary", col: 0xeae0c0, size: 1.7, hp: 130, moves: ["dragonstrike", "psychicwave", "fairykiss", "earthslam"], legend: true }
+  foxling: { name: "Eevee", type: "normal", role: "starter", col: 0xc99a5a, size: 0.85, hp: 42, moves: ["quickattack", "darkbite", "fairykiss", "iceslash"] },
+  voltmouse: { name: "Pikachu", type: "electric", role: "grass", col: 0xf6d02e, size: 0.65, hp: 34, moves: ["shock", "quickattack", "thunderdash"] },
+  aurawolf: { name: "Lucario", type: "fighting", role: "grass", col: 0x2f63c8, size: 0.95, hp: 48, moves: ["punch", "steelslam", "quickattack"] },
+  moonfox: { name: "Umbreon", type: "dark", role: "grass", col: 0x202430, size: 0.8, hp: 44, moves: ["darkbite", "quickattack", "fairykiss"] },
+  frogblade: { name: "Greninja", type: "water", role: "water", col: 0x3aa0d8, size: 0.9, hp: 46, moves: ["watersurge", "darkbite", "quickattack"] },
+  landshark: { name: "Garchomp", type: "dragon", role: "grass", col: 0x37506b, size: 1.1, hp: 56, moves: ["dragonstrike", "earthslam", "darkbite"] },
+  museling: { name: "Gardevoir", type: "fairy", role: "grass", col: 0xe8edf0, size: 0.95, hp: 50, moves: ["fairykiss", "psychicwave", "healinglight"] },
+  steelmind: { name: "Metagross", type: "steel", role: "grass", col: 0x5f7ba6, size: 1.1, hp: 58, moves: ["steelslam", "psychicwave", "meteorpunch"] },
+  emberwing: { name: "Charizard", type: "fire", role: "fly", col: 0xf07b28, size: 1.4, hp: 60, moves: ["fireblast", "lavaburst", "windgust", "dragonstrike"] },
+  dragonox: { name: "Dragonite", type: "dragon", role: "sky", col: 0xe9a93f, size: 1.3, hp: 62, moves: ["dragonstrike", "windgust", "quickattack"] },
+  shadeling: { name: "Gengar", type: "ghost", role: "cave", col: 0x6a3aa0, size: 0.9, hp: 44, moves: ["shadowball", "darkbite", "psychicwave"] },
+  rocktitan: { name: "Tyranitar", type: "rock", role: "grass", col: 0x5a7a44, size: 1.2, hp: 64, moves: ["meteorpunch", "earthslam", "darkbite"] },
+  snoozer: { name: "Snorlax", type: "normal", role: "block", col: 0x2f4a58, size: 1.6, hp: 90, moves: ["quickattack", "earthslam"] },
+  psyclone: { name: "Mewtwo", type: "psychic", role: "legendary", col: 0xd6cfe6, size: 1.4, hp: 95, moves: ["psychicwave", "shadowball", "dragonstrike", "healinglight"], legend: true },
+  mewling: { name: "Mew", type: "psychic", role: "rare", col: 0xf3a6c8, size: 0.7, hp: 60, moves: ["psychicwave", "fairykiss", "quickattack"], legend: true },
+  terraking: { name: "Groudon", type: "ground", role: "lava", col: 0xd1402a, size: 1.6, hp: 100, moves: ["lavaburst", "earthslam", "meteorpunch"], legend: true },
+  tidequeen: { name: "Kyogre", type: "water", role: "water", col: 0x2a6ad0, size: 1.6, hp: 100, moves: ["watersurge", "aquashield", "iceslash"], legend: true },
+  skywyrm: { name: "Rayquaza", type: "dragon", role: "sky", col: 0x2faf6a, size: 1.8, hp: 110, moves: ["dragonstrike", "windgust", "lavaburst"], legend: true },
+  allbeast: { name: "Arceus", type: "normal", role: "legendary", col: 0xeae0c0, size: 1.7, hp: 130, moves: ["dragonstrike", "psychicwave", "fairykiss", "earthslam"], legend: true }
 };
 const WILD_POOL = ["voltmouse", "moonfox", "aurawolf", "museling", "frogblade", "landshark", "rocktitan"];
 function makeCreature(id, level, opts) {
@@ -2864,6 +2864,17 @@ function buildCreatureModel(id, shiny) {
   // legs, or a wispy floating tail for ghosts
   if (!ghost) { const legs = []; for (const lx of [-0.18 * s, 0.18 * s]) for (const lz of [0.25 * s, -0.25 * s]) { const l = box(0.14 * s, 0.3 * s, 0.14 * s, col); l.geometry.translate(0, -0.15 * s, 0); l.position.set(lx, 0.3 * s, lz); g.add(l); legs.push(l); } g.userData.legs = legs; }
   else { const w1 = box(0.42 * s, 0.22 * s, 0.5 * s, col); w1.position.set(0, 0.22 * s, 0); g.add(w1); const w2 = box(0.26 * s, 0.18 * s, 0.32 * s, col); w2.position.set(0, 0.05 * s, 0); g.add(w2); }
+  // per-creature recognizable accents (simple voxel markers for key features)
+  if (id === "shadeling") { const r1 = box(0.12 * s, 0.09 * s, 0.05, 0xff2a2a); r1.position.set(-0.13 * s, 0.97 * s, 0.78 * s); g.add(r1); const r2 = box(0.12 * s, 0.09 * s, 0.05, 0xff2a2a); r2.position.set(0.13 * s, 0.97 * s, 0.78 * s); g.add(r2); const grin = box(0.34 * s, 0.06 * s, 0.05, 0xffffff); grin.position.set(0, 0.78 * s, 0.78 * s); g.add(grin); }   // red eyes + wide grin
+  else if (id === "moonfox") { const fr = box(0.13 * s, 0.04 * s, 0.05, 0xffe14d); fr.position.set(0, 1.03 * s, 0.78 * s); g.add(fr); const ring = box(0.17 * s, 0.17 * s, 0.04, 0xffe14d); ring.position.set(0, 0.5 * s, 0.42 * s); g.add(ring); }   // glowing yellow rings
+  else if (id === "emberwing") { for (const sx of [-1, 1]) { const h = box(0.08 * s, 0.22 * s, 0.08 * s, belly); h.position.set(0.12 * s * sx, 1.2 * s, 0.42 * s); h.rotation.z = -0.25 * sx; g.add(h); } }   // horns
+  else if (id === "landshark") { const fin = box(0.42 * s, 0.16 * s, 0.06 * s, 0xcfe0ea); fin.position.set(0, 1.14 * s, 0.5 * s); g.add(fin); const rb = box(0.42 * s, 0.3 * s, 0.04, 0xc0392b); rb.position.set(0, 0.46 * s, 0.42 * s); g.add(rb); }   // head fin + red belly
+  else if (id === "snoozer") { const bb = box(0.52 * s, 0.42 * s, 0.1, 0xe8dcc0); bb.position.set(0, 0.42 * s, 0.42 * s); g.add(bb); }   // cream belly
+  else if (id === "voltmouse") { const tb = box(0.1 * s, 0.1 * s, 0.12 * s, 0x8a5a1e); tb.position.set(0, 0.42 * s, -0.48 * s); g.add(tb); }   // brown tail base
+  else if (id === "psyclone") { const tl = box(0.1 * s, 0.1 * s, 0.6 * s, col); tl.position.set(0, 0.4 * s, -0.72 * s); g.add(tl); }   // long psychic tail
+  else if (id === "frogblade") { const sc = box(0.5 * s, 0.12 * s, 0.5 * s, lighten(col, 0.2)); sc.position.set(0, 0.66 * s, 0.5 * s); g.add(sc); }   // pale scarf
+  else if (id === "aurawolf") { for (const sx of [-1, 1]) { const sp2 = box(0.06 * s, 0.12 * s, 0.06 * s, 0x18324f); sp2.position.set(0.1 * s * sx, 0.55 * s, 0.4 * s); g.add(sp2); } }   // chest spikes
+  else if (id === "museling") { const gown = box(0.7 * s, 0.4 * s, 0.5 * s, col); gown.position.set(0, 0.22 * s, 0); g.add(gown); const hair = box(0.42 * s, 0.3 * s, 0.1 * s, 0x49b06a); hair.position.set(0, 1.0 * s, 0.36 * s); g.add(hair); }   // flowing gown + green hair
   if (sp.legend) { const aura = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(255,245,180,0.8)", "rgba(255,200,80,0)"), depthWrite: false, transparent: true, fog: false })); aura.scale.set(3.2 * s, 3.2 * s, 1); aura.position.y = 0.8 * s; g.add(aura); }
   else if (shiny) { const sg = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(255,255,255,0.9)", "rgba(180,220,255,0)"), depthWrite: false, transparent: true, fog: false })); sg.scale.set(2 * s, 2 * s, 1); sg.position.y = 0.8 * s; g.add(sg); }
   return g;
@@ -2882,7 +2893,7 @@ function spawnRealmCreature(id, x, z, level) {
 function enterRealm() {
   clearRealmCreatures(); clearRealmNPCs(); clearRealmBosses(); encounterCd = 0; realmHinted = {};
   // Sparky the Voltmouse is Thomas's electric starter and follows him everywhere in this stage
-  if (!cteam.length) { cteam.push(makeCreature("voltmouse", 5, { name: "Sparky" })); cdex.add("voltmouse"); toast("Sparky the Voltmouse wants to follow Thomas!"); showBanner("Sparky joins Thomas! Press Use near creatures to battle."); }
+  if (!cteam.length) { cteam.push(makeCreature("voltmouse", 5, { name: "Pikachu" })); cdex.add("voltmouse"); toast("Pikachu wants to follow Thomas!"); showBanner("Pikachu joins Thomas! Press Use near creatures to battle."); }
   spawnCompanion(Math.floor(player.pos.x), Math.floor(player.pos.z));
   // hub NPCs near the spawn portal
   spawnRealmNPC("nurse", 3, 3); spawnRealmNPC("shop", 6, 3); spawnRealmNPC("trainer", -3, 4); spawnRealmNPC("badge", 0, 6);
@@ -2909,7 +2920,7 @@ function updateRealm(dt) {
   }
   // arena bosses idle with a glow bob; show a one-time challenge hint when Thomas gets close
   for (const b of realmBosses) { b.t += dt; b.g.position.y = surfaceY(b.x, b.z) + Math.sin(b.t * 1.5) * 0.2; b.g.rotation.y += dt * 0.4; if (!battle && !cmenuOpen && b.g.position.distanceTo(player.pos) < 4 && !realmHinted[b.badge]) { realmHinted[b.badge] = 1; showBanner(b.label + " — press Use to challenge!"); } }
-  if (realmSnoozer && !battle && !cmenuOpen && realmSnoozer.g.position.distanceTo(player.pos) < 4 && !realmHinted.snoozer) { realmHinted.snoozer = 1; showBanner("A huge Snoozer blocks the path. Feed it Creature Food (press Use)."); }
+  if (realmSnoozer && !battle && !cmenuOpen && realmSnoozer.g.position.distanceTo(player.pos) < 4 && !realmHinted.snoozer) { realmHinted.snoozer = 1; showBanner("A huge Snorlax blocks the path. Feed it Creature Food (press Use)."); }
   if (encounterCd > 0) encounterCd -= dt;
   const feet = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y), Math.floor(player.pos.z)), eye = getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + 0.6), Math.floor(player.pos.z));
   if ((feet === TALLGRASS || eye === TALLGRASS) && encounterCd <= 0 && !cmenuOpen && !battle) { encounterCd = 1.4; if (Math.random() < 0.3) { SFX.mine(); openEncounter(makeCreature(WILD_POOL[Math.floor(Math.random() * WILD_POOL.length)], 3 + Math.floor(Math.random() * 5)), null); } }
@@ -3062,12 +3073,12 @@ function toggleCDex() { const o = $("cdexui"); const open = !o.classList.contain
 // ---- arena bosses + legendary fights + the Snoozer road block ----
 let realmBosses = [], realmSnoozer = null, realmHinted = {};
 const BOSS_PLAN = [
-  { id: "shadeling", badge: "cave", x: -24, z: 6, name: "Shadeling, the Cave Phantom" },
-  { id: "emberwing", badge: "fire", x: 24, z: 6, name: "Emberwing, the Fire Drake" },
-  { id: "tidequeen", badge: "water", x: 8, z: 26, name: "Tidequeen of the Deep" },
-  { id: "terraking", badge: "lava", x: -8, z: -26, name: "Terraking of the Magma" },
-  { id: "psyclone", badge: "psychic", x: -26, z: -6, name: "Psyclone, the Mind Tyrant" },
-  { id: "skywyrm", badge: "sky", x: 26, z: -10, name: "Skywyrm, the Sky Serpent" }
+  { id: "shadeling", badge: "cave", x: -24, z: 6, name: "Gengar, the Cave Phantom" },
+  { id: "emberwing", badge: "fire", x: 24, z: 6, name: "Charizard, the Fire Drake" },
+  { id: "tidequeen", badge: "water", x: 8, z: 26, name: "Kyogre of the Deep" },
+  { id: "terraking", badge: "lava", x: -8, z: -26, name: "Groudon of the Magma" },
+  { id: "psyclone", badge: "psychic", x: -26, z: -6, name: "Mewtwo, the Mind Tyrant" },
+  { id: "skywyrm", badge: "sky", x: 26, z: -10, name: "Rayquaza, the Sky Serpent" }
 ];
 function spawnRealmBoss(id, badge, x, z, label) {
   const g = buildCreatureModel(id, false); g.scale.multiplyScalar(1.5); g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g);
@@ -3075,7 +3086,7 @@ function spawnRealmBoss(id, badge, x, z, label) {
 }
 function spawnRealmBosses() {
   for (const b of BOSS_PLAN) if (!realmBossDown[b.badge]) spawnRealmBoss(b.id, b.badge, b.x, b.z, b.name);
-  if (!realmBossDown.legendary) spawnRealmBoss("allbeast", "legendary", 0, 34, "Allbeast, the Creator");   // final, gated until others fall
+  if (!realmBossDown.legendary) spawnRealmBoss("allbeast", "legendary", 0, 34, "Arceus, the Creator");   // final, gated until others fall
 }
 function clearRealmBosses() { for (const b of realmBosses) scene.remove(b.g); realmBosses = []; if (realmSnoozer) { scene.remove(realmSnoozer.g); realmSnoozer = null; } }
 function spawnSnoozer() { if (realmBossDown.snoozer) return; const x = 0, z = 15; const g = buildCreatureModel("snoozer", false); g.scale.multiplyScalar(1.4); g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); g.rotation.y = Math.PI; scene.add(g); realmSnoozer = { g, x, z }; }
@@ -3089,8 +3100,8 @@ function challengeBoss(b) {
   startBattle(makeCreature(b.id, lvl), null, { boss: true, badge: b.badge, bossRef: b, intro: (b.label || b.id) + " rises to battle!" });
 }
 function feedSnoozer() {
-  if (citems.food > 0) { citems.food--; realmBossDown.snoozer = true; scene.remove(realmSnoozer.g); realmSnoozer = null; addCoins(20); showBanner("Snoozer waddles off! The path is clear."); toast("You fed Snoozer. It happily moves aside. +20 coins"); SFX.victory(); }
-  else { toast("Snoozer is fast asleep and hungry. Buy Creature Food from the Shop, then feed it."); }
+  if (citems.food > 0) { citems.food--; realmBossDown.snoozer = true; scene.remove(realmSnoozer.g); realmSnoozer = null; addCoins(20); showBanner("Snorlax waddles off! The path is clear."); toast("You fed Snorlax. It happily moves aside. +20 coins"); SFX.victory(); }
+  else { toast("Snorlax is fast asleep and hungry. Buy Creature Food from the Shop, then feed it."); }
 }
 function realmInteract() {   // Use near a realm NPC, boss, or the Snoozer. returns true if handled
   if (DIM !== "realm") return false;
