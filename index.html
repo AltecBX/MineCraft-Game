@@ -3,7 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Thomas and the Block World</title>
+<title>Thomas &amp; the Block Quest</title>
+<meta name="theme-color" content="#1a1206">
+<link rel="icon" type="image/png" href="assets/logo.png">
+<link rel="apple-touch-icon" href="assets/logo.png">
+<meta property="og:title" content="Thomas & the Block Quest">
+<meta property="og:description" content="A browser voxel survival adventure. Mine, build, tame cats, fight bosses, save the block world.">
+<meta property="og:image" content="assets/logo.png">
+<meta property="og:type" content="website">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -53,7 +60,8 @@
 
 <!-- Main menu -->
 <div id="menu" class="overlay">
-  <h1>Thomas and the <span>Block World</span></h1>
+  <div id="menuLogo"><img src="assets/logo.png" alt="Thomas & the Block Quest" onerror="this.closest('#menuLogo').classList.add('noimg')"></div>
+  <h1 class="fallbackTitle">Thomas &amp; the <span>Block Quest</span></h1>
   <p>Thomas wakes in a strange block world. Mine, build, craft, tame cats, survive the night, and fight through the fire and end dimensions to the black dragon.</p>
   <div style="margin-top:18px">
     <button class="btn" id="contBtn" style="display:none">Continue</button>
