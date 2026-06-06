@@ -2718,17 +2718,43 @@ function shinyTint(c) { const col = new THREE.Color(c); col.offsetHSL(0.12, 0.25
 function creatureCry(type) { const base = { electric: 1200, fire: 300, water: 500, dragon: 160, ghost: 900, psychic: 760, normal: 600 }[type] || 600; blip(base, 0.1, "square", 0.07, base * 1.4); }
 function buildCreatureModel(id, shiny) {
   const sp = SPECIES[id], s = sp.size || 1, col = shiny ? shinyTint(sp.col) : sp.col, ghost = sp.role === "cave" || sp.type === "ghost";
+  const fox = id === "foxling" || id === "moonfox";
   const g = new THREE.Group();
   const mat = c => new THREE.MeshLambertMaterial({ color: c, transparent: ghost, opacity: ghost ? 0.7 : 1, emissive: sp.legend ? col : 0x000000, emissiveIntensity: sp.legend ? 0.3 : 0 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.6 * s, 0.5 * s, 0.8 * s), mat(col)); body.position.y = 0.5 * s; g.add(body);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.5 * s, 0.5 * s, 0.5 * s), mat(col)); head.position.set(0, 0.85 * s, 0.5 * s); g.add(head);
+  const lighten = (hex, amt) => { const c = new THREE.Color(hex); c.offsetHSL(0, 0, amt); return c.getHex(); };
+  const box = (w, h, d, c) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c));
+  const belly = lighten(col, 0.18);
+  // body + lighter belly panel so creatures read as characters, not plain cubes
+  const body = box(0.6 * s, 0.5 * s, 0.8 * s, col); body.position.y = 0.5 * s; g.add(body);
+  const bel = box(0.4 * s, 0.34 * s, 0.05, belly); bel.position.set(0, 0.46 * s, 0.41 * s); g.add(bel);
+  const head = box(0.5 * s, 0.5 * s, 0.5 * s, col); head.position.set(0, 0.88 * s, 0.5 * s); g.add(head);
+  // snout for fox + dragon faces
+  if (fox || sp.type === "dragon" || sp.role === "sky") { const sn = box(0.24 * s, 0.18 * s, 0.2 * s, belly); sn.position.set(0, 0.82 * s, 0.8 * s); g.add(sn); const nose = box(0.08 * s, 0.07 * s, 0.06 * s, 0x222222); nose.position.set(0, 0.86 * s, 0.92 * s); g.add(nose); }
+  // eyes
   const eyeMat = new THREE.MeshLambertMaterial({ color: 0x111111, emissive: shiny ? 0xfff1a8 : 0x335577, emissiveIntensity: 0.6 });
-  const eL = new THREE.Mesh(new THREE.BoxGeometry(0.09 * s, 0.11 * s, 0.05), eyeMat); eL.position.set(-0.12 * s, 0.92 * s, 0.76 * s); g.add(eL); const eR = eL.clone(); eR.position.x = 0.12 * s; g.add(eR);
-  if (sp.type === "dragon" || sp.role === "sky") { const hL = new THREE.Mesh(new THREE.BoxGeometry(0.08 * s, 0.26 * s, 0.08 * s), mat(0xeeeeee)); hL.position.set(-0.14 * s, 1.18 * s, 0.5 * s); hL.rotation.z = 0.3; g.add(hL); const hR = hL.clone(); hR.position.x = 0.14 * s; hR.rotation.z = -0.3; g.add(hR); }
-  else { const eaL = new THREE.Mesh(new THREE.BoxGeometry(0.13 * s, 0.22 * s, 0.06 * s), mat(col)); eaL.position.set(-0.15 * s, 1.16 * s, 0.5 * s); g.add(eaL); const eaR = eaL.clone(); eaR.position.x = 0.15 * s; g.add(eaR); }
-  if (sp.role === "fly" || sp.role === "sky") { const wMat = mat(shiny ? 0xffffff : 0xcfeaff); const wl = new THREE.Mesh(new THREE.BoxGeometry(0.9 * s, 0.08, 0.6 * s), wMat); wl.position.set(-0.62 * s, 0.6 * s, 0); g.add(wl); const wr = wl.clone(); wr.position.x = 0.62 * s; g.add(wr); g.userData.wings = [wl, wr]; }
-  const legs = []; for (const lx of [-0.18 * s, 0.18 * s]) for (const lz of [0.25 * s, -0.25 * s]) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.14 * s, 0.3 * s, 0.14 * s), mat(col)); l.geometry.translate(0, -0.15 * s, 0); l.position.set(lx, 0.3 * s, lz); g.add(l); legs.push(l); }
-  g.userData.legs = legs;
+  const eL = new THREE.Mesh(new THREE.BoxGeometry(0.1 * s, 0.12 * s, 0.05), eyeMat); eL.position.set(-0.13 * s, 0.95 * s, 0.76 * s); g.add(eL); const eR = eL.clone(); eR.position.x = 0.13 * s; g.add(eR);
+  // ears / horns vary by type so silhouettes differ
+  if (sp.type === "dragon" || sp.role === "sky") { const hL = box(0.08 * s, 0.26 * s, 0.08 * s, 0xeeeeee); hL.position.set(-0.14 * s, 1.22 * s, 0.5 * s); hL.rotation.z = 0.3; g.add(hL); const hR = hL.clone(); hR.position.x = 0.14 * s; hR.rotation.z = -0.3; g.add(hR); }
+  else if (sp.type === "electric") { for (const sx of [-1, 1]) { const ear = box(0.12 * s, 0.34 * s, 0.08 * s, col); ear.position.set(0.17 * s * sx, 1.3 * s, 0.5 * s); ear.rotation.z = -0.18 * sx; g.add(ear); const tip = box(0.13 * s, 0.12 * s, 0.085 * s, 0x222222); tip.position.set(0.21 * s * sx, 1.45 * s, 0.5 * s); tip.rotation.z = -0.18 * sx; g.add(tip); } }
+  else if (fox) { for (const sx of [-1, 1]) { const ear = box(0.16 * s, 0.24 * s, 0.07 * s, col); ear.position.set(0.16 * s * sx, 1.2 * s, 0.5 * s); ear.rotation.z = 0.25 * sx; g.add(ear); const tip = box(0.1 * s, 0.12 * s, 0.075 * s, belly); tip.position.set(0.19 * s * sx, 1.31 * s, 0.5 * s); tip.rotation.z = 0.25 * sx; g.add(tip); } }
+  else { const eaL = box(0.13 * s, 0.22 * s, 0.06 * s, col); eaL.position.set(-0.15 * s, 1.18 * s, 0.5 * s); g.add(eaL); const eaR = eaL.clone(); eaR.position.x = 0.15 * s; g.add(eaR); }
+  // forehead gem for fairy / psychic, cheeks for electric
+  if (sp.type === "fairy" || sp.type === "psychic") { const gem = box(0.12 * s, 0.12 * s, 0.06 * s, sp.type === "fairy" ? 0xff8ad6 : 0x9be8ff); gem.position.set(0, 1.07 * s, 0.7 * s); gem.rotation.z = 0.78; g.add(gem); }
+  if (sp.type === "electric") { for (const sx of [-1, 1]) { const ch = box(0.1 * s, 0.1 * s, 0.05, 0xff5a4a); ch.position.set(0.23 * s * sx, 0.84 * s, 0.72 * s); g.add(ch); } }
+  // back spikes for rock + dragon
+  if (sp.type === "rock" || sp.type === "dragon") { for (let i = 0; i < 3; i++) { const sk = box(0.1 * s, 0.18 * s, 0.1 * s, belly); sk.position.set(0, 0.8 * s, 0.18 * s - i * 0.26 * s); sk.rotation.x = 0.2; g.add(sk); } }
+  // type-themed tail
+  if (sp.type === "electric") { const t1 = box(0.1 * s, 0.24 * s, 0.08 * s, 0xffe14d); t1.position.set(0, 0.55 * s, -0.5 * s); t1.rotation.z = 0.6; g.add(t1); const t2 = box(0.1 * s, 0.22 * s, 0.08 * s, 0xffe14d); t2.position.set(0.16 * s, 0.74 * s, -0.58 * s); t2.rotation.z = -0.6; g.add(t2); }
+  else if (sp.type === "fire") { for (let i = 0; i < 3; i++) { const f = box((0.16 - i * 0.04) * s, 0.2 * s, 0.12 * s, i === 0 ? 0xff3a1e : i === 1 ? 0xff8a1e : 0xffd23d); f.position.set(0, 0.55 * s + i * 0.16 * s, -0.5 * s); g.add(f); } }
+  else if (sp.type === "water" || sp.role === "water") { const fin = box(0.06, 0.32 * s, 0.34 * s, lighten(col, 0.1)); fin.position.set(0, 0.5 * s, -0.56 * s); fin.rotation.x = 0.3; g.add(fin); }
+  else if (fox) { const b1 = box(0.18 * s, 0.18 * s, 0.34 * s, col); b1.position.set(0, 0.55 * s, -0.55 * s); g.add(b1); const tip = box(0.17 * s, 0.17 * s, 0.16 * s, belly); tip.position.set(0, 0.6 * s, -0.76 * s); g.add(tip); }
+  else if (sp.type === "dragon" || sp.role === "sky") { const t = box(0.14 * s, 0.14 * s, 0.5 * s, col); t.position.set(0, 0.45 * s, -0.62 * s); g.add(t); const tip = box(0.12 * s, 0.18 * s, 0.12 * s, belly); tip.position.set(0, 0.5 * s, -0.86 * s); g.add(tip); }
+  else { const st = box(0.12 * s, 0.12 * s, 0.22 * s, col); st.position.set(0, 0.5 * s, -0.5 * s); g.add(st); }
+  // wings for flyers
+  if (sp.role === "fly" || sp.role === "sky") { const wMat = mat(shiny ? 0xffffff : 0xcfeaff); const wl = new THREE.Mesh(new THREE.BoxGeometry(0.9 * s, 0.08, 0.6 * s), wMat); wl.position.set(-0.62 * s, 0.65 * s, 0); g.add(wl); const wr = wl.clone(); wr.position.x = 0.62 * s; g.add(wr); g.userData.wings = [wl, wr]; }
+  // legs, or a wispy floating tail for ghosts
+  if (!ghost) { const legs = []; for (const lx of [-0.18 * s, 0.18 * s]) for (const lz of [0.25 * s, -0.25 * s]) { const l = box(0.14 * s, 0.3 * s, 0.14 * s, col); l.geometry.translate(0, -0.15 * s, 0); l.position.set(lx, 0.3 * s, lz); g.add(l); legs.push(l); } g.userData.legs = legs; }
+  else { const w1 = box(0.42 * s, 0.22 * s, 0.5 * s, col); w1.position.set(0, 0.22 * s, 0); g.add(w1); const w2 = box(0.26 * s, 0.18 * s, 0.32 * s, col); w2.position.set(0, 0.05 * s, 0); g.add(w2); }
   if (sp.legend) { const aura = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(255,245,180,0.8)", "rgba(255,200,80,0)"), depthWrite: false, transparent: true, fog: false })); aura.scale.set(3.2 * s, 3.2 * s, 1); aura.position.y = 0.8 * s; g.add(aura); }
   else if (shiny) { const sg = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(255,255,255,0.9)", "rgba(180,220,255,0)"), depthWrite: false, transparent: true, fog: false })); sg.scale.set(2 * s, 2 * s, 1); sg.position.y = 0.8 * s; g.add(sg); }
   return g;
@@ -2781,12 +2807,20 @@ let cmenuOpen = false, cmenu = null;
 function openEncounter(wild, roamRef) {
   cmenu = { wild, roam: roamRef }; cmenuOpen = true; encounterCd = 3; creatureCry(wild.type);
   const p = $("cmenuPanel"); if (p) {
+    const heartLine = () => { const h = Math.max(0, Math.min(5, Math.round(wild.friendship / 2))); return "Friendship: " + ("❤️".repeat(h) || "—") + "  ·  Tame chance " + Math.round(tameChance(wild) * 100) + "%"; };
     p.innerHTML = "<h2>" + (wild.shiny ? "✨ " : "") + "A wild " + wild.name + " appeared!</h2><p class='muted'>Level " + wild.level + " · " + SPECIES[wild.sp].type + " type</p>";
+    const status = document.createElement("p"); status.className = "muted"; status.id = "cmenuStatus"; status.textContent = heartLine(); p.appendChild(status);
     const row = document.createElement("div"); row.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px";
     const mk = (label, fn) => { const b = document.createElement("button"); b.className = "btn"; b.textContent = label; b.addEventListener("click", fn); row.appendChild(b); };
     mk("Battle", () => { closeCMenu(); startBattle(wild, roamRef); });
     mk("Tame", () => tryTameFromMenu());
-    mk("Feed", () => { wild.friendship += 2; toast(wild.name + " looks friendlier."); SFX.pickup(); });
+    // Feed: consumes Creature Food if you have it (bigger boost), otherwise a small free pat; feedback shows right in the panel
+    mk("Feed", () => {
+      let msg;
+      if (citems.food > 0) { citems.food--; wild.friendship += 3; msg = "You fed " + wild.name + " Creature Food. It loves it!"; }
+      else { wild.friendship += 1; msg = "You gently pet " + wild.name + ". It warms up a little. (Buy Creature Food at the Shop for more.)"; }
+      status.textContent = heartLine(); toast(msg); SFX.pickup();
+    });
     mk("Run", closeCMenu);
     p.appendChild(row);
   }
