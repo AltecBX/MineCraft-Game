@@ -288,6 +288,18 @@ function buildRuin(x, y, z) {
   try { const ck2 = "overworld:" + bk(x, y, z); if (!chestStore.has(ck2)) chestStore.set(ck2, [{ id: I_SPICK, count: 1 }, { id: I_APPLE, count: 2 }, { id: COBBLE, count: 6 }, null, null, null, null, null, null]); } catch (e) {}
   if (getBlock(x + 1, y, z) === AIR) setRaw(x + 1, y, z, TORCH);
 }
+// a rare hidden treasure room buried under the forest, marked by a glowing crystal on the surface
+function buildTreasureRoom(cx, surfY, cz) {
+  const roomY = surfY - 7;
+  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) for (let dy = 0; dy <= 3; dy++) {
+    const edge = Math.abs(dx) === 2 || Math.abs(dz) === 2 || dy === 0 || dy === 3;
+    setRaw(cx + dx, roomY + dy, cz + dz, edge ? (dy === 0 ? COBBLE : BRICK) : AIR);
+  }
+  setRaw(cx, roomY + 1, cz, CHEST);
+  try { const ck2 = "overworld:" + bk(cx, roomY + 1, cz); if (!chestStore.has(ck2)) chestStore.set(ck2, [{ id: CRYSTAL, count: 3 }, { id: FIRE_CRYSTAL, count: 2 }, { id: BOUNCE, count: 3 }, { id: LAUNCH, count: 1 }, { id: I_APPLE, count: 4 }, { id: BRICK, count: 12 }, null, null, null]); } catch (e) {}
+  setRaw(cx - 1, roomY + 1, cz - 1, CRYSTAL); setRaw(cx + 1, roomY + 1, cz + 1, HEAL);   // light + a heal block inside
+  setRaw(cx, surfY, cz, CRYSTAL);                                                         // glowing surface marker leads Thomas here
+}
 
 function genChunk(cx, cz) {
   if (generated.has(ck(cx, cz))) return;
@@ -325,6 +337,11 @@ function genChunk(cx, cz) {
       const rx = x0 + 3 + Math.floor(hsh(cx, cz) * 9), rz = z0 + 3 + Math.floor(hsh(cz + 1, cx + 1) * 9), ry = heightAt(rx, rz);
       const rb = biomeAt(rx, rz);
       if (ry > SEA + 1 && !(ry > SEA + 18)) buildRuin(rx, ry + 1, rz);
+    }
+    // rarer hidden treasure room buried under the surface
+    if (hsh(cx * 71 + 13, cz * 39 + 7) > 0.955) {
+      const tx = x0 + 4 + Math.floor(hsh(cx + 3, cz + 3) * 7), tz = z0 + 4 + Math.floor(hsh(cz + 5, cx + 5) * 7), ty = heightAt(tx, tz);
+      if (ty > SEA + 3 && ty < SEA + 16) buildTreasureRoom(tx, ty, tz);
     }
   } else if (DIM === "fire") {
     for (let x = x0; x < x0 + CH; x++) for (let z = z0; z < z0 + CH; z++) {
