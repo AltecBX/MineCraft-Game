@@ -10,6 +10,13 @@
   const sword = partsFor(I_SWORD);
   const hammer = partsFor(I_LIGHTHAMMER);
   const bow = partsFor(I_ICEBOW);
-  console.log("PARTS pick=" + pick + " axe=" + axe + " sword=" + sword + " hammer=" + hammer + " bow=" + bow);
-  console.log("DISTINCT pickHasParts=" + (pick > 1) + " axeHasParts=" + (axe > 1) + " swordHasParts=" + (sword > 1) + " allBuilt=" + (pick && axe && sword && hammer && bow));
+  const gun = partsFor(I_MACHINEGUN);
+  const food = partsFor(I_APPLE);
+  const stick = partsFor(I_STICK);
+  console.log("PARTS pick=" + pick + " axe=" + axe + " sword=" + sword + " hammer=" + hammer + " bow=" + bow + " gun=" + gun + " food=" + food + " stick=" + stick);
+  console.log("DISTINCT pickHasParts=" + (pick > 1) + " axeHasParts=" + (axe > 1) + " swordHasParts=" + (sword > 1) + " allBuilt=" + (pick && axe && sword && hammer && bow && gun && food && stick));
+  // torch (a block) should render its own torch model; a plain block renders a single cube
+  hotbar[selSlot] = { id: TORCH, n: 1 }; buildViewItem(); const torch = viewItem.children.length;
+  hotbar[selSlot] = { id: STONE, n: 1 }; buildViewItem(); const blk = viewItem.children.length;
+  console.log("BLOCKS torch=" + torch + " plainBlock=" + blk);
 })();
