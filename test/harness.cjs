@@ -61,7 +61,7 @@ if(name==='HemisphereLight')return ctor({color:new Col(),groundColor:new Col(),i
 
 // ---- DOM / window stubs ----
 // overlays/panels that carry class="hidden" in index.html start hidden so anyPanelOpen() reads correctly
-const HIDDEN_IDS=new Set(['hud','touch','intro','pause','settings','ach','collections','trophies','catwardrobe','skinpicker','shop','inv','skills','journal','chest','death','win','cine','cmenu','battle']);
+const HIDDEN_IDS=new Set(['hud','touch','intro','pause','settings','ach','collections','trophies','catwardrobe','skinpicker','shop','inv','skills','journal','chest','death','win','cine','cmenu','battle','cshop','cteamui','cdexui','badgecase']);
 function el(id){const cls=new Set(); if(id && HIDDEN_IDS.has(id)) cls.add('hidden');
  return new Proxy({style:{setProperty(){},},classList:{add(c){cls.add(c);},remove(c){cls.delete(c);},toggle(c,f){const on=f===undefined?!cls.has(c):!!f; on?cls.add(c):cls.delete(c); return on;},contains(c){return cls.has(c);}},
  children:[],dataset:{},textContent:'',value:'85',width:64,height:8,

@@ -94,6 +94,8 @@
     <button class="btn ghost" id="pTrophyBtn">Trophy Hall</button>
     <button class="btn ghost" id="pSkinsBtn">Character (Thomas)</button>
     <button class="btn ghost" id="pCatsBtn">Cat Wardrobe</button>
+    <button class="btn ghost" id="pCteamBtn">Creatures (Team)</button>
+    <button class="btn ghost" id="pCdexBtn">Creature Dex</button>
     <button class="btn ghost" id="pSettBtn">Settings</button>
     <button class="btn ghost" id="quitBtn">Main menu</button>
   </div>
@@ -164,6 +166,15 @@
     <button class="btn" id="closeShopBtn">Leave</button>
   </div>
 </div>
+
+<!-- Creature shop -->
+<div id="cshop" class="overlay hidden"><div class="panel"><h2>Creature Shop <span id="cshopCoins" style="font-size:14px;opacity:.8"></span></h2><p class="muted">Coins drop from monsters and battles.</p><div class="craftList" id="cshopList"></div><button class="btn" id="closeCshopBtn">Leave</button></div></div>
+<!-- Creature team -->
+<div id="cteamui" class="overlay hidden"><div class="panel"><h2>Your Creatures</h2><div class="craftList" id="cteamList" style="max-height:60vh"></div><button class="btn" id="closeCteamBtn">Done</button></div></div>
+<!-- Creature dex -->
+<div id="cdexui" class="overlay hidden"><div class="panel"><h2>Creature Dex <span id="cdexCount" style="font-size:14px;opacity:.8"></span></h2><div class="craftList" id="cdexList" style="max-height:60vh"></div><button class="btn" id="closeCdexBtn">Done</button></div></div>
+<!-- Badge case -->
+<div id="badgecase" class="overlay hidden"><div class="panel"><h2>Badge Case <span id="badgeCount" style="font-size:14px;opacity:.8"></span></h2><p class="muted">Earn badges by defeating arena bosses.</p><div id="badgeList" class="trophyGrid"></div><button class="btn" id="closeBadgeBtn">Done</button></div></div>
 
 <!-- Creature encounter menu -->
 <div id="cmenu" class="overlay hidden"><div class="panel" id="cmenuPanel"></div></div>
