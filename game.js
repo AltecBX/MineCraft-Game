@@ -153,7 +153,7 @@ function stepSound() {
 }
 // generative background music: a slow per-dimension pad, no asset files
 let musicGain = null, musicT = 0, musicIdx = 0;
-const SCALES = { overworld: [220, 247, 294, 330, 392, 440], night: [165, 196, 220, 247, 196, 147], cave: [110, 131, 147, 110, 98, 87], fire: [110, 131, 147, 175, 131, 98], sky: [392, 440, 523, 587, 659, 784], end: [330, 392, 494, 587, 392, 247] };
+const SCALES = { overworld: [220, 247, 294, 330, 392, 440], night: [165, 196, 220, 247, 196, 147], cave: [110, 131, 147, 110, 98, 87], fire: [110, 131, 147, 175, 131, 98], sky: [392, 440, 523, 587, 659, 784], end: [330, 392, 494, 587, 392, 247], realm: [392, 440, 523, 587, 659, 523] };
 function playPad(freq, dur) {
   if (!settings.music || settings.muted || !actx) return;
   if (!musicGain) { musicGain = actx.createGain(); musicGain.connect(actx.destination); applyAudioGains(); }
@@ -171,7 +171,7 @@ function updateMusic(dt) {
   if (DIM === "overworld") key = isNight() ? "night" : (player.pos.y < SEA - 3 ? "cave" : "overworld");
   const sc = SCALES[key] || SCALES.overworld, note = sc[musicIdx % sc.length]; musicIdx++;
   const boss = bossActive();
-  const dur = boss ? 1.1 : key === "night" ? 2.4 : key === "cave" ? 3.1 : DIM === "fire" ? 2.2 : DIM === "sky" ? 1.7 : DIM === "end" ? 2.9 : 1.8;
+  const dur = boss ? 1.1 : key === "night" ? 2.4 : key === "cave" ? 3.1 : DIM === "fire" ? 2.2 : DIM === "sky" ? 1.7 : DIM === "end" ? 2.9 : DIM === "realm" ? 1.4 : 1.8;
   playPad(note * (boss ? (Math.random() < 0.5 ? 0.5 : 1) : (Math.random() < 0.18 ? 2 : 1)), dur);
   musicT = dur * (boss ? 0.45 : 0.66);
 }
@@ -3177,7 +3177,7 @@ function enemyTurn() {
   if (b.mine.hp <= 0) {
     const next = cteam.find(c => c.hp > 0 && c !== b.mine);
     if (next) { b.mine = next; b.log = "Your creature fainted. Go, " + next.name + "!"; renderBattle(); }
-    else { b.over = true; b.log = "All your creatures fainted! Heal at a station."; cteam.forEach(c => { c.hp = Math.max(1, Math.round(c.maxHp * 0.3)); }); renderBattle(); }
+    else { b.over = true; realmStreak = 0; b.log = "All your creatures fainted! Heal at a station."; cteam.forEach(c => { c.hp = Math.max(1, Math.round(c.maxHp * 0.3)); }); renderBattle(); }
   }
 }
 function winBattle() {
@@ -3190,10 +3190,12 @@ function winBattle() {
   b.log = "You defeated " + b.wild.name + "! +" + reward + " XP" + (ups ? ". Lv" + b.mine.level + "!" : "") + extra;
   if (b.roam) { scene.remove(b.roam.g); realmCreatures = realmCreatures.filter(c => c !== b.roam); }
   if (companion) companion.friendship++;
+  realmStreak++; if (realmStreak % 5 === 0) { addCoins(40); addItem(CRYSTAL, 3); showBanner("Win streak x" + realmStreak + "! Combo bonus!"); SFX.treasure(); }   // streak combo reward
   reactCompanion("cheer"); battleFlash("electric");   // victory sparkle
   if (ups) { showBanner(b.mine.name + " grew to Lv" + b.mine.level + "!"); SFX.levelUp(); }   // level-up flourish
   SFX.victory(); renderBattle();
 }
+let realmStreak = 0;
 function tryTameBattle() {
   const b = battle; if (!b || b.over || b.busy || b.trainer || b.boss) return;
   let chance = tameChance(b.wild); if (citems.capture > 0) { citems.capture--; chance = Math.min(0.97, chance + 0.28); }
