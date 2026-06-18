@@ -389,6 +389,7 @@ function genChunk(cx, cz) {
         const r = hsh(x * 3 + 9, z * 5 + 13);
         if (r > 0.94) tree(x, h + 1, z);
         else if (r > 0.5 && r < 0.86) setRaw(x, h + 1, z, TALLGRASS);   // wide tall-grass encounter zones
+        else if (r > 0.9 && r < 0.94) setRaw(x, h + 1, z, hsh(x * 7 + 2, z * 7 + 5) > 0.5 ? CRYSTAL : FIRE_CRYSTAL);   // colorful flowers dotting the meadow
         if (getBlock(x, h + 1, z) === AIR && hsh(x * 29 + 3, z * 31 + 7) > 0.995) setRaw(x, h + 1, z, FREDA);   // Freda Boxes hidden in the valley
       }
     }
@@ -3052,7 +3053,7 @@ function openEncounter(wild, roamRef) {
   cmenu = { wild, roam: roamRef }; cmenuOpen = true; encounterCd = 3; creatureCry(wild.type); reactCompanion("alert");
   const p = $("cmenuPanel"); if (p) {
     const heartLine = () => { const h = Math.max(0, Math.min(5, Math.round(wild.friendship / 2))); return "Friendship: " + ("❤️".repeat(h) || "—") + "  ·  Tame chance " + Math.round(tameChance(wild) * 100) + "%"; };
-    p.innerHTML = "<h2>" + (wild.shiny ? "✨ " : "") + "A wild " + wild.name + " appeared!</h2><p class='muted'>Level " + wild.level + " · " + SPECIES[wild.sp].type + " type</p>";
+    p.innerHTML = "<div class='cav big" + (wild.shiny ? " shiny" : "") + "' style='margin:0 auto 6px;background:" + cssHex(SPECIES[wild.sp].col) + "'><i class='cear'></i><i class='cear r'></i><i class='ceye'></i><i class='ceye r'></i></div><h2>" + (wild.shiny ? "✨ " : "") + "A wild " + wild.name + " appeared!</h2><p class='muted'>Level " + wild.level + " · " + SPECIES[wild.sp].type + " type</p>";
     const status = document.createElement("p"); status.className = "muted"; status.id = "cmenuStatus"; status.textContent = heartLine(); p.appendChild(status);
     const row = document.createElement("div"); row.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px";
     const mk = (label, fn) => { const b = document.createElement("button"); b.className = "btn"; b.textContent = label; b.addEventListener("click", fn); row.appendChild(b); };
@@ -3086,6 +3087,7 @@ function startBattle(wild, roamRef, opts) {
   mine.status = null; mine.shield = false; wild.status = null;
   battle = { wild, mine, roam: roamRef, over: false, busy: false, menu: "main", trainer: !!opts.trainer, boss: opts.boss || null, badge: opts.badge || null, bossRef: opts.bossRef || null, phase: 1, log: opts.intro || (opts.trainer ? "A Trainer sends out " + wild.name + "!" : "A wild " + wild.name + " challenges you!") };
   showBattleWipe(); renderBattle(); show("battle"); document.exitPointerLock(); SFX.screech();
+  try { if (!localStorage.getItem("thomas_battletip")) { localStorage.setItem("thomas_battletip", "1"); setTimeout(() => toast("Tip: Fight to attack · Bag for items · Creature to switch · Run to flee"), 800); } } catch (e) {}
 }
 function showBattleWipe() { const w = $("battleWipe"); if (!w) return; w.classList.remove("go"); void w.offsetWidth; w.classList.add("go"); setTimeout(() => { if (w) w.classList.remove("go"); }, 620); }
 function battleFlash(type) {                          // colored attack burst over the battle screen, per move type
@@ -3093,11 +3095,17 @@ function battleFlash(type) {                          // colored attack burst ov
   f.style.background = "radial-gradient(circle at 50% 42%, " + col + ", rgba(0,0,0,0) 62%)";
   f.classList.remove("go"); void f.offsetWidth; f.classList.add("go");
 }
+function cssHex(n) { return "#" + ("000000" + (n >>> 0).toString(16)).slice(-6); }
+function hitAvatar(side) { const el = document.getElementById(side === "mine" ? "avM" : "avW"); if (!el) return; el.classList.remove("hit"); void el.offsetWidth; el.classList.add("hit"); }
 function renderBattle() {
   const p = $("battlePanel"); if (!p || !battle) return; const b = battle;
   if (!b.menu) b.menu = "main";
-  const bar = (c) => "<div class='cbar'><div class='cbarfill' style='width:" + Math.max(0, 100 * c.hp / c.maxHp) + "%'></div></div>";
-  const head = (c, side) => "<div class='cbox" + (side ? " mine" : "") + "'><b>" + (c.shiny ? "✨" : "") + c.name + "</b> Lv" + c.level + " " + typeChip(SPECIES[c.sp].type) + bar(c) + "<span class='muted'>" + Math.max(0, c.hp | 0) + "/" + c.maxHp + " · " + SPECIES[c.sp].type + (c.shield ? " · shielded" : "") + (c.status === "burn" ? " · 🔥burn" : c.status === "paralyze" ? " · ⚡par" : "") + "</span></div>";
+  const bar = (c) => { const f = Math.max(0, 100 * c.hp / c.maxHp), col = f > 50 ? "#4ade80" : f > 20 ? "#fde047" : "#f87171"; return "<div class='cbar'><div class='cbarfill' style='width:" + f + "%;background:" + col + "'></div></div>"; };
+  const head = (c, side) => {
+    const av = "<div class='cav" + (c.shiny ? " shiny" : "") + "' id='av" + (side ? "M" : "W") + "' style='background:" + cssHex(SPECIES[c.sp].col) + "'><i class='cear'></i><i class='cear r'></i><i class='ceye'></i><i class='ceye r'></i></div>";
+    const info = "<div class='cinfo'><b>" + (c.shiny ? "✨" : "") + c.name + "</b> Lv" + c.level + " " + typeChip(SPECIES[c.sp].type) + bar(c) + "<span class='muted'>" + Math.max(0, c.hp | 0) + "/" + c.maxHp + " · " + SPECIES[c.sp].type + (c.shield ? " · shielded" : "") + (c.status === "burn" ? " · 🔥burn" : c.status === "paralyze" ? " · ⚡par" : "") + "</span></div>";
+    return "<div class='cbox" + (side ? " mine" : "") + "'>" + av + info + "</div>";
+  };
   p.innerHTML = "<div class='battleRow'>" + head(b.wild, false) + head(b.mine, true) + "</div><div class='battleLog'>" + b.log + "</div>";
   if (b.over) { const r = document.createElement("div"); r.style.cssText = "text-align:center;margin-top:8px"; const x = document.createElement("button"); x.className = "btn"; x.textContent = "Continue"; x.addEventListener("click", () => { battle = null; hide("battle"); closeCMenu(); }); r.appendChild(x); p.appendChild(r); return; }
   if (b.busy) return;   // enemy is acting; hide controls until their turn resolves
@@ -3151,6 +3159,7 @@ function doMove(i) {
   b.log += burnTick(b.mine);
   renderBattle();
   if (b.wild.hp <= 0) { return winBattle(); }
+  hitAvatar("wild");
   setTimeout(() => { enemyTurn(); }, 600);
 }
 function enemyTurn() {
@@ -3163,6 +3172,7 @@ function enemyTurn() {
   else { let r = calcDamage(b.wild, b.mine, mv); if (b.boss) r.dmg = Math.round(r.dmg * (1 + (b.phase - 1) * 0.2)); if (b.mine.shield) { r.dmg = Math.round(r.dmg * 0.5); b.mine.shield = false; } b.mine.hp -= r.dmg; b.log = (b.trainer ? "" : b.boss ? "" : "Wild ") + b.wild.name + " used " + mv.name + "! (" + r.dmg + ")" + inflictStatus(b.mine, mv.status); battleFlash(mv.type); }
   b.log += burnTick(b.wild);
   b.busy = false; renderBattle();
+  if (mv.power) hitAvatar("mine");
   if (b.wild.hp <= 0) return winBattle();
   if (b.mine.hp <= 0) {
     const next = cteam.find(c => c.hp > 0 && c !== b.mine);
@@ -3181,12 +3191,13 @@ function winBattle() {
   if (b.roam) { scene.remove(b.roam.g); realmCreatures = realmCreatures.filter(c => c !== b.roam); }
   if (companion) companion.friendship++;
   reactCompanion("cheer"); battleFlash("electric");   // victory sparkle
+  if (ups) { showBanner(b.mine.name + " grew to Lv" + b.mine.level + "!"); SFX.levelUp(); }   // level-up flourish
   SFX.victory(); renderBattle();
 }
 function tryTameBattle() {
   const b = battle; if (!b || b.over || b.busy || b.trainer || b.boss) return;
   let chance = tameChance(b.wild); if (citems.capture > 0) { citems.capture--; chance = Math.min(0.97, chance + 0.28); }
-  if (Math.random() < chance) { b.over = true; const where = addCreature(b.wild); b.log = "Gotcha! " + b.wild.name + (where === "team" ? " joined your team." : " went to storage."); SFX.victory(); showBanner("Befriended " + b.wild.name + "!"); if (b.roam) { scene.remove(b.roam.g); realmCreatures = realmCreatures.filter(c => c !== b.roam); } renderBattle(); }
+  if (Math.random() < chance) { b.over = true; const where = addCreature(b.wild); b.log = "Gotcha! " + b.wild.name + (where === "team" ? " joined your team." : " went to storage."); SFX.victory(); showBanner("Gotcha! " + b.wild.name + " was caught!"); battleFlash("fairy"); if (b.roam) { scene.remove(b.roam.g); realmCreatures = realmCreatures.filter(c => c !== b.roam); } renderBattle(); }
   else { b.log = b.wild.name + " broke free! Weaken it more."; b.busy = true; b.menu = "main"; renderBattle(); setTimeout(enemyTurn, 600); }
 }
 
