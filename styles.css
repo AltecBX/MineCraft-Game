@@ -161,11 +161,25 @@
     transition:opacity .5s, transform .5s; }
   #cineCap.show { opacity:1; transform:translateY(0); }
   .battleRow { display:flex; gap:12px; justify-content:space-between; margin:8px 0; }
-  .cbox { flex:1; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:10px; font-size:14px; }
-  .cbox.mine { text-align:right; }
+  .cbox { flex:1; display:flex; gap:10px; align-items:center; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:10px; font-size:14px; }
+  .cbox.mine { flex-direction:row-reverse; text-align:right; }
+  .cinfo { flex:1; min-width:0; }
   .cbox .muted { display:block; font-size:11px; margin-top:3px; }
   .cbar { height:9px; border-radius:6px; background:rgba(0,0,0,.4); overflow:hidden; margin:6px 0; }
-  .cbarfill { height:100%; background:linear-gradient(90deg,#4ade80,#a3e635); transition:width .3s; }
+  .cbarfill { height:100%; background:#4ade80; transition:width .35s, background .35s; }
+  /* CSS creature avatars drawn from each creature's own colour */
+  .cav { position:relative; flex:0 0 auto; width:54px; height:54px; border-radius:15px; box-shadow:inset 0 -7px 0 rgba(0,0,0,.18), 0 2px 6px rgba(0,0,0,.45); }
+  .cav .cear { position:absolute; top:-9px; width:15px; height:17px; border-radius:5px 5px 0 0; background:inherit; box-shadow:inset 0 -3px 0 rgba(0,0,0,.15); }
+  .cav .cear { left:7px; } .cav .cear.r { right:7px; left:auto; }
+  .cav .ceye { position:absolute; top:19px; width:11px; height:13px; border-radius:50%; background:#fff; box-shadow:inset 0 0 0 1px rgba(0,0,0,.25); }
+  .cav .ceye { left:11px; } .cav .ceye.r { right:11px; left:auto; }
+  .cav .ceye::after { content:""; position:absolute; bottom:2px; left:3px; width:5px; height:5px; border-radius:50%; background:#16181d; }
+  .cav.big { width:84px; height:84px; border-radius:22px; animation:cavBob 1.6s ease-in-out infinite; }
+  .cav.big .cear { top:-13px; width:22px; height:24px; } .cav.big .ceye { top:30px; width:16px; height:19px; } .cav.big .ceye::after { width:7px; height:7px; }
+  @keyframes cavBob { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-5px);} }
+  .cav.shiny { box-shadow:inset 0 -7px 0 rgba(0,0,0,.18), 0 0 12px 2px rgba(255,240,150,.9); }
+  .cav.hit { animation:cavHit .42s ease; }
+  @keyframes cavHit { 0%{transform:translateX(0) rotate(0); filter:brightness(1);} 18%{transform:translateX(-6px) rotate(-7deg); filter:brightness(2.4);} 42%{transform:translateX(6px) rotate(7deg);} 66%{transform:translateX(-4px) rotate(-3deg);} 100%{transform:translateX(0) rotate(0); filter:brightness(1);} }
   .battleLog { min-height:38px; background:rgba(0,0,0,.35); border-radius:10px; padding:9px 12px; font-size:14px; margin:8px 0; }
   .moveGrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
   .mvBtn { pointer-events:auto; cursor:pointer; border:none; border-radius:12px; padding:11px; background:rgba(124,58,237,.5); color:#fff; box-shadow:inset 0 0 0 1px rgba(255,255,255,.18); text-align:left; }
