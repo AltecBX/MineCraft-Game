@@ -2918,15 +2918,26 @@ function buildCreatureModel(id, shiny) {
   const lighten = (hex, amt) => { const c = new THREE.Color(hex); c.offsetHSL(0, 0, amt); return c.getHex(); };
   const box = (w, h, d, c) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c));
   const belly = lighten(col, 0.18);
-  // body + lighter belly panel so creatures read as characters, not plain cubes
-  const body = box(0.6 * s, 0.5 * s, 0.8 * s, col); body.position.y = 0.5 * s; g.add(body);
-  const bel = box(0.4 * s, 0.34 * s, 0.05, belly); bel.position.set(0, 0.46 * s, 0.41 * s); g.add(bel);
-  const head = box(0.5 * s, 0.5 * s, 0.5 * s, col); head.position.set(0, 0.88 * s, 0.5 * s); g.add(head);
+  // two body plans so species stop sharing one box: chubby upright sitters vs long four legged runners
+  const BIPED = { voltmouse: 1, aurawolf: 1, landshark: 1, rocktitan: 1, snoozer: 1, psyclone: 1, mewling: 1, terraking: 1, museling: 1, frogblade: 1, dragonox: 1, emberwing: 1 };
+  const biped = !!BIPED[id] && !ghost;
+  if (biped) {
+    const big = id === "snoozer" ? 1.3 : 1;            // the sleepy giant is mostly belly
+    const body = box(0.6 * s * big, 0.66 * s * big, 0.5 * s * big, col); body.position.set(0, 0.45 * s * big, 0.28 * s); g.add(body);
+    const bel = box(0.44 * s * big, 0.5 * s * big, 0.06, belly); bel.position.set(0, 0.42 * s * big, 0.28 * s + 0.25 * s * big); g.add(bel);
+  } else {
+    const body = box(0.6 * s, 0.5 * s, 0.8 * s, col); body.position.y = 0.5 * s; g.add(body);
+    const bel = box(0.4 * s, 0.34 * s, 0.05, belly); bel.position.set(0, 0.46 * s, 0.41 * s); g.add(bel);
+  }
+  const head = box(0.5 * s, 0.5 * s, 0.5 * s, col); head.position.set(0, (biped ? 0.98 : 0.88) * s, 0.5 * s); g.add(head);
   // snout for fox + dragon faces
   if (fox || sp.type === "dragon" || sp.role === "sky") { const sn = box(0.24 * s, 0.18 * s, 0.2 * s, belly); sn.position.set(0, 0.82 * s, 0.8 * s); g.add(sn); const nose = box(0.08 * s, 0.07 * s, 0.06 * s, 0x222222); nose.position.set(0, 0.86 * s, 0.92 * s); g.add(nose); }
-  // eyes
-  const eyeMat = new THREE.MeshLambertMaterial({ color: 0x111111, emissive: shiny ? 0xfff1a8 : 0x335577, emissiveIntensity: 0.6 });
-  const eL = new THREE.Mesh(new THREE.BoxGeometry(0.1 * s, 0.12 * s, 0.05), eyeMat); eL.position.set(-0.13 * s, 0.95 * s, 0.76 * s); g.add(eL); const eR = eL.clone(); eR.position.x = 0.13 * s; g.add(eR);
+  // friendly cartoon eyes: white base with a dark pupil, plus a little mouth
+  for (const sx of [-1, 1]) {
+    const w = box(0.11 * s, 0.14 * s, 0.045, 0xffffff); w.position.set(sx * 0.13 * s, 0.96 * s, 0.755 * s); g.add(w);
+    const p = new THREE.Mesh(new THREE.BoxGeometry(0.055 * s, 0.08 * s, 0.05), new THREE.MeshLambertMaterial({ color: 0x14161c, emissive: shiny ? 0xfff1a8 : 0x223344, emissiveIntensity: 0.5 })); p.position.set(sx * 0.13 * s, 0.95 * s, 0.765 * s); g.add(p);
+  }
+  if (!(fox || sp.type === "dragon" || sp.role === "sky")) { const mo = box(0.12 * s, 0.04 * s, 0.045, 0x5a2a2a); mo.position.set(0, 0.8 * s, 0.755 * s); g.add(mo); }
   // ears / horns vary by type so silhouettes differ
   if (sp.type === "dragon" || sp.role === "sky") { const hL = box(0.08 * s, 0.26 * s, 0.08 * s, 0xeeeeee); hL.position.set(-0.14 * s, 1.22 * s, 0.5 * s); hL.rotation.z = 0.3; g.add(hL); const hR = hL.clone(); hR.position.x = 0.14 * s; hR.rotation.z = -0.3; g.add(hR); }
   else if (sp.type === "electric") { for (const sx of [-1, 1]) { const ear = box(0.12 * s, 0.34 * s, 0.08 * s, col); ear.position.set(0.17 * s * sx, 1.3 * s, 0.5 * s); ear.rotation.z = -0.18 * sx; g.add(ear); const tip = box(0.13 * s, 0.12 * s, 0.085 * s, 0x222222); tip.position.set(0.21 * s * sx, 1.45 * s, 0.5 * s); tip.rotation.z = -0.18 * sx; g.add(tip); } }
@@ -2947,8 +2958,15 @@ function buildCreatureModel(id, shiny) {
   // wings for flyers
   if (sp.role === "fly" || sp.role === "sky") { const wMat = mat(shiny ? 0xffffff : 0xcfeaff); const wl = new THREE.Mesh(new THREE.BoxGeometry(0.9 * s, 0.08, 0.6 * s), wMat); wl.position.set(-0.62 * s, 0.65 * s, 0); g.add(wl); const wr = wl.clone(); wr.position.x = 0.62 * s; g.add(wr); g.userData.wings = [wl, wr]; }
   // legs, or a wispy floating tail for ghosts
-  if (!ghost) { const legs = []; for (const lx of [-0.18 * s, 0.18 * s]) for (const lz of [0.25 * s, -0.25 * s]) { const l = box(0.14 * s, 0.3 * s, 0.14 * s, col); l.geometry.translate(0, -0.15 * s, 0); l.position.set(lx, 0.3 * s, lz); g.add(l); legs.push(l); } g.userData.legs = legs; }
+  if (biped) {                                        // upright sitters: two stubby legs plus two little arms that swing together
+    const legs = [];
+    for (const sx of [-1, 1]) { const l = box(0.16 * s, 0.26 * s, 0.18 * s, col); l.geometry.translate(0, -0.13 * s, 0); l.position.set(sx * 0.18 * s, 0.26 * s, 0.34 * s); g.add(l); legs.push(l); }
+    for (const sx of [-1, 1]) { const a = box(0.12 * s, 0.3 * s, 0.12 * s, col); a.geometry.translate(0, -0.15 * s, 0); a.position.set(sx * 0.36 * s, 0.72 * s, 0.28 * s); a.rotation.z = sx * 0.2; g.add(a); legs.push(a); }
+    g.userData.legs = legs;
+  }
+  else if (!ghost) { const legs = []; for (const lx of [-0.18 * s, 0.18 * s]) for (const lz of [0.25 * s, -0.25 * s]) { const l = box(0.14 * s, 0.3 * s, 0.14 * s, col); l.geometry.translate(0, -0.15 * s, 0); l.position.set(lx, 0.3 * s, lz); g.add(l); legs.push(l); } g.userData.legs = legs; }
   else { const w1 = box(0.42 * s, 0.22 * s, 0.5 * s, col); w1.position.set(0, 0.22 * s, 0); g.add(w1); const w2 = box(0.26 * s, 0.18 * s, 0.32 * s, col); w2.position.set(0, 0.05 * s, 0); g.add(w2); }
+  if (sp.role !== "fly" && sp.role !== "sky") blobShadow(g, 0.44 * s);   // ground shadow plants everyone in the world
   // per-creature recognizable accents (simple voxel markers for key features)
   if (id === "shadeling") { const r1 = box(0.12 * s, 0.09 * s, 0.05, 0xff2a2a); r1.position.set(-0.13 * s, 0.97 * s, 0.78 * s); g.add(r1); const r2 = box(0.12 * s, 0.09 * s, 0.05, 0xff2a2a); r2.position.set(0.13 * s, 0.97 * s, 0.78 * s); g.add(r2); const grin = box(0.34 * s, 0.06 * s, 0.05, 0xffffff); grin.position.set(0, 0.78 * s, 0.78 * s); g.add(grin); }   // red eyes + wide grin
   else if (id === "moonfox") { const fr = box(0.13 * s, 0.04 * s, 0.05, 0xffe14d); fr.position.set(0, 1.03 * s, 0.78 * s); g.add(fr); const ring = box(0.17 * s, 0.17 * s, 0.04, 0xffe14d); ring.position.set(0, 0.5 * s, 0.42 * s); g.add(ring); }   // glowing yellow rings
@@ -3243,6 +3261,7 @@ function buildNPC(kind) {
   const hat = box(0.62, 0.18, 0.62, d.hat); hat.position.y = 1.5; g.add(hat);
   const eL = box(0.06, 0.06, 0.04, 0x111114); eL.position.set(-0.1, 1.28, 0.2); g.add(eL); const eR = eL.clone(); eR.position.x = 0.1; g.add(eR);
   const sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(255,235,150,0.95)", "rgba(255,200,80,0)"), depthWrite: false, transparent: true, fog: false })); sign.scale.set(1.1, 1.1, 1); sign.position.y = 2.05; g.add(sign);
+  blobShadow(g, 0.42);
   return g;
 }
 function spawnRealmNPC(kind, x, z) { const g = buildNPC(kind); g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g); realmNPCs.push({ kind, g }); }
@@ -3409,26 +3428,92 @@ function teachMove() {
 let marioNPCs = [], marioFoes = [], marioCoins = [], cappy = null, marioQ = { coinsGot: 0, toad: false, stomps: 0, dk: false, bowser: false, hidden: false };
 function clearMarioStage() { for (const n of marioNPCs) scene.remove(n.g); for (const f of marioFoes) scene.remove(f.g); for (const c of marioCoins) scene.remove(c.mesh); marioNPCs = []; marioFoes = []; marioCoins = []; if (cappy) { scene.remove(cappy); cappy = null; } }
 // parameterized voxel toon figure: every guest character is built from the same original kit of boxes
+// soft ground shadow disc: the single biggest cheap cue that makes figures sit IN the world
+function blobShadow(g, r) {
+  const m = new THREE.Mesh(new THREE.CircleGeometry(r, 12), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.26, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.position.y = 0.03; g.add(m); return m;
+}
+// toon kit v2: every figure gets its own body plan, arms, gloves, and an expressive face
 function buildToon(d) {
-  const s = d.size || 1, g = new THREE.Group();
-  const skin = d.skin != null ? d.skin : 0xe8b98a;
-  if (d.ghost) { const bod = box(0.62 * s, 0.7 * s, 0.55 * s, d.body); bod.position.y = 0.72 * s; bod.material.transparent = true; bod.material.opacity = 0.75; g.add(bod); }
-  else if (d.dress) { const sk = box(0.72 * s, 0.62 * s, 0.6 * s, d.body); sk.position.y = 0.34 * s; g.add(sk); const to = box(0.42 * s, 0.34 * s, 0.34 * s, d.body); to.position.y = 0.82 * s; g.add(to); }
-  else { for (const lx of [-0.12 * s, 0.12 * s]) { const l = box(0.16 * s, 0.3 * s, 0.16 * s, d.legs != null ? d.legs : 0x2a3f8f); l.position.set(lx, 0.15 * s, 0); g.add(l); } const bod = box(0.5 * s, 0.44 * s, 0.34 * s, d.body); bod.position.y = 0.52 * s; g.add(bod); }
-  const head = box(0.44 * s, 0.4 * s, 0.4 * s, skin); head.position.y = (d.ghost ? 1.25 : 1.0) * s; g.add(head);
-  const eL = box(0.07 * s, 0.09 * s, 0.04, 0x14161c); eL.position.set(-0.1 * s, (d.ghost ? 1.3 : 1.05) * s, 0.21 * s); g.add(eL); const eR = eL.clone(); eR.position.x = 0.1 * s; g.add(eR);
-  if (d.mustache) { const m = box(0.26 * s, 0.06 * s, 0.05, 0x2b2018); m.position.set(0, 0.94 * s, 0.22 * s); g.add(m); }
-  if (d.beard) { const b = box(0.3 * s, 0.18 * s, 0.08, 0xe8e8e8); b.position.set(0, 0.85 * s, 0.2 * s); g.add(b); }
-  if (d.snout) { const sn = box(0.2 * s, 0.16 * s, 0.22 * s, d.snout === 1 ? skin : d.snout); sn.position.set(0, 0.98 * s, 0.32 * s); g.add(sn); }
-  if (d.mask) { const mk = box(0.34 * s, 0.3 * s, 0.04, 0xf2f2f2); mk.position.set(0, 1.02 * s, 0.21 * s); g.add(mk); }
-  if (d.glasses) { const gl = box(0.36 * s, 0.08 * s, 0.04, d.glasses === 1 ? 0x222831 : d.glasses); gl.position.set(0, 1.06 * s, 0.22 * s); g.add(gl); }
-  if (d.cap) { const c1 = box(0.48 * s, 0.14 * s, 0.44 * s, d.cap); c1.position.y = 1.24 * s; g.add(c1); const brim = box(0.3 * s, 0.05 * s, 0.2 * s, d.cap); brim.position.set(0, 1.16 * s, 0.32 * s); g.add(brim); }
-  if (d.mushcap) { const mc = box(0.62 * s, 0.26 * s, 0.58 * s, d.mushcap); mc.position.y = 1.3 * s; g.add(mc); const dot = box(0.18 * s, 0.1 * s, 0.18 * s, 0xffffff); dot.position.set(0, 1.42 * s, 0.18 * s); g.add(dot); }
-  if (d.crown) { const cr = box(0.26 * s, 0.1 * s, 0.26 * s, 0xf2c94c); cr.position.y = 1.3 * s; g.add(cr); const jw = box(0.08 * s, 0.08 * s, 0.08 * s, 0xff5d8f); jw.position.y = 1.38 * s; g.add(jw); }
-  if (d.hairband) { const hb = box(0.46 * s, 0.08 * s, 0.42 * s, d.hairband); hb.position.y = 1.22 * s; g.add(hb); }
-  if (d.shell) { const sh = box(0.44 * s, 0.36 * s, 0.22 * s, d.shell); sh.position.set(0, 0.6 * s, -0.26 * s); g.add(sh); for (const sx of [-0.1, 0.1]) { const sp = box(0.08 * s, 0.12 * s, 0.08 * s, 0xf2ead0); sp.position.set(sx * s, 0.8 * s, -0.26 * s); g.add(sp); } }
-  if (d.tie) { const t = box(0.14 * s, 0.2 * s, 0.04, d.tie); t.position.set(0, 0.5 * s, 0.19 * s); g.add(t); }
-  if (d.fuse) { const f = box(0.06 * s, 0.16 * s, 0.06 * s, 0xf2f2f2); f.position.y = 1.32 * s; g.add(f); }
+  const s = d.size || 1, g = new THREE.Group(), plan = d.plan || (d.ghost ? "ghost" : d.dress ? "gown" : "biped");
+  const skin = d.skin != null ? d.skin : 0xe8b98a, glove = d.glove != null ? d.glove : 0xf2f2f2;
+  const arms = [], legsA = [];
+  const face = (hy, w) => {   // white eyes with pupils plus a small mouth
+    for (const sx of [-1, 1]) { const e = box(0.1 * s, 0.13 * s, 0.04, 0xffffff); e.position.set(sx * (w || 0.11) * s, hy, 0.21 * s); g.add(e);
+      const p = box(0.05 * s, 0.07 * s, 0.045, 0x14161c); p.position.set(sx * (w || 0.11) * s, hy - 0.01 * s, 0.225 * s); g.add(p); }
+    if (!d.mustache && !d.mask) { const mo = box(0.1 * s, 0.035 * s, 0.04, d.mouth != null ? d.mouth : 0x7a3a2a); mo.position.set(0, hy - 0.14 * s, 0.21 * s); g.add(mo); }
+  };
+  const arm = (sx, len, col, ay) => { const a = box(0.11 * s, len * s, 0.11 * s, col); a.geometry.translate(0, -len * 0.5 * s, 0); a.position.set(sx, ay, 0); g.add(a);
+    const h = box(0.14 * s, 0.12 * s, 0.14 * s, glove); h.position.set(0, -len * s, 0); a.add(h); arms.push(a); return a; };
+  const leg = (sx, len, col) => { const l = box(0.15 * s, len * s, 0.15 * s, col); l.geometry.translate(0, -len * 0.5 * s, 0); l.position.set(sx, len * s, 0); g.add(l);
+    const sh = box(0.18 * s, 0.09 * s, 0.24 * s, d.shoe != null ? d.shoe : 0x5a3a1e); sh.position.set(0, -len * s + 0.03 * s, 0.03 * s); l.add(sh); legsA.push(l); return l; };
+  if (plan === "ghost") {
+    const b1 = box(0.62 * s, 0.5 * s, 0.55 * s, d.body); b1.position.y = 0.72 * s; b1.material.transparent = true; b1.material.opacity = 0.8; g.add(b1);
+    const b2 = box(0.5 * s, 0.24 * s, 0.44 * s, d.body); b2.position.y = 0.42 * s; b2.material.transparent = true; b2.material.opacity = 0.7; g.add(b2);
+    for (const sx of [-1, 1]) { const st = box(0.14 * s, 0.12 * s, 0.14 * s, d.body); st.position.set(sx * 0.38 * s, 0.8 * s, 0); g.add(st); }
+    if (d.tongue) { const t = box(0.12 * s, 0.16 * s, 0.08 * s, 0xff5d6a); t.position.set(0, 0.6 * s, 0.3 * s); t.rotation.x = 0.5; g.add(t); }
+    const hy = 1.0 * s; const head2 = box(0.5 * s, 0.4 * s, 0.44 * s, d.body); head2.position.y = hy; head2.material.transparent = true; head2.material.opacity = 0.85; g.add(head2); face(hy + 0.05 * s);
+  } else if (plan === "gown") {
+    const sk1 = box(0.8 * s, 0.34 * s, 0.66 * s, d.body); sk1.position.y = 0.17 * s; g.add(sk1);
+    const sk2 = box(0.6 * s, 0.3 * s, 0.5 * s, d.body); sk2.position.y = 0.48 * s; g.add(sk2);
+    const to = box(0.38 * s, 0.3 * s, 0.3 * s, d.body); to.position.y = 0.78 * s; g.add(to);
+    for (const sx of [-1, 1]) { const pf = box(0.16 * s, 0.14 * s, 0.16 * s, d.body); pf.position.set(sx * 0.26 * s, 0.88 * s, 0); g.add(pf); arm(sx * 0.28 * s, 0.3, skin, 0.86 * s); }
+    const head = box(0.42 * s, 0.38 * s, 0.38 * s, skin); head.position.y = 1.12 * s; g.add(head); face(1.17 * s);
+    if (d.hair) { const h1 = box(0.46 * s, 0.3 * s, 0.2 * s, d.hair); h1.position.set(0, 1.14 * s, -0.16 * s); g.add(h1); const h2 = box(0.44 * s, 0.14 * s, 0.4 * s, d.hair); h2.position.y = 1.32 * s; g.add(h2); }
+  } else if (plan === "round") {                       // stubby mushroom-shaped walker: big cranky brows, feet only
+    const bod = box(0.66 * s, 0.6 * s, 0.6 * s, d.body); bod.position.y = 0.5 * s; g.add(bod);
+    const bot = box(0.5 * s, 0.18 * s, 0.44 * s, d.belly != null ? d.belly : 0xe8d0a8); bot.position.y = 0.16 * s; g.add(bot);
+    for (const sx of [-1, 1]) { const f = box(0.2 * s, 0.14 * s, 0.26 * s, 0x3a2a1a); f.position.set(sx * 0.18 * s, 0.07 * s, 0.06 * s); g.add(f); legsA.push(f); }
+    face(0.62 * s, 0.15);
+    for (const sx of [-1, 1]) { const br = box(0.16 * s, 0.05 * s, 0.05, 0x14161c); br.position.set(sx * 0.16 * s, 0.78 * s, 0.28 * s); br.rotation.z = sx * -0.4; g.add(br); }
+    legsA.push(legsA[0], legsA[1]);                    // pad to 4 so the shared limb animator works
+  } else if (plan === "turtle") {
+    leg(-0.14 * s, 0.24, d.skin2 || 0xf2d24c); leg(0.14 * s, 0.24, d.skin2 || 0xf2d24c);
+    const bod = box(0.44 * s, 0.36 * s, 0.3 * s, d.skin2 || 0xf2d24c); bod.position.y = 0.42 * s; g.add(bod);
+    const sh = box(0.5 * s, 0.4 * s, 0.3 * s, d.shell); sh.position.set(0, 0.48 * s, -0.2 * s); g.add(sh);
+    const rim = box(0.56 * s, 0.12 * s, 0.36 * s, 0xf2ead0); rim.position.set(0, 0.32 * s, -0.2 * s); g.add(rim);
+    arm(-0.26 * s, 0.24, d.skin2 || 0xf2d24c, 0.52 * s); arm(0.26 * s, 0.24, d.skin2 || 0xf2d24c, 0.52 * s);
+    const head = box(0.36 * s, 0.32 * s, 0.34 * s, d.skin2 || 0xf2d24c); head.position.set(0, 0.82 * s, 0.08 * s); g.add(head); face(0.88 * s, 0.09);
+  } else if (plan === "ape") {
+    leg(-0.16 * s, 0.2, d.body); leg(0.16 * s, 0.2, d.body);
+    const bod = box(0.66 * s, 0.52 * s, 0.44 * s, d.body); bod.position.y = 0.56 * s; g.add(bod);
+    const chest = box(0.44 * s, 0.34 * s, 0.1 * s, skin); chest.position.set(0, 0.52 * s, 0.2 * s); g.add(chest);
+    arm(-0.42 * s, 0.52, d.body, 0.76 * s); arm(0.42 * s, 0.52, d.body, 0.76 * s);
+    const head = box(0.44 * s, 0.36 * s, 0.4 * s, d.body); head.position.y = 1.0 * s; g.add(head);
+    const jaw = box(0.34 * s, 0.16 * s, 0.14 * s, skin); jaw.position.set(0, 0.9 * s, 0.18 * s); g.add(jaw); face(1.08 * s, 0.1);
+  } else {                                             // biped: stubby legs, overalls, swinging arms, big nose option
+    const pants = d.pants != null ? d.pants : 0x2a3f8f;
+    leg(-0.13 * s, 0.28, pants); leg(0.13 * s, 0.28, pants);
+    const bod = box(0.5 * s, 0.4 * s, 0.34 * s, d.body); bod.position.y = 0.76 * s; g.add(bod);
+    if (d.overalls) { const bib = box(0.34 * s, 0.26 * s, 0.05, pants); bib.position.set(0, 0.74 * s, 0.18 * s); g.add(bib);
+      for (const sx of [-1, 1]) { const bt = box(0.06 * s, 0.06 * s, 0.05, 0xffe14d); bt.position.set(sx * 0.12 * s, 0.86 * s, 0.2 * s); g.add(bt);
+        const str = box(0.08 * s, 0.2 * s, 0.05, pants); str.position.set(sx * 0.12 * s, 0.94 * s, 0.16 * s); g.add(str); } }
+    arm(-0.31 * s, 0.34, d.sleeve != null ? d.sleeve : d.body, 0.92 * s); arm(0.31 * s, 0.34, d.sleeve != null ? d.sleeve : d.body, 0.92 * s);
+    const head = box(0.46 * s, 0.4 * s, 0.42 * s, skin); head.position.y = 1.18 * s; g.add(head); face(1.24 * s);
+    if (d.nose) { const n = box(0.14 * s, 0.12 * s, 0.14 * s, d.nose === 1 ? skin : d.nose); n.position.set(0, 1.18 * s, 0.26 * s); g.add(n); }
+  }
+  const hy2 = plan === "gown" ? 1.32 * s : plan === "ghost" ? 1.2 * s : 1.38 * s;
+  if (d.mustache) { const m = box(0.3 * s, 0.07 * s, 0.05, 0x2b2018); m.position.set(0, (plan === "biped" ? 1.1 : 0.94) * s, 0.26 * s); g.add(m); }
+  if (d.beard) { const b = box(0.32 * s, 0.2 * s, 0.08, 0xe8e8e8); b.position.set(0, (plan === "biped" ? 1.02 : 0.85) * s, 0.24 * s); g.add(b); }
+  if (d.snout) { const sn = box(0.24 * s, 0.18 * s, 0.26 * s, d.snout === 1 ? skin : d.snout); sn.position.set(0, (plan === "biped" ? 1.14 : 0.98) * s, 0.32 * s); g.add(sn); }
+  if (d.mask) { const mk = box(0.36 * s, 0.32 * s, 0.04, 0xf2f2f2); mk.position.set(0, (plan === "biped" ? 1.2 : 1.02) * s, 0.24 * s); g.add(mk);
+    for (const sx of [-1, 1]) { const hole = box(0.07 * s, 0.1 * s, 0.045, 0x14161c); hole.position.set(sx * 0.09 * s, (plan === "biped" ? 1.22 : 1.04) * s, 0.25 * s); g.add(hole); } }
+  if (d.glasses) { const gl = box(0.38 * s, 0.09 * s, 0.04, d.glasses === 1 ? 0x222831 : d.glasses); gl.position.set(0, (plan === "biped" ? 1.26 : 1.06) * s, 0.25 * s); g.add(gl); }
+  if (d.cap) { const c1 = box(0.5 * s, 0.15 * s, 0.46 * s, d.cap); c1.position.y = hy2; g.add(c1); const brim = box(0.34 * s, 0.05 * s, 0.22 * s, d.cap); brim.position.set(0, hy2 - 0.07 * s, 0.32 * s); g.add(brim);
+    const em = box(0.12 * s, 0.1 * s, 0.03, 0xffffff); em.position.set(0, hy2 + 0.02 * s, 0.235 * s); g.add(em); }
+  if (d.mushcap) { const mc = box(0.68 * s, 0.3 * s, 0.64 * s, 0xffffff); mc.position.y = hy2; g.add(mc);
+    for (const [dx, dz] of [[0, 0.24], [-0.22, -0.1], [0.22, -0.1], [0, -0.26]]) { const dot = box(0.18 * s, 0.08 * s, 0.18 * s, d.mushcap); dot.position.set(dx * s, hy2 + 0.13 * s, dz * s); g.add(dot); } }
+  if (d.crown) { const cr = box(0.26 * s, 0.12 * s, 0.26 * s, 0xf2c94c); cr.position.y = hy2 + 0.04 * s; g.add(cr); const jw = box(0.08 * s, 0.08 * s, 0.08 * s, 0xff5d8f); jw.position.y = hy2 + 0.12 * s; g.add(jw); }
+  if (d.hairband) { const hb = box(0.48 * s, 0.09 * s, 0.44 * s, d.hairband); hb.position.y = hy2 - 0.05 * s; g.add(hb); }
+  if (d.shell) { const sh = box(0.5 * s, 0.42 * s, 0.26 * s, d.shell); sh.position.set(0, 0.7 * s, -0.3 * s); g.add(sh);
+    for (const [sx, sy] of [[-0.14, 0.9], [0.14, 0.9], [0, 0.72], [-0.14, 0.54], [0.14, 0.54]]) { const sp = box(0.09 * s, 0.13 * s, 0.09 * s, 0xf2ead0); sp.position.set(sx * s, sy * s, -0.32 * s); g.add(sp); } }
+  if (d.horns) for (const sx of [-1, 1]) { const h = box(0.1 * s, 0.2 * s, 0.1 * s, 0xf2ead0); h.position.set(sx * 0.2 * s, hy2 + 0.08 * s, 0); h.rotation.z = sx * -0.3; g.add(h); }
+  if (d.tail) { const t = box(0.16 * s, 0.14 * s, 0.4 * s, d.tail === 1 ? d.body : d.tail); t.position.set(0, 0.4 * s, -0.44 * s); g.add(t); }
+  if (d.tie) { const t = box(0.16 * s, 0.22 * s, 0.04, d.tie); t.position.set(0, 0.56 * s, 0.24 * s); g.add(t); }
+  if (d.fuse) { const f = box(0.06 * s, 0.18 * s, 0.06 * s, 0xf2f2f2); f.position.y = hy2 + 0.1 * s; g.add(f); }
+  while (legsA.length < 4) legsA.push(arms[legsA.length - 2] || legsA[0] || box(0.01, 0.01, 0.01, 0x000000));
+  g.userData.legs = [legsA[0], legsA[1], arms[0] || legsA[2], arms[1] || legsA[3]];   // shared limb animator swings legs and arms
+  blobShadow(g, 0.42 * s);
   return g;
 }
 function toonTalk(pitch) { blip(pitch, 0.09, "square", 0.1, pitch * 1.3); setTimeout(() => blip(pitch * 1.25, 0.11, "square", 0.09, pitch * 1.5), 90); }
@@ -3453,20 +3538,20 @@ function buildMarioStage() {
   for (let a = 0; a < 20; a++) { const ax = Math.round(Math.cos(a / 20 * 6.28) * 6), az = Math.round(Math.sin(a / 20 * 6.28) * 6); setRaw(ax, surfaceY(ax, az) - 1, az, BRICK); markDirty(ax, az); }
   for (let y = 1; y <= 6; y++) setRaw(3, py + y - 1, 3, y === 6 ? CRYSTAL : COBBLE); markDirty(3, 3);
   // friendly cast around the plaza
-  marioNPC("Mario", { body: 0xd8342c, legs: 0x2a3f8f, cap: 0xd8342c, mustache: 1 }, 1, -3, "Welcome! Ready for a super adventure? Bowser is up at the castle.", 520);
-  marioNPC("Luigi", { body: 0x2e9e46, legs: 0x2a3f8f, cap: 0x2e9e46, mustache: 1, size: 1.05 }, -2, -3, "S-spooky cellar under the castle... I will guard the plaza. You go ahead!", 620);
-  marioNPC("Peach", { body: 0xffa6c9, dress: 1, crown: 1, skin: 0xf2d4b8 }, 0, -5, "Bowser took over the castle courtyard. Please send him packing!", 700, "peach");
+  marioNPC("Mario", { body: 0xd8342c, pants: 0x2a3f8f, overalls: 1, cap: 0xd8342c, mustache: 1, nose: 1, size: 0.95 }, 1, -3, "Welcome! Ready for a super adventure? Bowser is up at the castle.", 520);
+  marioNPC("Luigi", { body: 0x2e9e46, pants: 0x2a3f8f, overalls: 1, cap: 0x2e9e46, mustache: 1, nose: 1, size: 1.08 }, -2, -3, "S-spooky cellar under the castle... I will guard the plaza. You go ahead!", 620);
+  marioNPC("Peach", { body: 0xffa6c9, plan: "gown", crown: 1, hair: 0xf2d24c, skin: 0xf2d4b8 }, 0, -5, "Bowser took over the castle courtyard. Please send him packing!", 700, "peach");
   marioNPC("Toad", { body: 0x4a6ad8, mushcap: 0xd8342c, size: 0.75 }, 3, -2, "Coins keep the Kingdom running! Grab 15 and I will reward you.", 820, "toad");
   marioNPC("Toadette", { body: 0xff8ad6, mushcap: 0xff5d8f, size: 0.72 }, 4, 0, "The healing house is always open for heroes!", 860);
-  marioNPC("Daisy", { body: 0xf2a03d, dress: 1, crown: 1, skin: 0xf2d4b8 }, -4, 0, "Hi! The flower fields are gorgeous today!", 680);
-  marioNPC("Pauline", { body: 0xc0392b, dress: 1, hairband: 0x6a2a8f, skin: 0xe8c49a }, -4, 3, "The city misses a hero like you.", 560);
+  marioNPC("Daisy", { body: 0xf2a03d, plan: "gown", crown: 1, hair: 0x8a5a2e, skin: 0xf2d4b8 }, -4, 0, "Hi! The flower fields are gorgeous today!", 680);
+  marioNPC("Pauline", { body: 0xc0392b, plan: "gown", hairband: 0x6a2a8f, hair: 0x3a2a20, skin: 0xe8c49a }, -4, 3, "The city misses a hero like you.", 560);
   marioNPC("Toadsworth", { body: 0x8a6a3f, mushcap: 0xc9b08a, mustache: 1, size: 0.8 }, 2, 4, "Do mind the lava moat by the castle, young master!", 400);
-  marioNPC("Birdo", { body: 0xff8ad6, snout: 0xffb6de, hairband: 0xff5d8f }, 5, 2, "Mwah! Take an egg for good luck!", 750);
-  marioNPC("Yoshi", { body: 0x49c04a, snout: 0x9fe89f, legs: 0xf2683c, shell: 0xd8342c, size: 0.95 }, -1, 5, "Mlem! Yoshi smelled berries growing by the warp pipes.", 900);
+  marioNPC("Birdo", { body: 0xff8ad6, snout: 0xffb6de, hairband: 0xff5d8f, tail: 1 }, 5, 2, "Mwah! Take an egg for good luck!", 750);
+  marioNPC("Yoshi", { body: 0x49c04a, snout: 0x9fe89f, pants: 0x49c04a, shoe: 0xf2683c, shell: 0xd8342c, tail: 1, size: 0.95 }, -1, 5, "Mlem! Yoshi smelled berries growing by the warp pipes.", 900);
   // DK jungle corner
-  marioNPC("Donkey Kong", { body: 0x6a4a2e, skin: 0x8a5f3c, tie: 0xd8342c, size: 1.35 }, -24, 10, "Shy Guys keep raiding my banana pile! Stomp 5 of them for me.", 220, "dk");
-  marioNPC("Diddy Kong", { body: 0x6a4a2e, skin: 0x9a6f46, cap: 0xd8342c, size: 0.7 }, -22, 12, "Watch me backflip! Whoo!", 980);
-  marioNPC("Cranky Kong", { body: 0x5a4028, skin: 0x8a5f3c, beard: 1, size: 1.1 }, -26, 12, "In my day we buried treasure right under the plaza's south bricks... hint hint.", 300, "cranky");
+  marioNPC("Donkey Kong", { body: 0x6a4a2e, plan: "ape", skin: 0xc9a06a, tie: 0xd8342c, size: 1.35 }, -24, 10, "Shy Guys keep raiding my banana pile! Stomp 5 of them for me.", 220, "dk");
+  marioNPC("Diddy Kong", { body: 0x6a4a2e, plan: "ape", skin: 0xc9a06a, cap: 0xd8342c, size: 0.7 }, -22, 12, "Watch me backflip! Whoo!", 980);
+  marioNPC("Cranky Kong", { body: 0x5a4028, plan: "ape", skin: 0xc9a06a, beard: 1, size: 1.1 }, -26, 12, "In my day we buried treasure right under the plaza's south bricks... hint hint.", 300, "cranky");
   // Rosalina's star rise
   const ry = surfaceY(0, -26); for (let y = 0; y < 3; y++) setRaw(0, ry + y, -26, y === 2 ? CRYSTAL : BRICK); markDirty(0, -26);
   marioNPC("Rosalina", { body: 0x7fd6d0, dress: 1, crown: 1, skin: 0xf2e2c8, size: 1.1 }, 1, -27, "The stars watch over your journey, little hero.", 640);
@@ -3482,20 +3567,24 @@ function buildMarioStage() {
   for (const dx of [-6, 6]) for (let dz = -6; dz <= 6; dz++) { for (let y = 0; y < 3; y++) setRaw(dx, cy + y, 40 + dz, BRICK); markDirty(dx, 40 + dz); }
   for (let dx = -8; dx <= 8; dx++) { setRaw(dx, cy - 1, 32, LAVA); setRaw(dx, cy - 1, 48, LAVA); markDirty(dx, 32); markDirty(dx, 48); }
   setRaw(0, cy, 34, PLANKS); setRaw(0, cy, 33, PLANKS);   // drawbridge over the moat
-  marioFoe("Bowser", { body: 0xf2a03d, skin: 0xf2c060, shell: 0x2e9e46, size: 1.9, glasses: 0xc0392b }, 0, 42, 140, "boss");
-  marioFoe("Bowser Jr.", { body: 0xf2c060, shell: 0x9fe89f, size: 0.9 }, 2, 44, 36, "chase");
+  marioFoe("Bowser", { body: 0xf2a03d, skin: 0xf2c060, shell: 0x2e9e46, horns: 1, tail: 1, size: 1.9, glasses: 0xc0392b }, 0, 42, 140, "boss");
+  marioFoe("Bowser Jr.", { body: 0xf2c060, shell: 0x9fe89f, horns: 1, size: 0.9 }, 2, 44, 36, "chase");
   marioFoe("Kamek", { body: 0x3a5ad8, glasses: 1, cap: 0x3a5ad8, size: 0.95 }, -3, 44, 24, "rooted");
   const koop = [["Larry", 0x7fd0f2], ["Morton", 0x8a6a3f], ["Wendy", 0xff8ad6], ["Iggy", 0x9fe86b], ["Roy", 0xc06ad8], ["Lemmy", 0xf2d24c], ["Ludwig", 0x6a8af2]];
-  koop.forEach((k, i) => { const a = i / 7 * 6.28; marioFoe(k[0], { body: k[1], shell: k[1], size: 0.8 }, Math.round(Math.cos(a) * 10), 40 + Math.round(Math.sin(a) * 10), 26, "patrol"); });
+  koop.forEach((k, i) => { const a = i / 7 * 6.28; marioFoe(k[0], { body: k[1], shell: k[1], horns: 1, size: 0.8 }, Math.round(Math.cos(a) * 10), 40 + Math.round(Math.sin(a) * 10), 26, "patrol"); });
   // rivals, ghosts, minibosses
-  marioFoe("Wario", { body: 0xf2d24c, legs: 0x8a4fd0, cap: 0xf2d24c, mustache: 1, size: 1.1 }, 12, 20, 30, "chase");
-  marioFoe("Waluigi", { body: 0x8a4fd0, legs: 0x2b2b3f, cap: 0x8a4fd0, mustache: 1, size: 1.15 }, 14, 22, 30, "chase");
+  marioFoe("Wario", { body: 0xf2d24c, pants: 0x8a4fd0, overalls: 1, cap: 0xf2d24c, mustache: 1, nose: 1, size: 1.1 }, 12, 20, 30, "chase");
+  marioFoe("Waluigi", { body: 0x8a4fd0, pants: 0x2b2b3f, overalls: 1, cap: 0x8a4fd0, mustache: 1, nose: 1, size: 1.18 }, 14, 22, 30, "chase");
   const boy = surfaceY(18, 46); for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) { setRaw(18 + dx, boy + 3, 46 + dz, COBBLE); markDirty(18 + dx, 46 + dz); }   // dark cellar roof
-  marioFoe("King Boo", { body: 0xf2f2f2, ghost: 1, crown: 1, size: 1.3 }, 18, 46, 34, "ghost");
+  marioFoe("King Boo", { body: 0xf2f2f2, plan: "ghost", tongue: 1, crown: 1, size: 1.3 }, 18, 46, 34, "ghost");
+  marioFoe("Boo", { body: 0xf2f2f2, plan: "ghost", tongue: 1, size: 0.7 }, 16, 44, 12, "ghost");
+  marioFoe("Boo", { body: 0xf2f2f2, plan: "ghost", tongue: 1, size: 0.7 }, 20, 48, 12, "ghost");
   marioFoe("Petey Piranha", { body: 0x49c04a, snout: 0xff5d5d, size: 1.5 }, 26, 8, 40, "rooted");
-  marioFoe("King Bob-omb", { body: 0x2b2b33, crown: 1, fuse: 1, size: 1.4 }, -26, -20, 44, "chase");
+  marioFoe("King Bob-omb", { body: 0x2b2b33, plan: "round", belly: 0x3a3a44, crown: 1, fuse: 1, size: 1.4 }, -26, -20, 44, "chase");
   marioFoe("Nabbit", { body: 0x8a4fd0, mask: 1, size: 0.85 }, 8, -8, 16, "thief");
   for (let i = 0; i < 6; i++) { const a = Math.random() * 6.28, r = 10 + Math.random() * 14; marioFoe("Shy Guy", { body: 0xd8342c, mask: 1, size: 0.7 }, Math.round(Math.cos(a) * r), Math.round(Math.sin(a) * r), 10, "patrol"); }
+  for (let i = 0; i < 5; i++) { const a = Math.random() * 6.28, r = 8 + Math.random() * 16; marioFoe("Goomba", { body: 0x9a5f32, plan: "round", size: 0.65 }, Math.round(Math.cos(a) * r), Math.round(Math.sin(a) * r), 6, "patrol"); }
+  for (let i = 0; i < 4; i++) { const a = Math.random() * 6.28, r = 12 + Math.random() * 14; marioFoe("Koopa Troopa", { plan: "turtle", shell: 0x2e9e46, skin2: 0xf2d24c, size: 0.75 }, Math.round(Math.cos(a) * r), Math.round(Math.sin(a) * r), 8, "patrol"); }
   // coin trails: plaza ring, path to castle, DK corner
   for (let a = 0; a < 12; a++) { const ax = Math.cos(a / 12 * 6.28) * 4, az = Math.sin(a / 12 * 6.28) * 4; dropMarioCoin(ax + 0.5, surfaceY(ax, az) + 0.8, az + 0.5); }
   for (let z = 8; z <= 30; z += 2) dropMarioCoin(0.5, surfaceY(0, z) + 0.8, z + 0.5);
@@ -3529,9 +3618,11 @@ function updateMario(dt) {
   // NPC idle bob + Cappy orbit
   for (const n of marioNPCs) { n.t += dt; n.g.position.y = surfaceY(n.g.position.x, n.g.position.z) + Math.abs(Math.sin(n.t * 2)) * 0.06; const dx = player.pos.x - n.g.position.x, dz = player.pos.z - n.g.position.z; if (dx * dx + dz * dz < 64) n.g.rotation.y = Math.atan2(dx, dz); }
   if (cappy) { const m = marioNPCs[0]; if (m) { cappy.position.x = m.g.position.x + Math.cos(performance.now() * 0.0015) * 1.3; cappy.position.z = m.g.position.z + Math.sin(performance.now() * 0.0015) * 1.3; cappy.position.y = m.g.position.y + 1.5 + Math.sin(performance.now() * 0.003) * 0.15; cappy.rotation.y += dt * 3; } }
-  // coins spin + collect
+  // coins spin, drift toward Thomas when close, and collect
   for (let i = marioCoins.length - 1; i >= 0; i--) { const c = marioCoins[i]; c.t += dt; c.mesh.rotation.y += dt * 5; c.mesh.position.y += Math.sin(c.t * 4) * 0.003;
-    if (c.mesh.position.distanceTo(player.pos) < 1.3) { scene.remove(c.mesh); marioCoins.splice(i, 1); addCoins(1); marioQ.coinsGot++; SFX.coin(); } }
+    const cd = c.mesh.position.distanceTo(player.pos);
+    if (cd < 2.6 && cd > 1.1) { c.mesh.position.x += (player.pos.x - c.mesh.position.x) / cd * 5 * dt; c.mesh.position.z += (player.pos.z - c.mesh.position.z) / cd * 5 * dt; c.mesh.position.y += (player.pos.y + 1 - c.mesh.position.y) / cd * 4 * dt; }
+    if (cd < 1.3) { scene.remove(c.mesh); marioCoins.splice(i, 1); addCoins(1); marioQ.coinsGot++; SFX.coin(); } }
   // foes
   const star = powerActive("star");
   for (let i = marioFoes.length - 1; i >= 0; i--) {
@@ -3549,7 +3640,8 @@ function updateMario(dt) {
     }
     else { if (f.kind === "chase" && d < 10) { f.g.position.x += dx / d * 2.2 * dt; f.g.position.z += dz / d * 2.2 * dt; f.g.rotation.y = Math.atan2(dx, dz); }
       else { if (Math.random() < 0.012) f.dir += (Math.random() - .5) * 1.6; f.g.position.x += Math.sin(f.dir) * 1.1 * dt; f.g.position.z += Math.cos(f.dir) * 1.1 * dt; f.g.rotation.y = f.dir; }
-      fallToGround(f, dt); }
+      fallToGround(f, dt);
+      f.walkT = (f.walkT || 0) + dt * 8; const L = f.g.userData.legs; if (L) { const sw = Math.sin(f.walkT) * 0.5; L[0].rotation.x = sw; L[1].rotation.x = -sw; if (L[2]) L[2].rotation.x = -sw * 0.7; if (L[3]) L[3].rotation.x = sw * 0.7; } }
     // stomp: falling onto a foe squashes it; star power defeats on contact
     const foeTop = f.g.position.y + f.size * 1.2;
     if (d < 1.1 && player.vel.y < -3 && player.pos.y > foeTop - 0.4) {
@@ -3583,18 +3675,20 @@ function mmDot(W, span, cx, cz, ex, ez, color, r) {
 function drawMinimap() {
   const W = mmCv.width, span = mmBig ? 160 : 96, N = mmBig ? 64 : 52, step = span / N, px = W / N, cx = player.pos.x, cz = player.pos.z;
   mmx.clearRect(0, 0, W, W);
-  if (DIM === "realm") {                               // colourful Creature-valley map instead of a black screen
+  if (DIM === "realm") {                               // colourful Creature-valley map with relief shading
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const wx = cx + (i - N / 2) * step, wz = cz + (j - N / 2) * step, n = vn(wx * 0.06 + 5, wz * 0.06 + 5);
       let col;
       if (n < 0.33) col = [60, 150, 210]; else if (n < 0.4) col = [224, 210, 150]; else if (n > 0.72) col = [40, 120, 46]; else col = [96, 188, 98];
-      mmx.fillStyle = "rgb(" + col[0] + "," + col[1] + "," + col[2] + ")"; mmx.fillRect(i * px, j * px, px + 1.2, px + 1.2);
+      const sh = 0.72 + n * 0.55;                      // higher ground reads brighter, giving the map a 3D relief look
+      mmx.fillStyle = "rgb(" + Math.min(255, col[0] * sh | 0) + "," + Math.min(255, col[1] * sh | 0) + "," + Math.min(255, col[2] * sh | 0) + ")"; mmx.fillRect(i * px, j * px, px + 1.2, px + 1.2);
     }
-  } else if (DIM === "mario") {                        // bright kingdom map: green hills, brick speckles
+  } else if (DIM === "mario") {                        // bright kingdom map with relief shading
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const wx = cx + (i - N / 2) * step, wz = cz + (j - N / 2) * step, n = vn(wx * 0.05 + 80, wz * 0.05 + 80);
       let col; if (n < 0.3) col = [80, 170, 235]; else if (n > 0.78) col = [200, 120, 70]; else col = [110, 200, 96];
-      mmx.fillStyle = "rgb(" + col[0] + "," + col[1] + "," + col[2] + ")"; mmx.fillRect(i * px, j * px, px + 1.2, px + 1.2);
+      const sh = 0.72 + n * 0.55;
+      mmx.fillStyle = "rgb(" + Math.min(255, col[0] * sh | 0) + "," + Math.min(255, col[1] * sh | 0) + "," + Math.min(255, col[2] * sh | 0) + ")"; mmx.fillRect(i * px, j * px, px + 1.2, px + 1.2);
     }
     for (const n of marioNPCs) mmDot(W, span, cx, cz, n.g.position.x, n.g.position.z, "#ffe066", 3);
     for (const f of marioFoes) mmDot(W, span, cx, cz, f.g.position.x, f.g.position.z, f.kind === "boss" ? "#ff2a2a" : "#ff7a5a", f.kind === "boss" ? 5 : 3);
