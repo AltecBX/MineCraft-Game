@@ -2047,7 +2047,7 @@ function transitionTo(name) {
   SFX.portal(); const fade = document.getElementById("fade"); fade.style.opacity = "1";
   setTimeout(() => { loadDimension(name); fade.style.opacity = "0"; }, 520);
 }
-function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } if (typeof skyBoss !== "undefined" && skyBoss) { scene.remove(skyBoss.g); skyBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (merchant) { scene.remove(merchant.g); merchant = null; } if (typeof clearRealmCreatures === "function") clearRealmCreatures(); if (typeof clearRealmNPCs === "function") clearRealmNPCs(); if (typeof clearRealmBosses === "function") clearRealmBosses(); if (typeof clearCompanion === "function") clearCompanion(); if (typeof clearRealmPuzzle === "function") clearRealmPuzzle(); if (typeof clearMarioStage === "function") clearMarioStage(); battle = null; cmenuOpen = false; if (typeof hide === "function") { hide("battle"); hide("cmenu"); } if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
+function clearEntities() { for (const m of monsters) scene.remove(m.g); for (const c of cats) scene.remove(c.g); for (const m of mice) scene.remove(m.g); monsters = []; cats = []; mice = []; for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const p of playerShots) scene.remove(p.mesh); playerShots.length = 0; if (dragon) { scene.remove(dragon.g); dragon = null; } if (fireBoss) { scene.remove(fireBoss.g); fireBoss = null; } if (typeof skyBoss !== "undefined" && skyBoss) { scene.remove(skyBoss.g); skyBoss = null; } for (const c of crystals) scene.remove(c.g); crystals = []; if (merchant) { scene.remove(merchant.g); merchant = null; } if (typeof clearRealmCreatures === "function") clearRealmCreatures(); if (typeof clearRealmNPCs === "function") clearRealmNPCs(); if (typeof clearRealmBosses === "function") clearRealmBosses(); if (typeof clearCompanion === "function") clearCompanion(); if (typeof clearRealmPuzzle === "function") clearRealmPuzzle(); if (typeof clearMarioStage === "function") clearMarioStage(); if (typeof charMixers !== "undefined") charMixers.length = 0; battle = null; cmenuOpen = false; if (typeof hide === "function") { hide("battle"); hide("cmenu"); } if (typeof clearTelegraphs === "function") clearTelegraphs(); hideBoss(); }
 function loadDimension(name, fromSave) {
   DIM = name; clearWorld(); clearEntities(); clearPortalSigns(); clearTrail();
   if (name === "fire") achieve("firep", "Fire Portal Opened");
@@ -2891,9 +2891,18 @@ const SPECIES = {
   terraking: { name: "Groudon", type: "ground", role: "lava", col: 0xd1402a, size: 1.6, hp: 100, moves: ["lavaburst", "earthslam", "meteorpunch"], legend: true },
   tidequeen: { name: "Kyogre", type: "water", role: "water", col: 0x2a6ad0, size: 1.6, hp: 100, moves: ["watersurge", "aquashield", "iceslash"], legend: true },
   skywyrm: { name: "Rayquaza", type: "dragon", role: "sky", col: 0x2faf6a, size: 1.8, hp: 110, moves: ["dragonstrike", "windgust", "lavaburst"], legend: true },
-  allbeast: { name: "Arceus", type: "normal", role: "legendary", col: 0xeae0c0, size: 1.7, hp: 130, moves: ["dragonstrike", "psychicwave", "fairykiss", "earthslam"], legend: true }
+  allbeast: { name: "Arceus", type: "normal", role: "legendary", col: 0xeae0c0, size: 1.7, hp: 130, moves: ["dragonstrike", "psychicwave", "fairykiss", "earthslam"], legend: true },
+  bulba: { name: "Bulbasaur", type: "grass", role: "grass", col: 0x5fae8a, size: 0.8, hp: 44, moves: ["quickattack", "fairykiss", "earthslam"] },
+  squirt: { name: "Squirtle", type: "water", role: "water", col: 0x7fc8e8, size: 0.75, hp: 44, moves: ["watersurge", "quickattack", "aquashield"] },
+  charm: { name: "Charmander", type: "fire", role: "grass", col: 0xf2853c, size: 0.75, hp: 42, moves: ["fireblast", "quickattack", "darkbite"] },
+  meow: { name: "Meowth", type: "normal", role: "grass", col: 0xe8d8a8, size: 0.7, hp: 38, moves: ["quickattack", "darkbite", "fairykiss"] },
+  jiggly: { name: "Jigglypuff", type: "fairy", role: "grass", col: 0xffb6d0, size: 0.65, hp: 46, moves: ["fairykiss", "quickattack", "healinglight"] },
+  raichu: { name: "Raichu", type: "electric", role: "grass", col: 0xe89a3c, size: 0.85, hp: 50, moves: ["shock", "thunderdash", "quickattack"] },
+  psy: { name: "Psyduck", type: "water", role: "water", col: 0xf2d060, size: 0.75, hp: 42, moves: ["watersurge", "psychicwave", "quickattack"] },
+  clef: { name: "Clefairy", type: "fairy", role: "grass", col: 0xffc8d8, size: 0.68, hp: 44, moves: ["fairykiss", "healinglight", "quickattack"] },
+  piplup: { name: "Piplup", type: "water", role: "water", col: 0x6a9ad8, size: 0.68, hp: 42, moves: ["watersurge", "iceslash", "quickattack"] }
 };
-const WILD_POOL = ["voltmouse", "moonfox", "aurawolf", "museling", "frogblade", "landshark", "rocktitan"];
+const WILD_POOL = ["voltmouse", "moonfox", "aurawolf", "museling", "frogblade", "landshark", "rocktitan", "bulba", "charm", "meow", "jiggly", "raichu", "clef"];
 function makeCreature(id, level, opts) {
   opts = opts || {}; const sp = SPECIES[id]; const lvl = level || 5; const maxHp = Math.round(sp.hp + lvl * 4);
   const shiny = opts.shiny != null ? opts.shiny : (Math.random() < 0.03);
@@ -2919,7 +2928,7 @@ function buildCreatureModel(id, shiny) {
   const box = (w, h, d, c) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c));
   const belly = lighten(col, 0.18);
   // two body plans so species stop sharing one box: chubby upright sitters vs long four legged runners
-  const BIPED = { voltmouse: 1, aurawolf: 1, landshark: 1, rocktitan: 1, snoozer: 1, psyclone: 1, mewling: 1, terraking: 1, museling: 1, frogblade: 1, dragonox: 1, emberwing: 1 };
+  const BIPED = { voltmouse: 1, aurawolf: 1, landshark: 1, rocktitan: 1, snoozer: 1, psyclone: 1, mewling: 1, terraking: 1, museling: 1, frogblade: 1, dragonox: 1, emberwing: 1, squirt: 1, charm: 1, meow: 1, jiggly: 1, raichu: 1, psy: 1, clef: 1, piplup: 1 };
   const biped = !!BIPED[id] && !ghost;
   if (biped) {
     const big = id === "snoozer" ? 1.3 : 1;            // the sleepy giant is mostly belly
@@ -2978,9 +2987,15 @@ function buildCreatureModel(id, shiny) {
   else if (id === "frogblade") { const sc = box(0.5 * s, 0.12 * s, 0.5 * s, lighten(col, 0.2)); sc.position.set(0, 0.66 * s, 0.5 * s); g.add(sc); }   // pale scarf
   else if (id === "aurawolf") { for (const sx of [-1, 1]) { const sp2 = box(0.06 * s, 0.12 * s, 0.06 * s, 0x18324f); sp2.position.set(0.1 * s * sx, 0.55 * s, 0.4 * s); g.add(sp2); } }   // chest spikes
   else if (id === "museling") { const gown = box(0.7 * s, 0.4 * s, 0.5 * s, col); gown.position.set(0, 0.22 * s, 0); g.add(gown); const hair = box(0.42 * s, 0.3 * s, 0.1 * s, 0x49b06a); hair.position.set(0, 1.0 * s, 0.36 * s); g.add(hair); }   // flowing gown + green hair
+  else if (id === "bulba") { const bulb = box(0.36 * s, 0.3 * s, 0.36 * s, 0x3f8f5a); bulb.position.set(0, 0.86 * s, -0.15 * s); g.add(bulb); const tip = box(0.14 * s, 0.14 * s, 0.14 * s, 0x6fcf8a); tip.position.set(0, 1.06 * s, -0.15 * s); g.add(tip); }   // plant bulb on the back
+  else if (id === "squirt") { const sh = box(0.5 * s, 0.5 * s, 0.2 * s, 0x9a6f46); sh.position.set(0, 0.5 * s, 0.06 * s); g.add(sh); }   // rounded back shell
+  else if (id === "meow") { const ch = box(0.14 * s, 0.14 * s, 0.05, 0xf2c94c); ch.position.set(0, 1.18 * s, 0.72 * s); g.add(ch); }   // gold forehead charm
+  else if (id === "psy" || id === "piplup") { const bill = box(0.24 * s, 0.09 * s, 0.2 * s, id === "psy" ? 0xe8c060 : 0xf2b03c); bill.position.set(0, 0.88 * s, 0.8 * s); g.add(bill); }   // wide duck / penguin bill
   if (sp.legend) { const aura = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(255,245,180,0.8)", "rgba(255,200,80,0)"), depthWrite: false, transparent: true, fog: false })); aura.scale.set(3.2 * s, 3.2 * s, 1); aura.position.y = 0.8 * s; g.add(aura); }
   else if (shiny) { const sg = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(255,255,255,0.9)", "rgba(180,220,255,0)"), depthWrite: false, transparent: true, fog: false })); sg.scale.set(2 * s, 2 * s, 1); sg.position.y = 0.8 * s; g.add(sg); }
-  return g;
+  const wrap = new THREE.Group(); wrap.add(g); wrap.userData = g.userData;   // licensed model (if supplied) replaces the placeholder inside this wrapper
+  applyCharModel(wrap, g, sp.name, 1.5 * s);
+  return wrap;
 }
 // team + collection
 let cteam = [], cstorage = [], cdex = new Set(), cbadges = new Set();
@@ -3412,7 +3427,8 @@ function realmInteract() {   // Use near a realm NPC, boss, or the Snoozer. retu
 function goFishing() {
   if (battle || cmenuOpen) return;
   toast("You cast a line into the water...");
-  const id = Math.random() < 0.15 ? "tidequeen" : "frogblade";   // mostly Greninja, a rare big catch
+  const pool = ["frogblade", "squirt", "psy", "piplup"];
+  const id = Math.random() < 0.12 ? "tidequeen" : pool[Math.floor(Math.random() * pool.length)];   // water dwellers, a rare giant catch
   openEncounter(makeCreature(id, 4 + Math.floor(Math.random() * 6), { shiny: Math.random() < 0.1 }), null);
 }
 function teachMove() {
@@ -3424,7 +3440,30 @@ function teachMove() {
   showBanner(c.name + " learned " + MOVES[mv].name + "!"); SFX.levelUp(); toast("Move Teacher taught " + c.name + " a new move.");
 }
 
-// ---------- MUSHROOM KINGDOM STAGE (private prototype: guest cast as voxel homage figures) ----------
+// ---------- CHARACTER MODEL PIPELINE ----------
+// The game ships with original placeholder figures only. If the project owner holds proper
+// licenses for character models, dropping them into assets/models/ as <name>.glb (lowercase
+// letters and digits only: mario.glb, pikachu.glb, kingbobomb.glb, bowserjr.glb) makes the
+// game load them automatically: auto scaled to the character's height, ground shadow added,
+// first animation clip played if present, and the placeholder figure hidden.
+const MODEL_DIR = "assets/models/";
+let gltfLoader = null; const modelMissing = {}; const charMixers = [];
+function nameToFile(name) { return name.toLowerCase().replace(/[^a-z0-9]/g, "") + ".glb"; }
+function getGLTFLoader() { if (!gltfLoader && typeof THREE.GLTFLoader === "function") { try { gltfLoader = new THREE.GLTFLoader(); } catch (e) { gltfLoader = null; } } return gltfLoader; }
+function applyCharModel(wrap, fb, name, targetH) {
+  const loader = getGLTFLoader(); if (!loader || typeof loader.load !== "function") return;
+  const file = nameToFile(name); if (modelMissing[file]) return;
+  loader.load(MODEL_DIR + file, (gltf) => {
+    try {
+      const model = gltf.scene || (gltf.scenes && gltf.scenes[0]); if (!model) return;
+      const bb = new THREE.Box3().setFromObject(model), sz = new THREE.Vector3(); bb.getSize(sz);
+      const sc = (targetH || 1.7) / (sz.y || 1); model.scale.setScalar(sc); model.position.y = -bb.min.y * sc;
+      fb.visible = false; wrap.add(model); blobShadow(wrap, 0.3 * (targetH || 1.7));
+      if (gltf.animations && gltf.animations.length && typeof THREE.AnimationMixer === "function") { const mx = new THREE.AnimationMixer(model); mx.clipAction(gltf.animations[0]).play(); charMixers.push(mx); }
+    } catch (e) {}
+  }, undefined, () => { modelMissing[file] = 1; });   // missing file: keep the placeholder, never retry-spam
+}
+// ---------- MUSHROOM KINGDOM STAGE (placeholder figures until licensed models are supplied) ----------
 let marioNPCs = [], marioFoes = [], marioCoins = [], cappy = null, marioQ = { coinsGot: 0, toad: false, stomps: 0, dk: false, bowser: false, hidden: false };
 function clearMarioStage() { for (const n of marioNPCs) scene.remove(n.g); for (const f of marioFoes) scene.remove(f.g); for (const c of marioCoins) scene.remove(c.mesh); marioNPCs = []; marioFoes = []; marioCoins = []; if (cappy) { scene.remove(cappy); cappy = null; } }
 // parameterized voxel toon figure: every guest character is built from the same original kit of boxes
@@ -3518,13 +3557,17 @@ function buildToon(d) {
 }
 function toonTalk(pitch) { blip(pitch, 0.09, "square", 0.1, pitch * 1.3); setTimeout(() => blip(pitch * 1.25, 0.11, "square", 0.09, pitch * 1.5), 90); }
 function marioNPC(name, def, x, z, line, pitch, quest) {
-  const g = buildToon(def); g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g);
+  const fb = buildToon(def), g = new THREE.Group(); g.add(fb); g.userData = fb.userData;
+  g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g);
   const tag = makeTag(name); tag.position.y = (def.size || 1) * 1.7 + 0.3; g.add(tag);
+  applyCharModel(g, fb, name, (def.size || 1) * 1.7);
   marioNPCs.push({ name, g, line, pitch: pitch || 440, quest, t: Math.random() * 6 });
 }
 function marioFoe(name, def, x, z, hp, kind) {
-  const g = buildToon(def); g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g);
+  const fb = buildToon(def), g = new THREE.Group(); g.add(fb); g.userData = fb.userData;
+  g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g);
   const tag = makeTag(name); tag.position.y = (def.size || 1) * 1.7 + 0.3; g.add(tag);
+  applyCharModel(g, fb, name, (def.size || 1) * 1.7);
   marioFoes.push({ name, g, hp, max: hp, kind: kind || "patrol", dir: Math.random() * 6.28, t: Math.random() * 6, touch: 0, shoot: 1.5 + Math.random() * 2, size: def.size || 1 });
 }
 function dropMarioCoin(x, y, z) {
@@ -3559,7 +3602,8 @@ function buildMarioStage() {
   marioNPC("Foreman Spike", { body: 0x4a5a9a, legs: 0x35406a, cap: 0x8a4fd0, mustache: 1 }, 30, -16, "These pipes will not fix themselves. Scram, or grab a wrench.", 340);
   marioNPC("Fawful", { body: 0x2e9e46, glasses: 0xff4d4d, size: 0.8 }, 32, -14, "My plan bubbles like a soup of winning! You cannot taste it!", 1050);
   // Cappy floats near Mario
-  cappy = buildToon({ body: 0xf2f2f2, ghost: 1, size: 0.45 }); const ct = makeTag("Cappy"); ct.position.y = 1.2; cappy.add(ct);
+  const cfb = buildToon({ body: 0xf2f2f2, ghost: 1, size: 0.45 }); cappy = new THREE.Group(); cappy.add(cfb);
+  const ct = makeTag("Cappy"); ct.position.y = 1.2; cappy.add(ct); applyCharModel(cappy, cfb, "Cappy", 0.8);
   cappy.position.set(2.2, surfaceY(1, -3) + 1.6, -2.5); scene.add(cappy);
   // villains: castle at (0,40) with lava moat + Bowser and court
   const cy = surfaceY(0, 40);
@@ -3800,6 +3844,7 @@ function loop() {
     updatePlayerShots(dt);
     updateDragon(dt);
     updateFx(dt);
+    if (charMixers.length) for (const mX of charMixers) mX.update(dt);   // play animation clips on supplied character models
     updateTelegraphs(dt);
     updateViewItem(dt);
     updateDayNight(dt);
@@ -3878,4 +3923,6 @@ loop();
    - End: floating islands, end crystal beams healing dragon, full 5-phase dragon (fire breath, tail swipe, ground slam, summon, rage).
    - Audio: background music; Settings persistence via localStorage when hosted.
 =========================================================================== */
+// tiny dev hook so automated visual tests can start the game and jump between stages
+if (typeof window !== "undefined") window.DEV = { start: startGame, go: loadDimension };
 })();

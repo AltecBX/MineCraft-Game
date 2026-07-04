@@ -25,7 +25,7 @@
   // --- fishing ---
   cmenuOpen = false; battle = null;
   goFishing();
-  console.log("FISH encounter=" + !!cmenu + " water=" + (cmenu && ["frogblade", "tidequeen"].indexOf(cmenu.wild.sp) > -1));
+  console.log("FISH encounter=" + !!cmenu + " water=" + (cmenu && ["frogblade", "tidequeen", "squirt", "psy", "piplup"].indexOf(cmenu.wild.sp) > -1));
   if (typeof closeCMenu === "function") closeCMenu();
 
   // --- night pool includes night-only creatures ---
