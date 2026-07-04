@@ -696,6 +696,7 @@ function applySkin(id) {
 function loadSkin() { try { const id = localStorage.getItem("thomas_voxel_skin"); if (id) applySkin(id); } catch (e) {} }
 
 function startDodge() {
+  if (DIM === "mario" && !player.onGround && !player._pound) { player._pound = true; player.vel.y = -26; SFX.slam(); return; }   // ground pound: slam straight down
   if (dodge.cd > 0 || player.stam < 18 || !player.onGround) return;
   const f = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw)), r = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
   const w = new THREE.Vector3();
@@ -3083,10 +3084,25 @@ function updateRealm(dt) {
     const dpx = player.pos.x - c.g.position.x, dpz = player.pos.z - c.g.position.z, dp = Math.hypot(dpx, dpz) || 1;
     if (c.fly) { c.t += dt; c.g.position.x += Math.cos(c.dir) * 1.4 * dt; c.g.position.z += Math.sin(c.dir) * 1.4 * dt; if (Math.random() < 0.012) c.dir += (Math.random() - .5); c.g.position.y = surfaceY(c.g.position.x, c.g.position.z) + 6 + Math.sin(c.t) * 0.6; if (c.g.userData.wings) { const f = Math.sin(c.t * 8) * 0.5; c.g.userData.wings[0].rotation.z = -f; c.g.userData.wings[1].rotation.z = f; } c.g.rotation.y = c.dir + Math.PI / 2; }
     else {
-      if (dp < 6 && dp > 1.4) { c.dir = Math.atan2(c.g.position.x - player.pos.x, c.g.position.z - player.pos.z); c.g.position.x += Math.sin(c.dir) * 2.2 * dt; c.g.position.z += Math.cos(c.dir) * 2.2 * dt; }   // shy: drift away
-      else { if (Math.random() < 0.012) c.dir += (Math.random() - .5) * 1.5; c.g.position.x += Math.sin(c.dir) * 1.1 * dt; c.g.position.z += Math.cos(c.dir) * 1.1 * dt; }
-      c.g.rotation.y = c.dir; fallToGround(c, dt);
-      c.walkT += dt * 8; const sw = Math.sin(c.walkT) * 0.5, L = c.g.userData.legs; if (L) { L[0].rotation.x = sw; L[1].rotation.x = -sw; L[2].rotation.x = -sw; L[3].rotation.x = sw; }
+      // living behavior: creatures wander, pause, look around, nap, and hop instead of endlessly pacing
+      c.behT = (c.behT || 0) - dt;
+      if (c.behT <= 0) { const opts = ["wander", "wander", "idle", "look", "sleep", "hop"]; c.beh = opts[Math.floor(Math.random() * opts.length)]; c.behT = 2.5 + Math.random() * 4.5; }
+      let moving = false;
+      if (dp < 6 && dp > 1.4) {                        // shy: drift away, waking if napping
+        if (c.beh === "sleep") { c.beh = "wander"; creatureCry(c.sp.type); }
+        c.dir = Math.atan2(c.g.position.x - player.pos.x, c.g.position.z - player.pos.z);
+        c.g.position.x += Math.sin(c.dir) * 2.2 * dt; c.g.position.z += Math.cos(c.dir) * 2.2 * dt; c.g.rotation.y = c.dir; moving = true;
+      } else if (c.beh === "wander") { if (Math.random() < 0.012) c.dir += (Math.random() - .5) * 1.5; c.g.position.x += Math.sin(c.dir) * 1.1 * dt; c.g.position.z += Math.cos(c.dir) * 1.1 * dt; c.g.rotation.y = c.dir; moving = true; }
+      else if (c.beh === "look") { c.g.rotation.y += dt * 1.4; }
+      else if (c.beh === "hop") { if (!c._vy) c._vy = 3.6; c.g.rotation.y = c.dir; }
+      else if (c.beh === "sleep") { c.g.rotation.z += ((0.4) - c.g.rotation.z) * Math.min(1, dt * 4); if (Math.random() < 0.02) hitSpark(new THREE.Vector3(c.g.position.x, c.g.position.y + 1.2 * (c.sp.size || 1), c.g.position.z), 0xdfe8ff); }
+      if (c.beh !== "sleep") c.g.rotation.z *= 0.85;
+      // first meeting: a happy greeting hop toward Thomas
+      if (!c.greeted && dp < 3.5) { c.greeted = true; c._vy = 4.2; creatureCry(c.sp.type); }
+      fallToGround(c, dt);
+      const L = c.g.userData.legs;
+      if (moving) { c.walkT += dt * 8; const sw = Math.sin(c.walkT) * 0.5; if (L) { L[0].rotation.x = sw; L[1].rotation.x = -sw; L[2].rotation.x = -sw; L[3].rotation.x = sw; } }
+      else if (L) for (const l of L) l.rotation.x *= 0.85;
       if (!cmenuOpen && !battle && encounterCd <= 0 && dp < 2.1) openEncounter(makeCreature(c.id, c.level, { shiny: c.shiny }), c);
     }
     c.soundCd -= dt; if (c.soundCd <= 0) { c.soundCd = 6 + Math.random() * 8; if (dp < 14) creatureCry(c.sp.type); }
@@ -3561,14 +3577,14 @@ function marioNPC(name, def, x, z, line, pitch, quest) {
   g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g);
   const tag = makeTag(name); tag.position.y = (def.size || 1) * 1.7 + 0.3; g.add(tag);
   applyCharModel(g, fb, name, (def.size || 1) * 1.7);
-  marioNPCs.push({ name, g, line, pitch: pitch || 440, quest, t: Math.random() * 6 });
+  marioNPCs.push({ name, g, tag, line, pitch: pitch || 440, quest, t: Math.random() * 6 });
 }
 function marioFoe(name, def, x, z, hp, kind) {
   const fb = buildToon(def), g = new THREE.Group(); g.add(fb); g.userData = fb.userData;
   g.position.set(x + 0.5, surfaceY(x, z), z + 0.5); scene.add(g);
   const tag = makeTag(name); tag.position.y = (def.size || 1) * 1.7 + 0.3; g.add(tag);
   applyCharModel(g, fb, name, (def.size || 1) * 1.7);
-  marioFoes.push({ name, g, hp, max: hp, kind: kind || "patrol", dir: Math.random() * 6.28, t: Math.random() * 6, touch: 0, shoot: 1.5 + Math.random() * 2, size: def.size || 1 });
+  marioFoes.push({ name, g, tag, hp, max: hp, kind: kind || "patrol", dir: Math.random() * 6.28, t: Math.random() * 6, touch: 0, shoot: 1.5 + Math.random() * 2, size: def.size || 1 });
 }
 function dropMarioCoin(x, y, z) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.07), new THREE.MeshBasicMaterial({ color: 0xffd83d }));
@@ -3659,8 +3675,13 @@ function qblockPop(x, y, z) {
 }
 function updateMario(dt) {
   if (DIM !== "mario") return;
-  // NPC idle bob + Cappy orbit
-  for (const n of marioNPCs) { n.t += dt; n.g.position.y = surfaceY(n.g.position.x, n.g.position.z) + Math.abs(Math.sin(n.t * 2)) * 0.06; const dx = player.pos.x - n.g.position.x, dz = player.pos.z - n.g.position.z; if (dx * dx + dz * dz < 64) n.g.rotation.y = Math.atan2(dx, dz); }
+  // ground pound landing: shockwave that flattens nearby foes
+  if (player._pound && player.onGround) {
+    player._pound = false; addShake(0.35); SFX.boom(); spawnTelegraph(player.pos.x, player.pos.z, 3, 0.35, 0xffd27a, true);
+    for (const f of marioFoes) { if (f.kind === "boss") continue; const d2 = Math.hypot(f.g.position.x - player.pos.x, f.g.position.z - player.pos.z); if (d2 < 3.2) { f.hp -= 14; hitSpark(f.g.position, 0xffd83d); } }
+  }
+  // NPC idle bob + Cappy orbit; name tags show only when Thomas is close enough to interact
+  for (const n of marioNPCs) { n.t += dt; n.g.position.y = surfaceY(n.g.position.x, n.g.position.z) + Math.abs(Math.sin(n.t * 2)) * 0.06; const dx = player.pos.x - n.g.position.x, dz = player.pos.z - n.g.position.z; const d2 = dx * dx + dz * dz; if (d2 < 64) n.g.rotation.y = Math.atan2(dx, dz); if (n.tag) n.tag.visible = d2 < 90; }
   if (cappy) { const m = marioNPCs[0]; if (m) { cappy.position.x = m.g.position.x + Math.cos(performance.now() * 0.0015) * 1.3; cappy.position.z = m.g.position.z + Math.sin(performance.now() * 0.0015) * 1.3; cappy.position.y = m.g.position.y + 1.5 + Math.sin(performance.now() * 0.003) * 0.15; cappy.rotation.y += dt * 3; } }
   // coins spin, drift toward Thomas when close, and collect
   for (let i = marioCoins.length - 1; i >= 0; i--) { const c = marioCoins[i]; c.t += dt; c.mesh.rotation.y += dt * 5; c.mesh.position.y += Math.sin(c.t * 4) * 0.003;
@@ -3672,6 +3693,7 @@ function updateMario(dt) {
   for (let i = marioFoes.length - 1; i >= 0; i--) {
     const f = marioFoes[i]; f.t += dt; f.touch = Math.max(0, f.touch - dt);
     const dx = player.pos.x - f.g.position.x, dz = player.pos.z - f.g.position.z, d = Math.hypot(dx, dz) || 1;
+    if (f.tag) f.tag.visible = d < 10;                 // names only when close, not floating across the whole map
     if (f.kind === "ghost") { f.g.position.y = surfaceY(f.g.position.x, f.g.position.z) + 0.6 + Math.sin(f.t * 2) * 0.3; if (d < 9) { f.g.position.x += dx / d * 1.2 * dt; f.g.position.z += dz / d * 1.2 * dt; f.g.rotation.y = Math.atan2(dx, dz); } }
     else if (f.kind === "thief") { if (d < 9) { f.dir = Math.atan2(f.g.position.x - player.pos.x, f.g.position.z - player.pos.z); f.g.position.x += Math.sin(f.dir) * 4.2 * dt; f.g.position.z += Math.cos(f.dir) * 4.2 * dt; f.g.rotation.y = f.dir; } else if (Math.random() < 0.01) f.dir += (Math.random() - .5) * 2; fallToGround(f, dt);
       if (d < 1.2 && coins > 0 && f.touch <= 0) { const steal = Math.min(coins, 4); coins -= steal; updateCoinUI(); f.steal = (f.steal || 0) + steal; f.touch = 2; toast("Nabbit swiped " + steal + " coins! Catch him!"); SFX.squeak(); } }
