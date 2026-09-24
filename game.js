@@ -44,7 +44,7 @@ const ATL = GL.buildAtlas();
 const atlasTex = new THREE.DataTexture(ATL.data, ATL.size, ATL.size, THREE.RGBAFormat);
 atlasTex.magFilter = THREE.NearestFilter; atlasTex.minFilter = THREE.LinearMipmapLinearFilter; atlasTex.generateMipmaps = true;
 { const ma = renderer.capabilities && renderer.capabilities.getMaxAnisotropy ? +renderer.capabilities.getMaxAnisotropy() : 1; atlasTex.anisotropy = ma > 1 ? Math.min(8, ma) : 1; }
-atlasTex.needsUpdate = true;
+atlasTex.encoding = THREE.sRGBEncoding; atlasTex.needsUpdate = true;
 // uniforms shared by reference between the terrain, water and sky materials, written once per frame by updateEnv
 const U = {
   uTime: { value: 0 }, uNoise: { value: noiseTex },
@@ -116,6 +116,7 @@ function applyGfx() {
   if (skyMat.defines.CLOUD_STEPS !== steps) { skyMat.defines.CLOUD_STEPS = steps; skyMat.needsUpdate = true; }
   fancyLeaves = settings.gfx !== "low";
   U.uWave.value = settings.gfx === "low" ? 0 : 1;
+  setPost(settings.gfx !== "low");
   remeshAll();
 }
 // keep the shadow map centred on Thomas, snapped to whole shadow texels so edges do not shimmer while walking
@@ -730,7 +731,7 @@ function cubeFace(g, wx, y, wz, n, f, tl, rot, mir, tr, tg, tb, fl) {
     const lum = aoL * 16 + sk;
     if (k === 0) b0 = lum; else if (k === 1) b1 = lum; else if (k === 2) b2 = lum; else b3 = lum;
   }
-  quadIdx(g, base, b0 + b2 < b1 + b3);
+  quadIdx(g, base, b0 + b2 > b1 + b3);                                             // split through the darker diagonal so AO corners fade smoothly
 }
 function plant(g, wx, y, wz, ri, tl, hgt, ox, oz, tr, tg, tb) {
   g.room(8); if (g.ni + 12 > g.idx.length) g.alloc(g.cap * 2);
@@ -739,8 +740,8 @@ function plant(g, wx, y, wz, ri, tl, hgt, ox, oz, tr, tg, tb) {
   const cx = wx + 0.5 + ox, cz = wz + 0.5 + oz, e = 0.45, top = y + hgt;
   for (let q = 0; q < 2; q++) {
     const base = g.n, sx = q ? -e : e;
-    vtx(g, cx - sx, y, cz - e, tl.u0, tl.v0, tR, tG, tB, 8, 190, sk, bl, 6);
-    vtx(g, cx + sx, y, cz + e, tl.u0 + s, tl.v0, tR, tG, tB, 8, 190, sk, bl, 6);
+    vtx(g, cx - sx, y, cz - e, tl.u0, tl.v0, tR, tG, tB, 8, 215, sk, bl, 6);
+    vtx(g, cx + sx, y, cz + e, tl.u0 + s, tl.v0, tR, tG, tB, 8, 215, sk, bl, 6);
     vtx(g, cx + sx, top, cz + e, tl.u0 + s, tl.v0 + s * Math.min(1, hgt + 0.001), tR, tG, tB, 8 | 32, 255, sk, bl, 6);
     vtx(g, cx - sx, top, cz - e, tl.u0, tl.v0 + s * Math.min(1, hgt + 0.001), tR, tG, tB, 8 | 32, 255, sk, bl, 6);
     quadIdx(g, base, false);
@@ -751,11 +752,15 @@ function waterFace(wx, y, wz, ri, f) {
   const g = gWat; g.room(4); if (g.ni + 6 > g.idx.length) g.alloc(g.cap * 2);
   const F = FACES[f], base = g.n, n = ri + NOFF[f], sk = rS[n] * 17, bl = rL[n] * 17;
   const lowTop = rB[ri + RA] !== WATER ? 0.875 : 1;
+  // corner water depths (0 at the shore) go to every vertex so the shader interpolates them bilinearly, not per triangle
+  const D = [160, 160, 160, 160];
+  if (f === 2) for (let k = 0; k < 4; k++) {
+    const c = F.c[k], o = AOT[8 + k];
+    D[c[0] + c[2] * 2] = (waterDepth(ri) + waterDepth(ri + o[0]) + waterDepth(ri + o[1]) + waterDepth(ri + o[2])) / 32 * 255;
+  }
   for (let k = 0; k < 4; k++) {
     const c = F.c[k];
-    let dep = 160;                                                                  // x channel carries water depth: shallows turn clear, deep water dark
-    if (f === 2) { const o = AOT[8 + k]; dep = (waterDepth(ri) + waterDepth(ri + o[0]) + waterDepth(ri + o[1]) + waterDepth(ri + o[2])) / 32 * 255; }
-    vtx(g, wx + c[0], y + (c[1] ? lowTop : 0), wz + c[2], 0, 0, 170, 170, 170, 0, dep, sk, bl, f);
+    vtx(g, wx + c[0], y + (c[1] ? lowTop : 0), wz + c[2], c[0], c[2], D[0], D[1], D[2], D[3], 255, sk, bl, f);
   }
   quadIdx(g, base, false);
 }
@@ -829,14 +834,22 @@ function loadChunks() {
 function clearWorld() {
   for (const c of chunks.values()) disposeChunk(c);
   chunks.clear(); dirty.clear(); dirtyLow.clear(); generated.clear(); W.clear(); CSTORE.clear(); portalCells.length = 0; portalDest = {}; if (portalMesh) { scene.remove(portalMesh); portalMesh = null; }
-  torchCells.length = 0; if (torchMesh) { scene.remove(torchMesh); torchMesh = null; }
+  torchCells.length = 0; for (const m of [torchMesh, torchHead, torchGlow]) if (m) scene.remove(m); torchMesh = torchHead = torchGlow = null;
 }
 
 // portal blocks rendered separately (animated)
 const portalCells = [];
 let portalDest = {};                 // "x,y,z" -> destination dimension for that portal block
 let portalMesh = null;
-const portalMat = new THREE.MeshLambertMaterial({ color: 0x9b30ff, emissive: 0x7a16d8, emissiveIntensity: 1.1, transparent: true, opacity: 0.82 });
+const portalMat = new THREE.ShaderMaterial({                    // swirling energy sheet, continuous across the whole portal
+  uniforms: { uTime: U.uTime, uNoise: U.uNoise }, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  vertexShader: "varying vec3 vW; varying vec3 vN; void main(){ vec4 w = modelMatrix * instanceMatrix * vec4(position, 1.0); vW = w.xyz; vN = normalize(mat3(instanceMatrix) * normal); gl_Position = projectionMatrix * viewMatrix * w; }",
+  fragmentShader: "uniform float uTime; uniform sampler2D uNoise; varying vec3 vW; varying vec3 vN;\n" +
+    "void main(){ vec2 p = (abs(vN.x) > 0.5 ? vW.zy : abs(vN.z) > 0.5 ? vW.xy : vW.xz) * 0.22;\n" +
+    " float a = texture2D(uNoise, p + vec2(uTime * 0.03, -uTime * 0.05)).r; float b = texture2D(uNoise, p * 2.2 + vec2(a * 0.6, uTime * 0.07)).g;\n" +
+    " float swirl = smoothstep(0.35, 0.9, b); vec3 c = mix(vec3(0.16, 0.02, 0.42), vec3(0.72, 0.24, 1.0), swirl) + vec3(0.9, 0.7, 1.0) * pow(swirl, 6.0) * 1.5;\n" +
+    " gl_FragColor = vec4(c * 1.6, 0.72 + swirl * 0.25);\n#include <encodings_fragment>\n}"
+});
 const portalGeo = new THREE.BoxGeometry(1, 1, 1);
 function rebuildPortalCells() {
   portalCells.length = 0;
@@ -857,17 +870,30 @@ function updatePortalMesh(force) {
 // torch blocks rendered separately (glowing) + suppress night spawns nearby
 const torchCells = [];
 let torchMesh = null;
-const torchMat = new THREE.MeshLambertMaterial({ color: 0xffcf6b, emissive: 0xff9a2e, emissiveIntensity: 1.2 });
-const torchGeo = new THREE.BoxGeometry(0.2, 0.6, 0.2);
+const torchMat = new THREE.MeshLambertMaterial({ color: 0x6b4a2a });                         // wooden stick
+const torchHeadMat = new THREE.MeshBasicMaterial({ color: 0xffd27a });                         // burning head, unlit and bright
+const torchGeo = new THREE.BoxGeometry(0.11, 0.52, 0.11), torchHeadGeo = new THREE.BoxGeometry(0.15, 0.15, 0.15);
+const torchGlowMat = new THREE.SpriteMaterial({ map: glowTex("rgba(255,190,100,0.55)", "rgba(255,110,30,0)"), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.6 });
+let torchHead = null, torchGlow = null;
 function rebuildTorchCells() {
   torchCells.length = 0;
   for (const [k, id] of W) if (id === TORCH) { const p = k.split(","); torchCells.push([+p[0], +p[1], +p[2]]); }
-  if (torchMesh) scene.remove(torchMesh);
-  if (!torchCells.length) { torchMesh = null; return; }
+  for (const m of [torchMesh, torchHead, torchGlow]) if (m) scene.remove(m);
+  torchMesh = torchHead = torchGlow = null;
+  if (!torchCells.length) return;
   torchMesh = new THREE.InstancedMesh(torchGeo, torchMat, torchCells.length);
+  torchHead = new THREE.InstancedMesh(torchHeadGeo, torchHeadMat, torchCells.length);
   const d = new THREE.Object3D();
-  for (let i = 0; i < torchCells.length; i++) { const c = torchCells[i]; d.position.set(c[0] + 0.5, c[1] + 0.3, c[2] + 0.5); d.updateMatrix(); torchMesh.setMatrixAt(i, d.matrix); }
-  torchMesh.instanceMatrix.needsUpdate = true; scene.add(torchMesh);
+  torchGlow = new THREE.Group(); torchGlow.userData.noShadowTag = 1;
+  for (let i = 0; i < torchCells.length; i++) {
+    const c = torchCells[i];
+    d.position.set(c[0] + 0.5, c[1] + 0.26, c[2] + 0.5); d.updateMatrix(); torchMesh.setMatrixAt(i, d.matrix);
+    d.position.set(c[0] + 0.5, c[1] + 0.58, c[2] + 0.5); d.updateMatrix(); torchHead.setMatrixAt(i, d.matrix);
+    const sp = new THREE.Sprite(torchGlowMat); sp.position.set(c[0] + 0.5, c[1] + 0.62, c[2] + 0.5); sp.scale.set(1.1, 1.1, 1); torchGlow.add(sp);
+  }
+  torchMesh.instanceMatrix.needsUpdate = true; torchHead.instanceMatrix.needsUpdate = true;
+  torchHead.userData.noShadowTag = 1;
+  scene.add(torchMesh); scene.add(torchHead); scene.add(torchGlow);
 }
 function nearTorch(x, z, rad) { for (const c of torchCells) { const dx = c[0] - x, dz = c[2] - z; if (dx * dx + dz * dz < rad * rad) return true; } return false; }
 // base defense: spike traps damage nearby monsters, alarm bells warn of raids
@@ -2089,6 +2115,43 @@ function tagMonsters() { for (const m of monsters) m.g.traverse(o => { o.userDat
 
 // ---------- VIEWMODEL ----------
 let viewItem = null, swing = 0;
+// ---------- textured held items ----------
+// a cube wearing the block's own atlas tiles (top, bottom, sides), lit like any Lambert object
+function blockCube(id, size) {
+  const geo = new THREE.BoxGeometry(size, size, size), uv = geo.attributes.uv, tl = TIL[id] || [ATILE.snow, ATILE.snow, ATILE.snow];
+  if (uv && uv.array) for (let f = 0; f < 6; f++) {
+    const t = f === 2 ? tl[0] : f === 3 ? tl[2] : tl[1];
+    for (let k = 0; k < 4; k++) { const i = (f * 4 + k) * 2; uv.array[i] = t.u0 + uv.array[i] * t.s; uv.array[i + 1] = t.v0 + uv.array[i + 1] * t.s; }
+    uv.needsUpdate = true;
+  }
+  const bc = BCOL[id], col = bc ? new THREE.Color(bc[1][0], bc[1][1], bc[1][2]) : new THREE.Color(0xffffff);
+  const mat = new THREE.MeshLambertMaterial({ map: atlasTex, color: col, alphaTest: KIND[id] === 2 || KIND[id] === 4 ? 0.5 : 0, transparent: id === WATER, opacity: id === WATER ? 0.8 : 1 });
+  if (id === WATER) mat.color.setRGB(0.25, 0.5, 0.8);
+  if (EMIT[id]) { mat.emissive = new THREE.Color(0xffffff); mat.emissiveMap = atlasTex; mat.emissiveIntensity = id === LAVA ? 0.9 : 0.35; }
+  return new THREE.Mesh(geo, mat);
+}
+// grayscale detail maps for flat coloured tool parts: grain runs along a part's long axis, heads get stone or brushed metal
+const DETAIL = {};
+function detailMap(kind) {
+  if (DETAIL[kind]) return DETAIL[kind];
+  const D = GL.buildDetail(kind), tex = new THREE.DataTexture(D.data, D.size, D.size, THREE.RGBAFormat);
+  tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.generateMipmaps = true; tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.needsUpdate = true;
+  return (DETAIL[kind] = tex);
+}
+function texturizeView(g) {
+  g.traverse(m => {
+    if (!m.isMesh || !m.material || m.material.map || Array.isArray(m.material)) return;
+    const c = m.material.color; if (!c) return;
+    const mx = Math.max(c.r, c.g, c.b), mn = Math.min(c.r, c.g, c.b), sat = mx > 0 ? (mx - mn) / mx : 0;
+    const p = m.geometry && m.geometry.parameters, tall = p && p.height > p.width;
+    let kind = "fine";
+    if (sat < 0.14) kind = mx < 0.65 ? "stone" : "metal";
+    else if (c.r > 0.7 && c.g > 0.5 && c.b < 0.4) kind = "metal";                                   // gold and brass
+    else if (c.r >= c.g && c.g >= c.b && c.r - c.b > 0.12) kind = tall ? "grainV" : "grainH";       // wood tones
+    m.material.map = detailMap(kind); m.material.needsUpdate = true;
+  });
+}
+
 function buildViewItem() {
   if (viewItem) vScene.remove(viewItem);
   const g = new THREE.Group(); const it = hotbar[selSlot];
@@ -2152,10 +2215,10 @@ function buildViewItem() {
       const stick = box(0.06, 0.34, 0.06, 0x6e4a25); g.add(stick); const ember = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.11, 0.11), new THREE.MeshBasicMaterial({ color: 0xffd24a })); ember.position.y = 0.21; g.add(ember);
       g.position.set(0.42, -0.4, -0.7); g.rotation.set(-0.2, 0.2, 0.05);
     } else {
-      const c = BLOCKS[it.id]; const cube = box(0.32, 0.32, 0.32, new THREE.Color(c.top[0], c.top[1], c.top[2]).getHex()); g.add(cube); g.position.set(0.42, -0.4, -0.7); g.rotation.set(-0.4, 0.5, 0);
+      const cube = blockCube(it.id, 0.32); g.add(cube); g.position.set(0.42, -0.4, -0.7); g.rotation.set(-0.4, 0.5, 0);
     }
   } else { const fist = box(0.18, 0.2, 0.2, 0xd9a06b); g.add(fist); g.position.set(0.4, -0.42, -0.7); g.rotation.set(-0.3, 0, 0); }
-  viewItem = g; vScene.add(g);
+  texturizeView(g); viewItem = g; vScene.add(g);
 }
 function box(w, h, d, col) { return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color: col })); }
 function updateViewItem(dt) { if (!viewItem) return; if (swing > 0) swing = Math.max(0, swing - dt * 4); const s = Math.sin(swing * Math.PI); const it = hotbar[selSlot]; if (it && isItem(it.id) && ITEMS[it.id].tool === "sword") { viewItem.rotation.x = -0.4 - s * 1.3; viewItem.rotation.z = 0.25 + s * 0.5; } else { viewItem.rotation.x = -0.4 - s * 0.7; viewItem.position.y = -0.4 - s * 0.08; } }
@@ -4193,18 +4256,100 @@ function tagEntityShadows() {
     });
   }
 }
+// ---------- POST PROCESSING: HDR multisampled scene target, bloom chain, god rays, eye adaptation, tone map + grade ----------
+const POST = { on: false, rt: null, down: [], up: [], w: 0, h: 0, exposure: 1, scene: null, cam: null, quad: null, mats: null };
+function postSupported() {
+  try { return !isTouch && !!(renderer.capabilities && renderer.capabilities.isWebGL2) && !!THREE.WebGLMultisampleRenderTarget && !!(renderer.extensions && renderer.extensions.has && renderer.extensions.has("EXT_color_buffer_float")); }
+  catch (e) { return false; }
+}
+function postMat(frag, uniforms) { return new THREE.ShaderMaterial({ uniforms, vertexShader: SH.POST_VERT, fragmentShader: frag, depthTest: false, depthWrite: false, toneMapped: false }); }
+function postInit() {
+  if (POST.mats) return;
+  POST.scene = new THREE.Scene(); POST.cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  POST.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2)); POST.quad.frustumCulled = false; POST.scene.add(POST.quad);
+  POST.mats = {
+    bright: postMat(SH.BRIGHT_FRAG, { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() }, uThreshold: { value: 1.1 } }),
+    down: postMat(SH.DOWN_FRAG, { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() } }),
+    up: postMat(SH.UP_FRAG, { tSrc: { value: null }, tLow: { value: null }, uTexel: { value: new THREE.Vector2() }, uSpread: { value: 1 } }),
+    comp: postMat(SH.COMPOSITE_FRAG, { tScene: { value: null }, tBloom: { value: null }, tRays: { value: null }, uExposure: { value: 1 }, uBloom: { value: 0.07 },
+      uRays: { value: 0 }, uSunPos: { value: new THREE.Vector2(0.5, 0.5) }, uVignette: { value: 0.32 }, uSat: { value: 1.08 }, uTint: { value: new THREE.Color(1, 1, 1) } })
+  };
+}
+function postDispose() {
+  if (POST.rt) POST.rt.dispose(); for (const r of POST.down) r.dispose(); for (const r of POST.up) r.dispose();
+  POST.rt = null; POST.down = []; POST.up = []; POST.w = POST.h = 0;
+}
+function postResize() {
+  const pr = renderer.getPixelRatio(), w = Math.max(1, Math.floor(innerWidth * pr)), h = Math.max(1, Math.floor(innerHeight * pr));
+  if (POST.rt && POST.w === w && POST.h === h) return;
+  postDispose(); POST.w = w; POST.h = h;
+  const o = { type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, stencilBuffer: false };
+  POST.rt = new THREE.WebGLMultisampleRenderTarget(w, h, Object.assign({ depthBuffer: true }, o)); POST.rt.samples = 4;
+  let lw = w, lh = h;
+  for (let i = 0; i < 5; i++) { lw = Math.max(1, lw >> 1); lh = Math.max(1, lh >> 1); POST.down.push(new THREE.WebGLRenderTarget(lw, lh, Object.assign({ depthBuffer: false }, o))); }
+  for (let i = 0; i < 4; i++) POST.up.push(new THREE.WebGLRenderTarget(POST.down[i].width, POST.down[i].height, Object.assign({ depthBuffer: false }, o)));
+}
+function postPass(mat, target) { POST.quad.material = mat; renderer.setRenderTarget(target); renderer.render(POST.scene, POST.cam); }
+function setPost(on) {
+  on = !!on && postSupported();
+  if (on === POST.on) return;
+  POST.on = on;
+  if (on) postInit(); else postDispose();
+  renderer.toneMapping = on ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+  const seen = new Set(), mark = m => { if (m && !seen.has(m)) { seen.add(m); m.needsUpdate = true; } };  // r128 does not recompile on a tone mapping change by itself
+  for (const sc of [scene, vScene]) sc.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(mark); });
+  [matTerrain, matCutout, matWaterS, skyMat, depthCutout, portalMat, torchMat, torchHeadMat, torchGlowMat].forEach(mark);
+}
+const _sunNdc = new THREE.Vector3();
+function renderFrame(withView) {
+  // eye adaptation: open up in caves and at night, settle back in daylight
+  const night = skyU.uStars.value, cave = DIM === "overworld" ? THREE.MathUtils.clamp(1 - envLocal.sky * 1.5, 0, 1) * (1 - envLocal.blk * 0.6) : 0;
+  const target = (1 + night * 0.35) * (1 + cave * 0.7) * (envLocal.water ? 1.15 : 1);
+  POST.exposure += (target - POST.exposure) * Math.min(1, lastDt * 1.4);
+  if (!POST.on) {
+    renderer.toneMappingExposure = 1.02 * POST.exposure;
+    renderer.render(scene, camera);
+    if (withView) { renderer.autoClear = false; renderer.clearDepth(); renderer.render(vScene, vCam); renderer.autoClear = true; }
+    return;
+  }
+  postResize();
+  renderer.setRenderTarget(POST.rt); renderer.render(scene, camera);
+  if (withView) { renderer.autoClear = false; renderer.clearDepth(); renderer.render(vScene, vCam); renderer.autoClear = true; }
+  const M = POST.mats;
+  M.bright.uniforms.tSrc.value = POST.rt.texture; M.bright.uniforms.uTexel.value.set(1 / POST.w, 1 / POST.h); postPass(M.bright, POST.down[0]);
+  for (let i = 1; i < 5; i++) { const s = POST.down[i - 1]; M.down.uniforms.tSrc.value = s.texture; M.down.uniforms.uTexel.value.set(1 / s.width, 1 / s.height); postPass(M.down, POST.down[i]); }
+  let low = POST.down[4];
+  for (let i = 3; i >= 0; i--) { M.up.uniforms.tSrc.value = POST.down[i].texture; M.up.uniforms.tLow.value = low.texture; M.up.uniforms.uTexel.value.set(1 / low.width, 1 / low.height); postPass(M.up, POST.up[i]); low = POST.up[i]; }
+  const C = M.comp.uniforms;
+  C.tScene.value = POST.rt.texture; C.tBloom.value = POST.up[0].texture; C.tRays.value = POST.down[1].texture; C.uExposure.value = POST.exposure;
+  // god rays only while the sun is up and roughly in view
+  let rays = 0;
+  const sd = U.uSunDir.value, hasSun = DIM === "overworld" || DIM === "sky" || DIM === "realm" || DIM === "mario";
+  if (hasSun && sd.y > -0.02 && !envLocal.water) {
+    _sunNdc.set(camera.position.x + sd.x * 300, camera.position.y + sd.y * 300, camera.position.z + sd.z * 300).project(camera);
+    if (_sunNdc.z < 1 && Math.abs(_sunNdc.x) < 1.6 && Math.abs(_sunNdc.y) < 1.6) {
+      C.uSunPos.value.set(_sunNdc.x * 0.5 + 0.5, _sunNdc.y * 0.5 + 0.5);
+      rays = 0.34 * (1 - Math.max(0, Math.hypot(_sunNdc.x, _sunNdc.y) - 0.6) / 1.2) * THREE.MathUtils.clamp(sd.y * 6 + 0.3, 0, 1) * (0.5 + 0.5 * THREE.MathUtils.clamp(1 - sd.y * 1.5, 0, 1));
+    }
+  }
+  C.uRays.value = Math.max(0, rays);
+  if (envLocal.water) C.uTint.value.setRGB(0.75, 0.95, 1.05); else C.uTint.value.setRGB(1, 1, 1);
+  postPass(M.comp, null);
+}
+let lastDt = 0.016;
+
 // ---------- MAIN LOOP ----------
 let last = performance.now(); let hungerT = 0, heatT = 0, droneT = 3;
 function loop() {
   requestAnimationFrame(loop);
-  const now = performance.now(); let dt = (now - last) / 1000; last = now; if (dt > 0.05) dt = 0.05;
+  const now = performance.now(); let dt = (now - last) / 1000; last = now; if (dt > 0.05) dt = 0.05; lastDt = dt;
   if (charView) {                                              // character screen: orbit-free spin of Thomas
     charAngle += dt * 0.7;
     const u = thomas.userData; thomas.visible = true; thomas.position.set(player.pos.x, player.pos.y, player.pos.z); thomas.rotation.y = charAngle;
     u.legL.rotation.x = 0; u.legR.rotation.x = 0; u.armL.rotation.x = 0; u.armR.rotation.x = 0; thomas.scale.set(1, 1, 1);
     camera.position.set(player.pos.x, player.pos.y + 1.25, player.pos.z + 3.0); camera.rotation.set(0, 0, 0);
     if (camera.lookAt) camera.lookAt(player.pos.x, player.pos.y + 1.0, player.pos.z);
-    renderer.render(scene, camera); return;
+    renderFrame(false); return;
   }
   if (running && !paused && !anyPanelOpen()) {
     if (attackCd > 0) attackCd -= dt; if (portalCd > 0) portalCd -= dt; if (hammerCd > 0) hammerCd -= dt; if (bowCd > 0) bowCd -= dt;
@@ -4238,7 +4383,7 @@ function loop() {
     if (r && BLOCKS[r.id] && BLOCKS[r.id].hard > 0) { selBox.position.set(r.x + 0.5, r.y + 0.5, r.z + 0.5); selBox.visible = true; } else selBox.visible = false;
     $("crosshair").classList.toggle("target", !!aimEntity());
     // portal glow pulse
-    if (portalMat) portalMat.emissiveIntensity = 0.9 + Math.sin(now * 0.005) * 0.3;
+    torchGlowMat.opacity = 0.55 + Math.sin(now * 0.011) * 0.06 + Math.sin(now * 0.027) * 0.05;
     // hunger drain + regen
     hungerT += dt; if (hungerT > 4) { hungerT = 0; if (player.food > 0) { if (Math.random() < 0.5) player.food = Math.max(0, player.food - 1); } else damage(1); if (player.food > 16 && player.hp < player.maxHp) player.hp = Math.min(player.maxHp, player.hp + 1); updateVitals(); }
     if (DIM === "fire") { heatT += dt; if (heatT > 2.5) { heatT = 0; if (countItem(I_FIRECHARM) === 0) { damage(1); if (Math.random() < 0.5) toast("The heat is searing. You need a Flame Charm."); } } }
@@ -4256,8 +4401,7 @@ function loop() {
     updateMusic(dt);
     if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) $("banner").style.opacity = "0"; }
   }
-  renderer.render(scene, camera);
-  if (!thirdPerson) { renderer.autoClear = false; renderer.clearDepth(); renderer.render(vScene, vCam); renderer.autoClear = true; }
+  renderFrame(!thirdPerson);
   if (settings.showFps) { fpsAcc += (1 / Math.max(0.001, dt) - fpsAcc) * 0.1; const e = $("fps"); if (e) e.textContent = Math.round(fpsAcc) + " fps"; }
 }
 let fpsAcc = 60;
@@ -4311,8 +4455,9 @@ if (typeof window !== "undefined") window.DEV = { start: startGame, go: loadDime
   gfx(level) { settings.gfx = level; applyGfx(); },
   third(on) { thirdPerson = !!on; },
   nocine() { story.active = false; endCine(); },
-  place(x, y, z, id) { setRaw(x, y, z, id); markDirty(x, z); markDirty(x + 1, z); markDirty(x - 1, z); markDirty(x, z + 1); markDirty(x, z - 1); },
-  ids() { return { STONE, COBBLE, TORCH, WOOD, PLANKS, BRICK, GLASS: typeof GLASS !== 'undefined' ? GLASS : 0, LAVA, WATER, AIR }; },
+  place(x, y, z, id) { setRaw(x, y, z, id); markDirty(x, z); markDirty(x + 1, z); markDirty(x - 1, z); markDirty(x, z + 1); markDirty(x, z - 1); if (id === TORCH || id === AIR) rebuildTorchCells(); },
+  slot(i, id) { if (id != null) hotbar[i] = { id, count: 10 }; selSlot = i; renderHotbar(); buildViewItem(); },
+  ids() { return { STONE, COBBLE, TORCH, WOOD, PLANKS, BRICK, LAVA, WATER, AIR, GRASS, LEAVES, SAND, CRYSTAL, FIRE_CRYSTAL }; },
   stats() { let op = 0, cu = 0, wa = 0, wc = 0; for (const c of chunks.values()) { if (c.opaque) op += c.opaque.geometry.attributes.position.count; if (c.cutout) cu += c.cutout.geometry.attributes.position.count; if (c.water) { wa += c.water.geometry.attributes.position.count; wc++; } }
     const px = Math.floor(player.pos.x), pz = Math.floor(player.pos.z); let wb = 0; for (let dx = -20; dx <= 20; dx++) for (let dz = -20; dz <= 20; dz++) if (getBlock(px + dx, SEA, pz + dz) === WATER) wb++;
     return { chunks: chunks.size, op, cu, wa, wc, waterBlocksNear: wb, shadows: renderer.shadowMap.enabled, sunCast: sun.castShadow, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, progs: renderer.info.programs ? renderer.info.programs.length : 0 }; },

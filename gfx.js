@@ -664,11 +664,15 @@ const WATER_VERT = `
 #include <common>
 #include <shadowmap_pars_vertex>
 attribute vec4 aLight;
+attribute vec4 aTint;
 varying vec4 vL;
+varying vec4 vDep;
+varying vec2 vLoc;
 varying vec3 vN;
 varying vec3 vWPos;
 ${FACE_NORMAL}
 void main() {
+  vDep = aTint; vLoc = uv;
   vec3 n = faceNormal(floor(aLight.w * 255.0 + 0.5));
   vec4 worldPosition = modelMatrix * vec4(position, 1.0);
   vec4 mvPosition = viewMatrix * worldPosition;
@@ -683,6 +687,8 @@ uniform sampler2D uNoise;
 uniform vec3 uWaterCol;
 uniform float uWaterAlpha;
 varying vec4 vL;
+varying vec4 vDep;
+varying vec2 vLoc;
 varying vec3 vN;
 varying vec3 vWPos;
 ${PARS_FRAG}
@@ -712,7 +718,7 @@ void main() {
   float sh = shadowTerm(vWPos);
   vec3 H = normalize(uLightDir + V);
   float spec = pow(max(dot(N, H), 0.0), 260.0) * 7.0 * sh * skyVis * (1.0 - under);
-  float depth = vL.x;                                              // 0 at the shore .. 1 at 8 blocks deep
+  float depth = mix(mix(vDep.x, vDep.y, vLoc.x), mix(vDep.z, vDep.w, vLoc.x), vLoc.y);   // 0 at the shore .. 1 at 8 blocks deep
   vec3 amb = mix(uGroundAmb, uSkyAmb, 0.85) * (sky * sky) + uBlockCol * blk * blk + vec3(uMinLight);
   vec3 wcol = mix(vec3(0.06, 0.32, 0.30), uWaterCol, smoothstep(0.05, 0.6, depth));
   vec3 body = wcol * (amb + uLightCol * max(uLightDir.y, 0.0) * 0.5 * sh * skyVis);
@@ -841,6 +847,89 @@ void main() {
 }
 `;
 
+// ---------- post processing (HDR bloom, god rays, grade, vignette) ----------
+const POST_VERT = `
+varying vec2 vUv;
+void main() { vUv = position.xy * 0.5 + 0.5; gl_Position = vec4(position.xy, 0.0, 1.0); }
+`;
+const BRIGHT_FRAG = `
+uniform sampler2D tSrc;
+uniform vec2 uTexel;
+uniform float uThreshold;
+varying vec2 vUv;
+void main() {
+  vec3 c = (texture2D(tSrc, vUv + uTexel * vec2(-0.5, -0.5)).rgb + texture2D(tSrc, vUv + uTexel * vec2(0.5, -0.5)).rgb
+          + texture2D(tSrc, vUv + uTexel * vec2(-0.5, 0.5)).rgb + texture2D(tSrc, vUv + uTexel * vec2(0.5, 0.5)).rgb) * 0.25;
+  c = min(c, vec3(40.0));
+  float br = max(c.r, max(c.g, c.b)), knee = uThreshold * 0.5;
+  float soft = clamp(br - uThreshold + knee, 0.0, 2.0 * knee); soft = soft * soft / (4.0 * knee + 1e-4);
+  gl_FragColor = vec4(c * max(soft, br - uThreshold) / max(br, 1e-4), 1.0);
+}
+`;
+const DOWN_FRAG = `
+uniform sampler2D tSrc;
+uniform vec2 uTexel;
+varying vec2 vUv;
+void main() {
+  vec3 c = texture2D(tSrc, vUv).rgb * 0.5;
+  c += texture2D(tSrc, vUv + uTexel * vec2(-1.0, -1.0)).rgb * 0.125;
+  c += texture2D(tSrc, vUv + uTexel * vec2(1.0, -1.0)).rgb * 0.125;
+  c += texture2D(tSrc, vUv + uTexel * vec2(-1.0, 1.0)).rgb * 0.125;
+  c += texture2D(tSrc, vUv + uTexel * vec2(1.0, 1.0)).rgb * 0.125;
+  gl_FragColor = vec4(c, 1.0);
+}
+`;
+const UP_FRAG = `
+uniform sampler2D tSrc;
+uniform sampler2D tLow;
+uniform vec2 uTexel;
+uniform float uSpread;
+varying vec2 vUv;
+void main() {
+  vec2 o = uTexel * uSpread;
+  vec3 l = texture2D(tLow, vUv).rgb * 4.0;
+  l += (texture2D(tLow, vUv + vec2(o.x, 0.0)).rgb + texture2D(tLow, vUv - vec2(o.x, 0.0)).rgb + texture2D(tLow, vUv + vec2(0.0, o.y)).rgb + texture2D(tLow, vUv - vec2(0.0, o.y)).rgb) * 2.0;
+  l += texture2D(tLow, vUv + o).rgb + texture2D(tLow, vUv - o).rgb + texture2D(tLow, vUv + vec2(o.x, -o.y)).rgb + texture2D(tLow, vUv + vec2(-o.x, o.y)).rgb;
+  gl_FragColor = vec4(texture2D(tSrc, vUv).rgb + l / 16.0, 1.0);
+}
+`;
+const COMPOSITE_FRAG = `
+uniform sampler2D tScene;
+uniform sampler2D tBloom;
+uniform sampler2D tRays;
+uniform float uExposure;
+uniform float uBloom;
+uniform float uRays;
+uniform vec2 uSunPos;
+uniform float uVignette;
+uniform float uSat;
+uniform vec3 uTint;
+varying vec2 vUv;
+vec3 rrtOdt(vec3 v) { vec3 a = v * (v + 0.0245786) - 0.000090537; vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081; return a / b; }
+vec3 aces(vec3 c) {
+  const mat3 IM = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));
+  const mat3 OM = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));
+  c *= uExposure / 0.6; c = IM * c; c = rrtOdt(c); c = OM * c; return clamp(c, 0.0, 1.0);
+}
+void main() {
+  vec3 c = texture2D(tScene, vUv).rgb;
+  c += texture2D(tBloom, vUv).rgb * uBloom;
+  if (uRays > 0.0) {                                             // crepuscular rays streaming from the sun through gaps
+    vec2 dir = (vUv - uSunPos) / 32.0, uv = vUv; float w = 1.0; vec3 acc = vec3(0.0);
+    for (int i = 0; i < 32; i++) { uv -= dir; acc += texture2D(tRays, clamp(uv, 0.001, 0.999)).rgb * w; w *= 0.955; }
+    c += acc / 32.0 * uRays;
+  }
+  c *= uTint;
+  c = aces(c);
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c = max(mix(vec3(l), c, uSat), 0.0);
+  vec2 d = vUv - 0.5; c *= 1.0 - uVignette * dot(d, d) * 1.8;
+  gl_FragColor = vec4(c, 1.0);
+  #include <encodings_fragment>
+  gl_FragColor.rgb += (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 255.0;
+}
+`;
+
 // ---------- atmosphere model ----------
 // keyframes over sun height (sin of elevation). Linear HDR colours; ACES tone mapping brings them to screen.
 const KEYS = [
@@ -848,9 +937,9 @@ const KEYS = [
   { h: -0.25, zen: [0.0035, 0.005, 0.014], hor: [0.010, 0.015, 0.03], glow: [0, 0, 0], light: [0.11, 0.14, 0.22], sky: [0.030, 0.040, 0.075], gnd: [0.008, 0.010, 0.016], cLit: [0.030, 0.036, 0.055], cAmb: [0.010, 0.013, 0.022] },
   { h: -0.08, zen: [0.015, 0.025, 0.07], hor: [0.08, 0.06, 0.09], glow: [0.30, 0.09, 0.03], light: [0.10, 0.10, 0.16], sky: [0.06, 0.06, 0.11], gnd: [0.02, 0.018, 0.02], cLit: [0.25, 0.10, 0.08], cAmb: [0.04, 0.035, 0.06] },
   { h: 0.02, zen: [0.07, 0.11, 0.28], hor: [0.95, 0.46, 0.20], glow: [1.30, 0.46, 0.12], light: [1.05, 0.46, 0.16], sky: [0.22, 0.20, 0.26], gnd: [0.07, 0.05, 0.035], cLit: [1.6, 0.62, 0.28], cAmb: [0.20, 0.15, 0.20] },
-  { h: 0.16, zen: [0.11, 0.24, 0.60], hor: [0.80, 0.66, 0.52], glow: [0.75, 0.42, 0.16], light: [1.75, 1.18, 0.70], sky: [0.34, 0.40, 0.54], gnd: [0.12, 0.10, 0.07], cLit: [2.0, 1.45, 1.0], cAmb: [0.42, 0.44, 0.55] },
-  { h: 0.4, zen: [0.10, 0.26, 0.72], hor: [0.50, 0.66, 0.90], glow: [0.22, 0.20, 0.16], light: [2.55, 2.38, 2.10], sky: [0.40, 0.52, 0.74], gnd: [0.15, 0.13, 0.10], cLit: [2.3, 2.25, 2.15], cAmb: [0.55, 0.62, 0.76] },
-  { h: 1.0, zen: [0.08, 0.22, 0.68], hor: [0.47, 0.64, 0.90], glow: [0.16, 0.16, 0.14], light: [2.75, 2.62, 2.40], sky: [0.42, 0.55, 0.78], gnd: [0.16, 0.14, 0.11], cLit: [2.4, 2.38, 2.3], cAmb: [0.58, 0.65, 0.8] }
+  { h: 0.16, zen: [0.11, 0.24, 0.60], hor: [0.86, 0.64, 0.44], glow: [0.95, 0.48, 0.17], light: [1.75, 1.18, 0.70], sky: [0.38, 0.44, 0.58], gnd: [0.18, 0.15, 0.11], cLit: [2.0, 1.45, 1.0], cAmb: [0.42, 0.44, 0.55] },
+  { h: 0.4, zen: [0.10, 0.26, 0.72], hor: [0.50, 0.66, 0.90], glow: [0.22, 0.20, 0.16], light: [2.55, 2.38, 2.10], sky: [0.46, 0.58, 0.82], gnd: [0.25, 0.22, 0.17], cLit: [2.3, 2.25, 2.15], cAmb: [0.55, 0.62, 0.76] },
+  { h: 1.0, zen: [0.08, 0.22, 0.68], hor: [0.47, 0.64, 0.90], glow: [0.16, 0.16, 0.14], light: [2.75, 2.62, 2.40], sky: [0.48, 0.60, 0.85], gnd: [0.27, 0.24, 0.18], cLit: [2.4, 2.38, 2.3], cAmb: [0.58, 0.65, 0.8] }
 ];
 function lerp3(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
 function skyEnv(h) {
@@ -861,6 +950,23 @@ function skyEnv(h) {
   return o;
 }
 
-window.GFXLIB = { buildAtlas, buildNoise, skyEnv, TILE: T, ATLAS: SIZE,
-  shaders: { TERRAIN_VERT, TERRAIN_FRAG, WATER_VERT, WATER_FRAG, SKYDOME_VERT, SKYDOME_FRAG } };
+// grayscale detail maps (0.45..1) for flat coloured models: wood grain along either axis, brushed metal, stone, fine grain
+function buildDetail(kind) {
+  const d = new Uint8Array(T * T * 4);
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
+    const u = x / T, v = y / T; let f;
+    if (kind === "grainV" || kind === "grainH") {
+      const a = kind === "grainV" ? u : v, b = kind === "grainV" ? v : u;
+      const g = fbm(a, b, 10, 3, 5, 1), ring = Math.abs(Math.sin((a * 9 + g * 1.6) * 3.1416));
+      f = 0.72 + ring * 0.2 + (pn(a, b, 40, 4, 9) - 0.5) * 0.12;
+    } else if (kind === "metal") f = 0.8 + pn(u, v, 2, 40, 3) * 0.14 + (ih(x, y, 4) - 0.5) * 0.05;
+    else if (kind === "stone") f = 0.68 + fbm(u, v, 4, 4, 11) * 0.3 + (ih(x, y, 2) - 0.5) * 0.1;
+    else f = 0.8 + (fbm(u, v, 8, 3, 13) - 0.5) * 0.16 + (ih(x, y, 6) - 0.5) * 0.06;
+    const c = clamp(f, 0.45, 1) * 255, i = (y * T + x) * 4; d[i] = d[i + 1] = d[i + 2] = c; d[i + 3] = 255;
+  }
+  return { data: d, size: T };
+}
+
+window.GFXLIB = { buildAtlas, buildNoise, buildDetail, skyEnv, TILE: T, ATLAS: SIZE,
+  shaders: { TERRAIN_VERT, TERRAIN_FRAG, WATER_VERT, WATER_FRAG, SKYDOME_VERT, SKYDOME_FRAG, POST_VERT, BRIGHT_FRAG, DOWN_FRAG, UP_FRAG, COMPOSITE_FRAG } };
 })();
