@@ -98,9 +98,22 @@ const settings = { sensD: 0.0012 * 12, sensM: 0.005, fov: 75, autoJump: false, g
 const DEFAULT_KEYS = { interact: "KeyE", dodge: "KeyF", camera: "KeyV", inv: "KeyI", skills: "KeyK", cat: "KeyG", journal: "KeyJ" };
 const GFX = { low: { dist: 3, shadows: false, pr: 1, clouds: 0, map: 1024, rad: 32 }, med: { dist: 5, shadows: true, pr: 1.5, clouds: 5, map: 1024, rad: 34 },
   high: { dist: 6, shadows: true, pr: 2, clouds: 8, map: 2048, rad: 44 }, ultra: { dist: 8, shadows: true, pr: 2, clouds: 12, map: 4096, rad: 60 } };
+// adaptive resolution: when the GPU cannot hold about 45 fps, render fewer pixels; give them back when there is headroom
+const dynRes = { scale: 1, acc: 0, n: 0, cool: 3 };
+function basePixelRatio() { const g = GFX[settings.gfx]; return Math.min(devicePixelRatio, isTouch ? Math.min(g.pr, 1.5) : g.pr); }
+function updateDynRes(rawDt) {
+  if (rawDt > 0.25) { dynRes.acc = 0; dynRes.n = 0; return; }                 // tab switch or a one off hitch
+  dynRes.acc += rawDt; dynRes.n++;
+  if (dynRes.acc < 1.5) return;
+  const fps = dynRes.n / dynRes.acc; dynRes.acc = 0; dynRes.n = 0;
+  if (dynRes.cool > 0) { dynRes.cool--; return; }
+  let sc = dynRes.scale;
+  if (fps < 45 && sc > 0.55) sc = Math.max(0.55, sc - 0.15); else if (fps > 57 && sc < 1) sc = Math.min(1, sc + 0.1);
+  if (sc !== dynRes.scale) { dynRes.scale = sc; renderer.setPixelRatio(Math.max(0.5, basePixelRatio() * sc)); dynRes.cool = 1; }
+}
 function applyGfx() {
   const g = GFX[settings.gfx];
-  renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? Math.min(g.pr, 1.5) : g.pr));
+  renderer.setPixelRatio(Math.max(0.5, basePixelRatio() * dynRes.scale));
   renderer.shadowMap.enabled = g.shadows && !isTouch;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   sun.castShadow = g.shadows && !isTouch;
@@ -3088,6 +3101,14 @@ function buildSpawnCamp() {
   const touched = new Set();
   const put = (x, y, z, id) => { setRaw(x, y, z, id); touched.add(ck(Math.floor(x / CH), Math.floor(z / CH))); touched.add(ck(Math.floor((x + 1) / CH), Math.floor(z / CH))); touched.add(ck(Math.floor((x - 1) / CH), Math.floor(z / CH))); touched.add(ck(Math.floor(x / CH), Math.floor((z + 1) / CH))); touched.add(ck(Math.floor(x / CH), Math.floor((z - 1) / CH))); };
   const cx = 3, cz = 2;                                        // campfire centre, a couple blocks from spawn
+  // open a small forest clearing so the camp sits on the ground and the opening view shows sky, not a wall of leaves
+  ensureGen(1, 1, 16);
+  for (let x = -9; x <= 11; x++) for (let z = -8; z <= 10; z++) {
+    const d = Math.hypot(x - 1, z - 1), h = heightAt(x, z);
+    if (d > 8.5) continue;
+    const trunk = getBlock(x, h + 1, z) === WOOD;
+    for (let y = h + 1; y < WORLD_H; y++) { const id = getBlock(x, y, z); if ((id === LEAVES && d <= 7) || (id === WOOD && (trunk ? d <= 6.5 : d <= 7))) put(x, y, z, AIR); }
+  }
   // ring of stones around the fire
   for (const [ox, oz] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1]]) { const sy = surfaceY(cx + ox, cz + oz); put(cx + ox, sy, cz + oz, COBBLE); }
   // a couple of broken logs and an ember (torch) in the middle
@@ -4227,6 +4248,7 @@ function startGame() {
   if (ngLevel > 0) setTimeout(() => toast("New Game Plus " + ngLevel + ". Monsters are tougher, rewards are bigger."), 900);
   setTimeout(() => { if (daily && !daily.claimed) toast("Daily Challenge: " + daily.text + ". Open the Journal to track it."); }, 1600);
   const camp = buildSpawnCamp(); startStory(camp);            // opening cinematic + guided first 5 minutes
+  player.yaw = Math.atan2(-(camp.chestX - 1 - player.pos.x), -(camp.chestZ - player.pos.z)); player.pitch = -0.4;   // wake up facing the campfire
   renderHotbar(); updateVitals(); buildViewItem();
   camera.fov = settings.fov; camera.updateProjectionMatrix();
   if (!isTouch) canvas.requestPointerLock();
@@ -4253,6 +4275,7 @@ function tagEntityShadows() {
       if (!m.isMesh || m.userData.noShadowTag || m.isInstancedMesh) return;
       const mt = m.material, solid = mt && !Array.isArray(mt) ? !mt.transparent && mt.visible !== false : true;
       m.castShadow = on && solid; m.receiveShadow = on;
+      if (solid && mt && mt.isMeshLambertMaterial && !mt.map && !mt.userData.detailed) { mt.map = detailMap("fur"); mt.userData.detailed = 1; mt.needsUpdate = true; }   // subtle fur and cloth grain on flat coloured models
     });
   }
 }
@@ -4342,7 +4365,7 @@ let lastDt = 0.016;
 let last = performance.now(); let hungerT = 0, heatT = 0, droneT = 3;
 function loop() {
   requestAnimationFrame(loop);
-  const now = performance.now(); let dt = (now - last) / 1000; last = now; if (dt > 0.05) dt = 0.05; lastDt = dt;
+  const now = performance.now(); let dt = (now - last) / 1000; last = now; const rawDt = dt; if (dt > 0.05) dt = 0.05; lastDt = dt;
   if (charView) {                                              // character screen: orbit-free spin of Thomas
     charAngle += dt * 0.7;
     const u = thomas.userData; thomas.visible = true; thomas.position.set(player.pos.x, player.pos.y, player.pos.z); thomas.rotation.y = charAngle;
@@ -4376,6 +4399,7 @@ function loop() {
     updateAmbient(dt);
     mmT -= dt; if (mmT <= 0) { mmT = 0.2; drawMinimap(); }
     shadowTagT -= dt; if (shadowTagT <= 0) { shadowTagT = 0.75; tagEntityShadows(); }
+    updateDynRes(rawDt);
     loadChunks();
     checkPortal();
     // selection box

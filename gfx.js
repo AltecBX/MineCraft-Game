@@ -961,6 +961,7 @@ function buildDetail(kind) {
       f = 0.72 + ring * 0.2 + (pn(a, b, 40, 4, 9) - 0.5) * 0.12;
     } else if (kind === "metal") f = 0.8 + pn(u, v, 2, 40, 3) * 0.14 + (ih(x, y, 4) - 0.5) * 0.05;
     else if (kind === "stone") f = 0.68 + fbm(u, v, 4, 4, 11) * 0.3 + (ih(x, y, 2) - 0.5) * 0.1;
+    else if (kind === "fur") f = 0.9 + (pn(u, v, 32, 8, 21) - 0.5) * 0.12 + (fbm(u, v, 4, 3, 23) - 0.5) * 0.08 + (ih(x, y, 25) - 0.5) * 0.05;
     else f = 0.8 + (fbm(u, v, 8, 3, 13) - 0.5) * 0.16 + (ih(x, y, 6) - 0.5) * 0.06;
     const c = clamp(f, 0.45, 1) * 255, i = (y * T + x) * 4; d[i] = d[i + 1] = d[i + 2] = c; d[i + 3] = 255;
   }

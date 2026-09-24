@@ -2,6 +2,8 @@
 
 A browser voxel survival game built on Three.js r128. Single screen, desktop and mobile, no build step. Three dimensions, two bosses, survival, crafting, companions, quests, achievements.
 
+The renderer is fully procedural: 64px painted block textures, smooth lighting with ambient occlusion, torch and lava light, sun shadows with dappled leaf shade, a physical sky with raymarched clouds, stars and moon, clear shallow water that deepens to blue, swaying grass and wildflowers, bloom, god rays and eye adaptation. No image assets are needed.
+
 ## Quick start
 
 ```
@@ -15,7 +17,7 @@ Open the printed URL. A static server is recommended so localStorage saves work 
 ## Validate
 
 ```
-node --check game.js                                 # syntax
+node --check game.js && node --check gfx.js         # syntax
 node test/harness.cjs                                # boot smoke test, expect BOOT_OK
 node test/harness.cjs --probe test/probes/dragon.js  # run a feature probe
 ```
@@ -25,8 +27,9 @@ The harness stubs Three.js, the DOM, WebAudio, and localStorage so the game logi
 ## Layout
 
 ```
-index.html   shell, loads three.min.js (CDN) then game.js
+index.html   shell, loads three.min.js (CDN), gfx.js, then game.js
 styles.css   all CSS
+gfx.js       procedural textures, shaders and the atmosphere model
 game.js      the whole game in one IIFE
 test/        validation harness and example probes
 CLAUDE.md    architecture, rules, validation method, roadmap
@@ -42,4 +45,4 @@ The recommended first task in Claude Code is splitting game.js into modules and 
 
 ## Deploy
 
-GitHub Pages, static files. Push index.html, styles.css, and game.js to the served branch.
+GitHub Pages, static files. Every push to main is validated and deployed by .github/workflows/deploy.yml.
