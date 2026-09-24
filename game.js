@@ -17,6 +17,14 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
+// linear workflow: the game's hex colours are sRGB, but r128 feeds material colours to the shader unconverted,
+// which made every flat coloured model look pastel. Decode diffuse and emissive colours inside the built-in shaders.
+(function linearizeBuiltinColors() {
+  const fix = src => src.replace("vec4 diffuseColor = vec4( diffuse, opacity );", "vec4 diffuseColor = vec4( pow( diffuse, vec3( 2.2 ) ), opacity );")
+    .replace("vec3 totalEmissiveRadiance = emissive;", "vec3 totalEmissiveRadiance = pow( emissive, vec3( 2.2 ) );");
+  if (THREE.ShaderLib) for (const k of Object.keys(THREE.ShaderLib)) { const L = THREE.ShaderLib[k]; if (L && typeof L.fragmentShader === "string") L.fragmentShader = fix(L.fragmentShader); }
+  if (THREE.ShaderChunk) for (const k of Object.keys(THREE.ShaderChunk)) if (/_frag$/.test(k) && typeof THREE.ShaderChunk[k] === "string") THREE.ShaderChunk[k] = fix(THREE.ShaderChunk[k]);
+})();
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.05, 1000);
@@ -26,28 +34,40 @@ const hemi = new THREE.HemisphereLight(0xbfe3ff, 0x4a4030, 0.8); scene.add(hemi)
 const sun = new THREE.DirectionalLight(0xffffff, 1.0); sun.position.set(50, 90, 30); scene.add(sun); scene.add(sun.target);
 const lightDir = new THREE.Vector3(0.5, 0.8, 0.3).normalize();
 
-// ---------- SKY / ATMOSPHERE (LightingSystem + WeatherSystem foundation) ----------
-const skyGroup = new THREE.Group(); scene.add(skyGroup);
-const skyUni = { topC: { value: new THREE.Color(0x2a6fd0) }, botC: { value: new THREE.Color(0xcfeaff) } };
-const skyMat = new THREE.ShaderMaterial({
-  side: THREE.BackSide, depthWrite: false, fog: false, uniforms: skyUni,
-  vertexShader: "varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
-  fragmentShader: "uniform vec3 topC; uniform vec3 botC; varying vec3 vP; void main(){ float h = clamp(normalize(vP).y*0.5+0.5,0.0,1.0); gl_FragColor = vec4(mix(botC, topC, pow(h,0.55)),1.0); }"
-});
-const skyDome = new THREE.Mesh(new THREE.SphereGeometry(420, 24, 16), skyMat); skyDome.renderOrder = -3; skyGroup.add(skyDome);
+// ---------- SHARED RENDER RESOURCES + SKY / ATMOSPHERE (see gfx.js) ----------
+const GL = window.GFXLIB, SH = GL.shaders;
+const NZ = GL.buildNoise(256);
+const noiseTex = new THREE.DataTexture(NZ.data, NZ.size, NZ.size, THREE.RGBAFormat);
+noiseTex.wrapS = noiseTex.wrapT = THREE.RepeatWrapping; noiseTex.magFilter = THREE.LinearFilter; noiseTex.minFilter = THREE.LinearMipmapLinearFilter;
+noiseTex.generateMipmaps = true; noiseTex.needsUpdate = true;
+const ATL = GL.buildAtlas();
+const atlasTex = new THREE.DataTexture(ATL.data, ATL.size, ATL.size, THREE.RGBAFormat);
+atlasTex.magFilter = THREE.NearestFilter; atlasTex.minFilter = THREE.LinearMipmapLinearFilter; atlasTex.generateMipmaps = true;
+{ const ma = renderer.capabilities && renderer.capabilities.getMaxAnisotropy ? +renderer.capabilities.getMaxAnisotropy() : 1; atlasTex.anisotropy = ma > 1 ? Math.min(8, ma) : 1; }
+atlasTex.needsUpdate = true;
+// uniforms shared by reference between the terrain, water and sky materials, written once per frame by updateEnv
+const U = {
+  uTime: { value: 0 }, uNoise: { value: noiseTex },
+  uSunDir: { value: new THREE.Vector3(0.5, 0.8, 0.3) }, uZenith: { value: new THREE.Color() }, uHorizon: { value: new THREE.Color() },
+  uGlow: { value: new THREE.Color() }, uSunCol: { value: new THREE.Color() },
+  uLightDir: { value: new THREE.Vector3(0.5, 0.8, 0.3) }, uLightCol: { value: new THREE.Color() }, uSkyAmb: { value: new THREE.Color() },
+  uGroundAmb: { value: new THREE.Color() }, uBlockCol: { value: new THREE.Color().setRGB(1.6, 0.98, 0.5) }, uMinLight: { value: 0.012 }, uSkyMul: { value: 1 },
+  uFogNear: { value: 30 }, uFogFar: { value: 80 }, uShadowCenter: { value: new THREE.Vector3() }, uShadowRadius: { value: 40 },
+  uEmis: { value: 1.4 }, uWave: { value: 1 }, uWaterCol: { value: new THREE.Color().setRGB(0.012, 0.055, 0.1) }, uWaterAlpha: { value: 0.86 }
+};
 function glowTex(inner, outer) { const c = document.createElement("canvas"); c.width = c.height = 64; const x = c.getContext("2d"); const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, inner); g.addColorStop(0.45, inner); g.addColorStop(1, outer); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); }
-const sunSpr = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(255,247,214,1)", "rgba(255,238,170,0)"), depthWrite: false, fog: false, transparent: true })); sunSpr.scale.set(64, 64, 1); sunSpr.renderOrder = -2; skyGroup.add(sunSpr);
-const moonSpr = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(228,234,255,1)", "rgba(170,195,255,0)"), depthWrite: false, fog: false, transparent: true })); moonSpr.scale.set(40, 40, 1); moonSpr.renderOrder = -2; skyGroup.add(moonSpr);
-const starGeo = new THREE.BufferGeometry(); { const sp = []; for (let i = 0; i < 700; i++) { const v = new THREE.Vector3(Math.random() - .5, Math.random() * 0.9 + 0.06, Math.random() - .5).normalize().multiplyScalar(405); sp.push(v.x, v.y, v.z); } starGeo.setAttribute("position", new THREE.Float32BufferAttribute(sp, 3)); }
-const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 2.3, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, fog: false });
-const stars = new THREE.Points(starGeo, starMat); stars.renderOrder = -2; skyGroup.add(stars);
-const cloudGroup = new THREE.Group(); skyGroup.add(cloudGroup);
-const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false, fog: false });
-for (let i = 0; i < 10; i++) { const w = 30 + Math.random() * 44; const m = new THREE.Mesh(new THREE.PlaneGeometry(w, w * 0.6), cloudMat); m.rotation.x = -Math.PI / 2; m.position.set((Math.random() - .5) * 360, 64 + Math.random() * 36, (Math.random() - .5) * 360); m.userData.vx = 1.4 + Math.random() * 1.2; cloudGroup.add(m); }
+const skyGroup = new THREE.Group(); scene.add(skyGroup);
+const skyU = Object.assign({}, U, { uMode: { value: 0 }, uStars: { value: 0 }, uSunVis: { value: 1 }, uMoonCol: { value: new THREE.Color().setRGB(0.9, 0.92, 1.0) },
+  uCloudCover: { value: 0.46 }, uCloudLit: { value: new THREE.Color() }, uCloudAmb: { value: new THREE.Color() }, uWind: { value: new THREE.Vector2(0, 0) } });
+const skyMat = new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false, uniforms: skyU, defines: { CLOUD_STEPS: 8 },
+  vertexShader: SH.SKYDOME_VERT, fragmentShader: SH.SKYDOME_FRAG });
+const skyDome = new THREE.Mesh(new THREE.SphereGeometry(420, 32, 20), skyMat);
+skyDome.renderOrder = 10; skyDome.frustumCulled = false; skyDome.userData.noShadowTag = 1;   // drawn after opaque terrain so hidden sky pixels are never shaded
+skyGroup.add(skyDome);
 function updateSky(dt) {
-  skyGroup.visible = DIM === "overworld"; if (!skyGroup.visible) return;
-  skyGroup.position.set(camera.position.x, 0, camera.position.z);
-  for (const m of cloudGroup.children) { m.position.x += m.userData.vx * dt; if (m.position.x > 200) m.position.x -= 400; }
+  skyGroup.visible = true;
+  skyGroup.position.copy(camera.position);
+  const w = skyU.uWind.value; w.x += dt * 6.5; w.y += dt * 2.2;
 }
 // ambient particles (dust overworld, ash fire, motes end)
 const AMB = 150, ambGeo = new THREE.BufferGeometry(), ambPos = new Float32Array(AMB * 3);
@@ -69,7 +89,6 @@ function updateAmbient(dt) {
 // viewmodel (held tool) drawn as overlay pass
 const vScene = new THREE.Scene();
 const vCam = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.01, 10);
-vScene.add(new THREE.AmbientLight(0xffffff, 0.85));
 const vLight = new THREE.DirectionalLight(0xffffff, 0.9); vLight.position.set(-1, 2, 2); vScene.add(vLight);
 
 // ---------- SETTINGS ----------
@@ -77,16 +96,37 @@ const settings = { sensD: 0.0012 * 12, sensM: 0.005, fov: 75, autoJump: false, g
   sfxVol: 0.8, musicVol: 0.5, muted: false, cbMarkers: false, reduceMotion: false,
   keys: { interact: "KeyE", dodge: "KeyF", camera: "KeyV", inv: "KeyI", skills: "KeyK", cat: "KeyG", journal: "KeyJ" } };
 const DEFAULT_KEYS = { interact: "KeyE", dodge: "KeyF", camera: "KeyV", inv: "KeyI", skills: "KeyK", cat: "KeyG", journal: "KeyJ" };
-const GFX = { low: { dist: 3, shadows: false, pr: 1 }, med: { dist: 5, shadows: false, pr: 1.5 }, high: { dist: 6, shadows: true, pr: 2 }, ultra: { dist: 8, shadows: true, pr: 2 } };
+const GFX = { low: { dist: 3, shadows: false, pr: 1, clouds: 0, map: 1024, rad: 32 }, med: { dist: 5, shadows: true, pr: 1.5, clouds: 5, map: 1024, rad: 34 },
+  high: { dist: 6, shadows: true, pr: 2, clouds: 8, map: 2048, rad: 44 }, ultra: { dist: 8, shadows: true, pr: 2, clouds: 12, map: 4096, rad: 60 } };
 function applyGfx() {
   const g = GFX[settings.gfx];
   renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? Math.min(g.pr, 1.5) : g.pr));
   renderer.shadowMap.enabled = g.shadows && !isTouch;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   sun.castShadow = g.shadows && !isTouch;
-  if (sun.castShadow) { sun.shadow.mapSize.set(1536, 1536); sun.shadow.camera.near = 1; sun.shadow.camera.far = 200;
-    sun.shadow.camera.left = -40; sun.shadow.camera.right = 40; sun.shadow.camera.top = 40; sun.shadow.camera.bottom = -40; sun.shadow.bias = -0.0008; }
+  if (sun.castShadow) {
+    if (sun.shadow.map && sun.shadow.mapSize.x !== g.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+    sun.shadow.mapSize.set(g.map, g.map); sun.shadow.camera.near = 1; sun.shadow.camera.far = 240;
+    sun.shadow.camera.left = -g.rad; sun.shadow.camera.right = g.rad; sun.shadow.camera.top = g.rad; sun.shadow.camera.bottom = -g.rad;
+    if (sun.shadow.camera.updateProjectionMatrix) sun.shadow.camera.updateProjectionMatrix();
+    sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.035;
+  }
+  U.uShadowRadius.value = g.rad;
+  const steps = isTouch ? Math.min(g.clouds, 4) : g.clouds;
+  if (skyMat.defines.CLOUD_STEPS !== steps) { skyMat.defines.CLOUD_STEPS = steps; skyMat.needsUpdate = true; }
+  fancyLeaves = settings.gfx !== "low";
+  U.uWave.value = settings.gfx === "low" ? 0 : 1;
   remeshAll();
+}
+// keep the shadow map centred on Thomas, snapped to whole shadow texels so edges do not shimmer while walking
+function positionSunShadow() {
+  const L = lightDir, g = GFX[settings.gfx], texel = (2 * g.rad) / g.map;
+  let ax = L.z, az = -L.x; const al = Math.hypot(ax, az) || 1; ax /= al; az /= al;       // shadow camera right = normalize(up x L)
+  const ux = L.y * az, uy = L.z * ax - L.x * az, uz = -L.y * ax, P = player.pos;          // shadow camera up = L x right
+  const px = P.x * ax + P.z * az, py = P.x * ux + P.y * uy + P.z * uz;
+  const dx = Math.round(px / texel) * texel - px, dy = Math.round(py / texel) * texel - py;
+  sun.target.position.set(P.x + ax * dx + ux * dy, P.y + uy * dy, P.z + az * dx + uz * dy);
+  sun.position.set(sun.target.position.x + L.x * 110, sun.target.position.y + L.y * 110, sun.target.position.z + L.z * 110);
 }
 
 // ---------- AUDIO (WebAudio synth, no asset files) ----------
@@ -251,8 +291,23 @@ const generated = new Set();      // "cx,cz"
 const chunks = new Map();         // "cx,cz" -> {opaque, water}
 const dirty = new Set();
 const bk = (x, y, z) => x + "," + y + "," + z;
-function getBlock(x, y, z) { if (y < 0 || y >= WORLD_H) return AIR; const v = W.get(bk(x, y, z)); return v === undefined ? AIR : v; }
-function setRaw(x, y, z, id) { if (id === AIR) W.delete(bk(x, y, z)); else W.set(bk(x, y, z), id); }
+// typed array mirror of W, one Uint8Array per 16x16 column, index (y*CH + lz)*CH + lx.
+// W stays the source of truth for iteration; every write goes through setRaw so both always agree.
+const CSTORE = new Map();
+const CAREA = CH * CH;
+const cnum = (cx, cz) => (cx + 32768) * 65536 + (cz + 32768);
+function getBlock(x, y, z) {
+  if (y < 0 || y >= WORLD_H) return AIR;
+  if ((x | 0) !== x || (y | 0) !== y || (z | 0) !== z) { const v = W.get(bk(x, y, z)); return v === undefined ? AIR : v; }
+  const a = CSTORE.get(cnum(x >> 4, z >> 4)); return a ? a[y * CAREA + (z & 15) * CH + (x & 15)] : AIR;
+}
+function setRaw(x, y, z, id) {
+  if (id === AIR) W.delete(bk(x, y, z)); else W.set(bk(x, y, z), id);
+  if ((x | 0) !== x || (y | 0) !== y || (z | 0) !== z || y < 0 || y >= WORLD_H) return;
+  const k = cnum(x >> 4, z >> 4); let a = CSTORE.get(k);
+  if (!a) { if (id === AIR) return; a = new Uint8Array(CAREA * WORLD_H); CSTORE.set(k, a); }
+  a[y * CAREA + (z & 15) * CH + (x & 15)] = id;
+}
 function ck(cx, cz) { return cx + "," + cz; }
 
 // procedural noise
@@ -447,57 +502,304 @@ function giantMushroom(x, y, z) {   // mushroom-forest landmark: a pale stem top
   for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (getBlock(x + dx, top + 1, z + dz) === AIR) setRaw(x + dx, top + 1, z + dz, MUSHROOM);
 }
 
-// chunk meshing (face-culled, vertex-colored)
+// ---------- CHUNK MESHING: textured, smooth lit (sky light + block light + ambient occlusion) ----------
+// Each rebuild copies the chunk plus a 7 block margin into a padded region, floods sky and block light
+// through it, then emits faces whose vertices carry AO and averaged light. Faces go to three meshes:
+// opaque (terrain shader), cutout (leaves and plants, alpha tested, double sided) and water.
 const FACES = [
-  { d: [1, 0, 0], c: [[1,1,1],[1,0,1],[1,0,0],[1,1,0]], s: 0.8 },
-  { d: [-1,0, 0], c: [[0,1,0],[0,0,0],[0,0,1],[0,1,1]], s: 0.8 },
-  { d: [0, 1, 0], c: [[0,1,1],[1,1,1],[1,1,0],[0,1,0]], s: 1.0 },
-  { d: [0,-1, 0], c: [[0,0,0],[1,0,0],[1,0,1],[0,0,1]], s: 0.5 },
-  { d: [0, 0, 1], c: [[0,1,1],[0,0,1],[1,0,1],[1,1,1]], s: 0.65 },
-  { d: [0, 0,-1], c: [[1,1,0],[1,0,0],[0,0,0],[0,1,0]], s: 0.65 }
+  { d: [1, 0, 0], c: [[1,1,1],[1,0,1],[1,0,0],[1,1,0]] },
+  { d: [-1,0, 0], c: [[0,1,0],[0,0,0],[0,0,1],[0,1,1]] },
+  { d: [0, 1, 0], c: [[0,1,1],[1,1,1],[1,1,0],[0,1,0]] },
+  { d: [0,-1, 0], c: [[0,0,0],[1,0,0],[1,0,1],[0,0,1]] },
+  { d: [0, 0, 1], c: [[0,1,1],[0,0,1],[1,0,1],[1,1,1]] },
+  { d: [0, 0,-1], c: [[1,1,0],[1,0,0],[0,0,0],[0,1,0]] }
 ];
-const matOpaque = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }); // TODO FrontSide after winding verify
-const matWater = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.72, depthWrite: false, side: THREE.DoubleSide });
-
-function faceCol(def, fi) {
-  const base = fi === 2 ? def.top : (fi === 3 ? def.bot : def.side);
-  const s = FACES[fi].s; return [base[0] * s, base[1] * s, base[2] * s];
+const LM = 7, RW = CH + LM * 2, RA = RW * RW, RH = WORLD_H + 2, RV = RA * RH, LDEC = 2;
+const rB = new Uint8Array(RV), rS = new Uint8Array(RV), rL = new Uint8Array(RV);
+const QM = (1 << 18) - 1, lq = new Int32Array(QM + 1);
+const KIND = new Uint8Array(256), OCC = new Uint8Array(256), LATT = new Uint8Array(256), EMIT = new Uint8Array(256), FLG = new Uint8Array(256), TINTK = new Uint8Array(256), ROT = new Uint8Array(256);
+const TIL = [], BCOL = [];
+const ATILE = ATL.tiles;
+(function initBlockRender() {
+  const map = {
+    [GRASS]: ["grass_top", "grass_side", "dirt"], [DIRT]: ["dirt"], [STONE]: ["stone"], [WOOD]: ["log_top", "log_side", "log_top"], [LEAVES]: ["leaves"],
+    [SAND]: ["sand"], [LAVA]: ["dirt"], [FIRESTONE]: ["firestone"], [ENDSTONE]: ["endstone"], [PLANKS]: ["planks"], [COBBLE]: ["cobble"],
+    [CHEST]: ["chest_top", "chest_side", "planks"], [SNOW]: ["snow"], [BRICK]: ["brick"], [BED]: ["bed_top", "bed_side", "planks"],
+    [FIRE_CRYSTAL]: ["fire_crystal"], [BOUNCE]: ["slime"], [SPIKE]: ["spike_top", "metal_side", "metal_side"], [ALARM]: ["gold_bell"],
+    [FREDA]: ["freda_top", "freda_side", "freda_top"], [MYCELIUM]: ["mycelium_top", "mycelium_side", "dirt"], [MUSHROOM]: ["mushroom_cap", "mushroom_cap", "mushroom_gills"],
+    [CRYSTAL]: ["crystal"], [LAUNCH]: ["launch_top", "launch_side", "launch_side"], [HEAL]: ["heal"], [FROST]: ["frost"], [TALLGRASS]: ["tallgrass"],
+    [CDOOR]: ["cdoor"], [QBLOCK]: ["qblock"], [PIPE]: ["pipe_top", "pipe_side", "pipe_top"]
+  };
+  const rotTops = new Set([GRASS, DIRT, SAND, STONE, SNOW, FIRESTONE, ENDSTONE, MYCELIUM, COBBLE, LEAVES]);
+  const emit = { [TORCH]: 14, [LAVA]: 15, [FIRE_CRYSTAL]: 11, [CRYSTAL]: 10, [HEAL]: 9, [FROST]: 7, [CDOOR]: 10, [PORTAL]: 11 };
+  for (const k of Object.keys(BLOCKS)) {
+    const id = +k, def = BLOCKS[id], names = map[id];
+    if (id === WATER) KIND[id] = 3; else if (id === TALLGRASS) KIND[id] = 4; else if (id === LEAVES) KIND[id] = 2;
+    else if (id === TORCH || id === PORTAL) KIND[id] = 0; else KIND[id] = 1;
+    OCC[id] = KIND[id] === 1 && isOpaque(id) ? 1 : 0;
+    if (id === WATER) LATT[id] = 1; else if (id === LEAVES) LATT[id] = 1;
+    EMIT[id] = emit[id] || (def.glow ? 9 : 0);
+    const t = names ? names.map(n => ATILE[n]) : [ATILE.snow];                     // unknown blocks: neutral tile tinted by their colour
+    TIL[id] = [t[0], t[1] || t[0], t[2] || t[1] || t[0]];
+    BCOL[id] = names ? null : [def.top, def.side, def.bot];
+    ROT[id] = rotTops.has(id) ? 1 : 0;
+    let f = 0;
+    if (def.glow) f |= 2; if (id === LAVA) f |= 4; if (id === TALLGRASS) f |= 8; if (id === LEAVES) f |= 16;
+    FLG[id] = f;
+    TINTK[id] = (id === GRASS || id === TALLGRASS) ? 1 : id === LEAVES ? 2 : 0;
+  }
+  KIND[AIR] = 0; OCC[AIR] = 0;
+})();
+// region offsets for the AO / light samples of every face corner, relative to the face's neighbour cell
+const NOFF = FACES.map(F => F.d[1] * RA + F.d[2] * RW + F.d[0]);
+const AOT = [];
+for (let f = 0; f < 6; f++) {
+  const ax = FACES[f].d[0] ? 0 : FACES[f].d[1] ? 1 : 2, tan = [0, 1, 2].filter(a => a !== ax);
+  for (let k = 0; k < 4; k++) {
+    const c = FACES[f].c[k], o = [0, 0, 0], p = [0, 0, 0];
+    o[tan[0]] = c[tan[0]] * 2 - 1; p[tan[1]] = c[tan[1]] * 2 - 1;
+    const off = v => v[1] * RA + v[2] * RW + v[0];
+    AOT.push([off(o), off(p), off([o[0] + p[0], o[1] + p[1], o[2] + p[2]])]);
+  }
 }
-function buildChunk(cx, cz) {
-  genChunk(cx, cz); genChunk(cx + 1, cz); genChunk(cx - 1, cz); genChunk(cx, cz + 1); genChunk(cx, cz - 1);
-  const op = { pos: [], nor: [], col: [], idx: [] }, wa = { pos: [], nor: [], col: [], idx: [] };
-  const x0 = cx * CH, z0 = cz * CH;
-  for (let x = x0; x < x0 + CH; x++) for (let z = z0; z < z0 + CH; z++) for (let y = 0; y < WORLD_H; y++) {
-    const id = getBlock(x, y, z); if (id === AIR || id === PORTAL || id === TORCH) continue;
-    const def = BLOCKS[id]; const water = id === WATER; const transp = water || id === TALLGRASS;   // tall grass renders as translucent foliage
-    const tint = id === WATER ? 1 : (0.9 + 0.16 * hsh(x * 1.7 + y * 4.3, z * 2.9));
-    for (let f = 0; f < 6; f++) {
-      const F = FACES[f], nb = getBlock(x + F.d[0], y + F.d[1], z + F.d[2]);
-      const draw = transp ? (nb === AIR || (!isOpaque(nb) && nb !== id)) : !isOpaque(nb);
-      if (!draw) continue;
-      const t = transp ? wa : op, base = t.pos.length / 3, col = faceCol(def, f);
-      for (let k = 0; k < 4; k++) { const c = F.c[k]; t.pos.push(x + c[0], y + c[1], z + c[2]); t.nor.push(F.d[0], F.d[1], F.d[2]); t.col.push(col[0] * tint, col[1] * tint, col[2] * tint); }
-      t.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+const AOC = [0.38, 0.6, 0.8, 1.0];
+function GeoBuf(cap) { this.cap = cap; this.alloc(cap); this.n = 0; this.ni = 0; }
+GeoBuf.prototype.alloc = function (cap) {
+  const o = this.pos ? this : null;
+  const pos = new Float32Array(cap * 3), uv = new Uint16Array(cap * 2), tint = new Uint8Array(cap * 4), lit = new Uint8Array(cap * 4), idx = new Uint32Array(Math.ceil(cap * 1.5));
+  if (o) { pos.set(o.pos); uv.set(o.uv); tint.set(o.tint); lit.set(o.lit); idx.set(o.idx); }
+  this.pos = pos; this.uv = uv; this.tint = tint; this.lit = lit; this.idx = idx; this.cap = cap;
+};
+GeoBuf.prototype.room = function (nv) { if (this.n + nv > this.cap) this.alloc(Math.max(this.cap * 2, this.n + nv)); };
+const gOp = new GeoBuf(16384), gCut = new GeoBuf(8192), gWat = new GeoBuf(4096);
+function vtx(g, x, y, z, u, v, tr, tg, tb, fl, ao, sk, bl, face) {
+  const i = g.n++, i3 = i * 3, i2 = i * 2, i4 = i * 4;
+  g.pos[i3] = x; g.pos[i3 + 1] = y; g.pos[i3 + 2] = z;
+  g.uv[i2] = u * 65535; g.uv[i2 + 1] = v * 65535;
+  g.tint[i4] = tr; g.tint[i4 + 1] = tg; g.tint[i4 + 2] = tb; g.tint[i4 + 3] = fl;
+  g.lit[i4] = ao; g.lit[i4 + 1] = sk; g.lit[i4 + 2] = bl; g.lit[i4 + 3] = face;
+}
+function quadIdx(g, base, flip) {
+  const I = g.idx, j = g.ni; g.ni += 6;
+  if (flip) { I[j] = base; I[j + 1] = base + 1; I[j + 2] = base + 3; I[j + 3] = base + 1; I[j + 4] = base + 2; I[j + 5] = base + 3; }
+  else { I[j] = base; I[j + 1] = base + 1; I[j + 2] = base + 2; I[j + 3] = base; I[j + 4] = base + 2; I[j + 5] = base + 3; }
+}
+function fillRegion(cx, cz) {
+  const bx = cx * CH - LM, bz = cz * CH - LM;
+  for (let rz = 0; rz < RW; rz++) {
+    const wz = bz + rz, czz = wz >> 4, lz = wz & 15;
+    for (let rx = 0; rx < RW; rx++) {
+      const wx = bx + rx, a = CSTORE.get(cnum(wx >> 4, czz)), col = rz * RW + rx;
+      rB[col] = STONE; rB[(RH - 1) * RA + col] = AIR;                         // sealed floor below y=0, open sky above the build limit
+      let ri = RA + col;
+      if (a) { let ci = lz * CH + (wx & 15); for (let y = 0; y < WORLD_H; y++, ri += RA, ci += CAREA) rB[ri] = a[ci]; }
+      else for (let y = 0; y < WORLD_H; y++, ri += RA) rB[ri] = AIR;
     }
   }
-  const prev = chunks.get(ck(cx, cz));
-  if (prev) { if (prev.opaque) scene.remove(prev.opaque); if (prev.water) scene.remove(prev.water); }
-  const out = { opaque: null, water: null };
-  if (op.idx.length) out.opaque = makeMesh(op, matOpaque, true);
-  if (wa.idx.length) out.water = makeMesh(wa, matWater, false);
-  chunks.set(ck(cx, cz), out);
 }
-function makeMesh(t, mat, shadow) {
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.Float32BufferAttribute(t.pos, 3));
-  g.setAttribute("normal", new THREE.Float32BufferAttribute(t.nor, 3));
-  g.setAttribute("color", new THREE.Float32BufferAttribute(t.col, 3));
-  g.setIndex(t.idx);
-  const m = new THREE.Mesh(g, mat);
-  if (shadow && renderer.shadowMap.enabled) { m.castShadow = true; m.receiveShadow = true; }
+function spreadLight(L, qh, qt) {
+  while (qh !== qt) {
+    const ri = lq[qh]; qh = (qh + 1) & QM;
+    const l = L[ri] - LDEC; if (l <= 0) continue;
+    const ry = (ri / RA) | 0, r2 = ri - ry * RA, rz = (r2 / RW) | 0, rx = r2 - rz * RW;
+    let n, id, nl;
+    if (rx > 0) { n = ri - 1; id = rB[n]; if (!OCC[id]) { nl = l - LATT[id]; if (nl > L[n]) { L[n] = nl; lq[qt] = n; qt = (qt + 1) & QM; } } }
+    if (rx < RW - 1) { n = ri + 1; id = rB[n]; if (!OCC[id]) { nl = l - LATT[id]; if (nl > L[n]) { L[n] = nl; lq[qt] = n; qt = (qt + 1) & QM; } } }
+    if (rz > 0) { n = ri - RW; id = rB[n]; if (!OCC[id]) { nl = l - LATT[id]; if (nl > L[n]) { L[n] = nl; lq[qt] = n; qt = (qt + 1) & QM; } } }
+    if (rz < RW - 1) { n = ri + RW; id = rB[n]; if (!OCC[id]) { nl = l - LATT[id]; if (nl > L[n]) { L[n] = nl; lq[qt] = n; qt = (qt + 1) & QM; } } }
+    if (ry > 0) { n = ri - RA; id = rB[n]; if (!OCC[id]) { nl = l - LATT[id]; if (nl > L[n]) { L[n] = nl; lq[qt] = n; qt = (qt + 1) & QM; } } }
+    if (ry < RH - 1) { n = ri + RA; id = rB[n]; if (!OCC[id]) { nl = l - LATT[id]; if (nl > L[n]) { L[n] = nl; lq[qt] = n; qt = (qt + 1) & QM; } } }
+  }
+}
+function lightRegion() {
+  rS.fill(0); rL.fill(0);
+  let top = 0;
+  for (let c = 0; c < RA; c++) {                                                   // sky columns fall straight down
+    let l = 15;
+    for (let ry = RH - 1; ry >= 0; ry--) {
+      const ri = ry * RA + c, id = rB[ri];
+      if (OCC[id]) { if (ry > top) top = ry; break; }
+      if (LATT[id]) { l -= LATT[id]; if (l < 0) l = 0; if (ry > top) top = ry; }
+      rS[ri] = l;
+    }
+  }
+  let qt = 0;                                                                      // then spread sideways into overhangs and caves
+  for (let ry = 0; ry <= Math.min(RH - 1, top + 1); ry++) for (let rz = 0; rz < RW; rz++) for (let rx = 0; rx < RW; rx++) {
+    const ri = ry * RA + rz * RW + rx, l = rS[ri]; if (l <= LDEC) continue;
+    const t = l - LDEC;
+    if ((rx > 0 && rS[ri - 1] < t && !OCC[rB[ri - 1]]) || (rx < RW - 1 && rS[ri + 1] < t && !OCC[rB[ri + 1]]) ||
+        (rz > 0 && rS[ri - RW] < t && !OCC[rB[ri - RW]]) || (rz < RW - 1 && rS[ri + RW] < t && !OCC[rB[ri + RW]]) ||
+        (ry > 0 && rS[ri - RA] < t && !OCC[rB[ri - RA]])) { lq[qt] = ri; qt = (qt + 1) & QM; }
+  }
+  spreadLight(rS, 0, qt);
+  qt = 0;
+  for (let ri = RA; ri < RV - RA; ri++) { const e = EMIT[rB[ri]]; if (e) { rL[ri] = e; lq[qt] = ri; qt = (qt + 1) & QM; } }
+  if (qt) spreadLight(rL, 0, qt);
+}
+// terrain + water materials (custom shaders with three.js shadow maps, fog done in shader)
+function mkShader(vs, fs, extra, opts) {
+  const u = THREE.UniformsUtils.merge([THREE.UniformsLib.lights]); Object.assign(u, U, extra || {});
+  return new THREE.ShaderMaterial(Object.assign({ uniforms: u, vertexShader: vs, fragmentShader: fs, lights: true, fog: false }, opts || {}));
+}
+const matTerrain = mkShader(SH.TERRAIN_VERT, SH.TERRAIN_FRAG, { uAtlas: { value: atlasTex } }, { side: THREE.FrontSide });
+const matCutout = mkShader(SH.TERRAIN_VERT, SH.TERRAIN_FRAG, { uAtlas: { value: atlasTex } }, { side: THREE.DoubleSide, defines: { CUTOUT: 1 } });
+const depthCutout = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: atlasTex, alphaTest: 0.5, side: THREE.DoubleSide });
+const matWaterS = mkShader(SH.WATER_VERT, SH.WATER_FRAG, {}, { transparent: true, depthWrite: false, side: THREE.DoubleSide });
+const tintCol = new Float32Array(CAREA * 6);                                        // per column: grass tint rgb, foliage tint rgb
+function biomeTints(cx, cz) {
+  for (let lz = 0; lz < CH; lz++) for (let lx = 0; lx < CH; lx++) {
+    const o = (lz * CH + lx) * 6; let r = 1, g = 1, b = 1;
+    if (DIM === "overworld") {
+      const bi = biomeAt(cx * CH + lx, cz * CH + lz), t = bi.t, m = bi.m;
+      const dry = THREE.MathUtils.clamp((t - 0.48) * 3.2, 0, 1) * THREE.MathUtils.clamp((0.7 - m) * 2.5, 0, 1);
+      const cold = THREE.MathUtils.clamp((0.42 - t) * 4, 0, 1), wet = THREE.MathUtils.clamp((m - 0.5) * 3, 0, 1);
+      r = 1 + 0.3 * dry - 0.16 * cold - 0.14 * wet; g = 1 + 0.03 * dry - 0.04 * cold + 0.02 * wet; b = 1 - 0.42 * dry + 0.1 * cold - 0.12 * wet;
+    } else if (DIM === "realm" || DIM === "mario") { r = 0.9; g = 1.1; b = 0.78; }
+    tintCol[o] = r; tintCol[o + 1] = g; tintCol[o + 2] = b;
+    tintCol[o + 3] = r * 0.92; tintCol[o + 4] = g * 0.97; tintCol[o + 5] = b * 1.02;
+  }
+}
+const DECO = ["tuft", "tuft", "tuft", "tallgrass", "flower_red", "flower_yellow", "flower_blue", "flower_white"];
+let fancyLeaves = true;
+function buildChunk(cx, cz) {
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) genChunk(cx + dx, cz + dz);
+  fillRegion(cx, cz); lightRegion(); biomeTints(cx, cz);
+  gOp.n = gOp.ni = 0; gCut.n = gCut.ni = 0; gWat.n = gWat.ni = 0;
+  const x0 = cx * CH, z0 = cz * CH;
+  const skyOut = new Uint8Array(CAREA * WORLD_H), blkOut = new Uint8Array(CAREA * WORLD_H);
+  const deco = DIM === "overworld" || DIM === "realm" || DIM === "mario" || DIM === "sky";
+  for (let y = 0; y < WORLD_H; y++) for (let lz = 0; lz < CH; lz++) for (let lx = 0; lx < CH; lx++) {
+    const ri = (y + 1) * RA + (lz + LM) * RW + lx + LM, id = rB[ri], oi = y * CAREA + lz * CH + lx;
+    skyOut[oi] = rS[ri]; blkOut[oi] = rL[ri];
+    const kind = KIND[id]; if (!kind) continue;
+    const wx = x0 + lx, wz = z0 + lz, tc = (lz * CH + lx) * 6;
+    if (kind === 4) { plant(gCut, wx, y, wz, ri, ATILE.tallgrass, 1, 0, 0, tintCol[tc], tintCol[tc + 1], tintCol[tc + 2]); continue; }
+    const jit = 0.95 + 0.1 * hsh(wx * 7 + y * 13, wz * 11 - y * 5);
+    for (let f = 0; f < 6; f++) {
+      const n = ri + NOFF[f], nid = rB[n];
+      if (OCC[nid]) continue;
+      if (kind === 3) { if (nid === WATER) continue; waterFace(wx, y, wz, ri, f); continue; }
+      if (kind === 2 && nid === LEAVES) continue;                                    // canopy shell only; holes show the far side
+      const tl = TIL[id][f === 2 ? 0 : f === 3 ? 2 : 1];
+      let tr = jit, tg = jit, tb = jit, fl = FLG[id];
+      const bc = BCOL[id]; if (bc) { const c = bc[f === 2 ? 0 : f === 3 ? 2 : 1]; tr *= c[0] * 1.15; tg *= c[1] * 1.15; tb *= c[2] * 1.15; }
+      const tk = TINTK[id];
+      if (tk === 1 && f !== 3) { tr *= tintCol[tc]; tg *= tintCol[tc + 1]; tb *= tintCol[tc + 2]; if (f !== 2) fl |= 1; }
+      else if (tk === 2) { tr *= tintCol[tc + 3]; tg *= tintCol[tc + 4]; tb *= tintCol[tc + 5]; }
+      const h = hsh(wx * 3 + y, wz * 5 - y);
+      cubeFace(kind === 2 ? gCut : gOp, wx, y, wz, n, f, tl, ROT[id] && f === 2 ? (h * 4) | 0 : 0, ROT[id] && f !== 2 && h > 0.5, tr, tg, tb, fl);
+    }
+    if (deco && id === GRASS && rB[ri + RA] === AIR && y + 1 < WORLD_H) {           // grass tufts and wildflowers (visual only)
+      const r = hsh(wx * 7 + 3, wz * 11 + 5), dens = DIM === "realm" ? 0.2 : 0.36;
+      if (r < dens) {
+        const pick = r < dens * 0.9 ? (hsh(wx * 5 + 1, wz * 3 + 2) < 0.12 ? 3 : 0) : 4 + ((hsh(wx * 13, wz * 17) * 4) | 0);
+        const sc = pick === 3 ? 0.9 : pick >= 4 ? 0.7 + hsh(wx, wz * 3) * 0.25 : 0.55 + hsh(wx * 9, wz * 7) * 0.4;
+        plant(gCut, wx, y + 1, wz, ri + RA, ATILE[DECO[pick]], sc, (hsh(wx * 3, wz * 9) - 0.5) * 0.3, (hsh(wx * 9, wz * 3) - 0.5) * 0.3,
+          pick >= 4 ? 1 : tintCol[tc], pick >= 4 ? 1 : tintCol[tc + 1], pick >= 4 ? 1 : tintCol[tc + 2]);
+      }
+    }
+  }
+  const key = ck(cx, cz), prev = chunks.get(key);
+  if (prev) disposeChunk(prev);
+  const out = { opaque: null, cutout: null, water: null, sky: skyOut, blk: blkOut };
+  if (gOp.ni) out.opaque = makeChunkMesh(gOp, matTerrain, true, null);
+  if (gCut.ni) out.cutout = makeChunkMesh(gCut, matCutout, true, depthCutout);
+  if (gWat.ni) out.water = makeChunkMesh(gWat, matWaterS, false, null);
+  chunks.set(key, out);
+}
+function cubeFace(g, wx, y, wz, n, f, tl, rot, mir, tr, tg, tb, fl) {
+  g.room(4); if (g.ni + 6 > g.idx.length) g.alloc(g.cap * 2);
+  const F = FACES[f], base = g.n, s = tl.s;
+  const tR = Math.min(255, tr / 1.5 * 255), tG = Math.min(255, tg / 1.5 * 255), tB = Math.min(255, tb / 1.5 * 255);
+  let b0 = 0, b1 = 0, b2 = 0, b3 = 0;
+  for (let k = 0; k < 4; k++) {
+    const c = F.c[k], o = AOT[f * 4 + k], a1 = n + o[0], a2 = n + o[1], a3 = n + o[2];
+    const o1 = OCC[rB[a1]], o2 = OCC[rB[a2]], o3 = OCC[rB[a3]];
+    const aoL = (o1 && o2) ? 0 : 3 - (o1 + o2 + o3);
+    let sk = rS[n], bl = rL[n], cnt = 1;
+    if (!o1) { sk += rS[a1]; bl += rL[a1]; cnt++; }
+    if (!o2) { sk += rS[a2]; bl += rL[a2]; cnt++; }
+    if (!o3 && !(o1 && o2)) { sk += rS[a3]; bl += rL[a3]; cnt++; }
+    sk /= cnt; bl /= cnt;
+    let lu, lv;
+    if (f === 2) { lu = c[0]; lv = 1 - c[2]; if (rot === 1) { const t = lu; lu = lv; lv = 1 - t; } else if (rot === 2) { lu = 1 - lu; lv = 1 - lv; } else if (rot === 3) { const t = lu; lu = 1 - lv; lv = t; } }
+    else if (f === 3) { lu = c[0]; lv = c[2]; }
+    else { lv = c[1]; lu = f === 0 ? 1 - c[2] : f === 1 ? c[2] : f === 4 ? c[0] : 1 - c[0]; if (mir) lu = 1 - lu; }
+    const wv = (fl & 16) && c[1] === 1 ? 32 : 0;
+    vtx(g, wx + c[0], y + c[1], wz + c[2], tl.u0 + lu * s, tl.v0 + lv * s, tR, tG, tB, fl | wv, AOC[aoL] * 255, sk * 17, bl * 17, f);
+    const lum = aoL * 16 + sk;
+    if (k === 0) b0 = lum; else if (k === 1) b1 = lum; else if (k === 2) b2 = lum; else b3 = lum;
+  }
+  quadIdx(g, base, b0 + b2 < b1 + b3);
+}
+function plant(g, wx, y, wz, ri, tl, hgt, ox, oz, tr, tg, tb) {
+  g.room(8); if (g.ni + 12 > g.idx.length) g.alloc(g.cap * 2);
+  const s = tl.s, sk = rS[ri] * 17, bl = rL[ri] * 17;
+  const tR = Math.min(255, tr / 1.5 * 255), tG = Math.min(255, tg / 1.5 * 255), tB = Math.min(255, tb / 1.5 * 255);
+  const cx = wx + 0.5 + ox, cz = wz + 0.5 + oz, e = 0.45, top = y + hgt;
+  for (let q = 0; q < 2; q++) {
+    const base = g.n, sx = q ? -e : e;
+    vtx(g, cx - sx, y, cz - e, tl.u0, tl.v0, tR, tG, tB, 8, 190, sk, bl, 6);
+    vtx(g, cx + sx, y, cz + e, tl.u0 + s, tl.v0, tR, tG, tB, 8, 190, sk, bl, 6);
+    vtx(g, cx + sx, top, cz + e, tl.u0 + s, tl.v0 + s * Math.min(1, hgt + 0.001), tR, tG, tB, 8 | 32, 255, sk, bl, 6);
+    vtx(g, cx - sx, top, cz - e, tl.u0, tl.v0 + s * Math.min(1, hgt + 0.001), tR, tG, tB, 8 | 32, 255, sk, bl, 6);
+    quadIdx(g, base, false);
+  }
+}
+function waterDepth(ri) { let d = 0; while (d < 8 && rB[ri] === WATER) { d++; ri -= RA; } return d; }
+function waterFace(wx, y, wz, ri, f) {
+  const g = gWat; g.room(4); if (g.ni + 6 > g.idx.length) g.alloc(g.cap * 2);
+  const F = FACES[f], base = g.n, n = ri + NOFF[f], sk = rS[n] * 17, bl = rL[n] * 17;
+  const lowTop = rB[ri + RA] !== WATER ? 0.875 : 1;
+  for (let k = 0; k < 4; k++) {
+    const c = F.c[k];
+    let dep = 160;                                                                  // x channel carries water depth: shallows turn clear, deep water dark
+    if (f === 2) { const o = AOT[8 + k]; dep = (waterDepth(ri) + waterDepth(ri + o[0]) + waterDepth(ri + o[1]) + waterDepth(ri + o[2])) / 32 * 255; }
+    vtx(g, wx + c[0], y + (c[1] ? lowTop : 0), wz + c[2], 0, 0, 170, 170, 170, 0, dep, sk, bl, f);
+  }
+  quadIdx(g, base, false);
+}
+function makeChunkMesh(g, mat, cast, depthMat) {
+  const geo = new THREE.BufferGeometry(), nv = g.n;
+  geo.setAttribute("position", new THREE.BufferAttribute(g.pos.slice(0, nv * 3), 3));
+  geo.setAttribute("uv", new THREE.BufferAttribute(g.uv.slice(0, nv * 2), 2, true));
+  geo.setAttribute("aTint", new THREE.BufferAttribute(g.tint.slice(0, nv * 4), 4, true));
+  geo.setAttribute("aLight", new THREE.BufferAttribute(g.lit.slice(0, nv * 4), 4, true));
+  geo.setIndex(new THREE.BufferAttribute(nv > 65535 ? g.idx.slice(0, g.ni) : Uint16Array.from(g.idx.subarray(0, g.ni)), 1));
+  const m = new THREE.Mesh(geo, mat);
+  m.matrixAutoUpdate = false; m.userData.noShadowTag = 1;
+  if (renderer.shadowMap.enabled) { m.castShadow = cast; m.receiveShadow = true; }
+  if (depthMat) m.customDepthMaterial = depthMat;
   scene.add(m); return m;
 }
-function markDirty(x, z) { dirty.add(ck(Math.floor(x / CH), Math.floor(z / CH))); }
+function disposeChunk(c) {
+  for (const m of [c.opaque, c.cutout, c.water]) if (m) { scene.remove(m); m.geometry.dispose(); }
+}
+// sky and block light (0..15) recorded for a world cell by the last mesh of its chunk
+function lightAt(x, y, z) {
+  x = Math.floor(x); y = Math.floor(y); z = Math.floor(z);
+  if (y >= WORLD_H) return 15;
+  const c = chunks.get(ck(Math.floor(x / CH), Math.floor(z / CH)));
+  if (!c || !c.sky || y < 0) return 15;
+  return c.sky[y * CAREA + (z & 15) * CH + (x & 15)];
+}
+function blockLightAt(x, y, z) {
+  x = Math.floor(x); y = Math.floor(y); z = Math.floor(z);
+  const c = chunks.get(ck(Math.floor(x / CH), Math.floor(z / CH)));
+  if (!c || !c.blk || y < 0 || y >= WORLD_H) return 0;
+  return c.blk[y * CAREA + (z & 15) * CH + (x & 15)];
+}
+// an edit changes light up to LM blocks away, so neighbour chunks relight at low priority
+const dirtyLow = new Set();
+function markDirty(x, z) {
+  const cx = Math.floor(x / CH), cz = Math.floor(z / CH), lx = x - cx * CH, lz = z - cz * CH;
+  dirty.add(ck(cx, cz));
+  const xs = lx < LM ? -1 : lx >= CH - LM ? 1 : 0, zs = lz < LM ? -1 : lz >= CH - LM ? 1 : 0;
+  for (const [ax, az] of [[xs, 0], [0, zs], [xs, zs]]) {
+    if (!ax && !az) continue;
+    const k = ck(cx + ax, cz + az); if (chunks.has(k) && !dirty.has(k)) dirtyLow.add(k);
+  }
+}
 function remeshAll() { for (const k of chunks.keys()) dirty.add(k); }
 
 function loadChunks() {
@@ -510,21 +812,23 @@ function loadChunks() {
     if (!chunks.has(ck(cx, cz))) need.push([dx * dx + dz * dz, cx, cz]);
   }
   need.sort((a, b) => a[0] - b[0]);
-  let budget = 2;
-  for (const n of need) { if (budget-- <= 0) break; buildChunk(n[1], n[2]); }
-  // remesh dirty
+  const t0 = performance.now();
+  let built = 0;
+  for (const n of need) { if (built >= 6 || (built > 0 && performance.now() - t0 > 7)) break; buildChunk(n[1], n[2]); built++; }
+  // remesh edited chunks first, then relight their neighbours when there is time left
   let db = 4;
-  for (const k of Array.from(dirty)) { if (db-- <= 0) break; const p = k.split(","); buildChunk(+p[0], +p[1]); dirty.delete(k); }
+  for (const k of Array.from(dirty)) { if (db-- <= 0) break; const p = k.split(","); dirtyLow.delete(k); buildChunk(+p[0], +p[1]); dirty.delete(k); }
+  if (dirtyLow.size && performance.now() - t0 < 9) { const k = dirtyLow.values().next().value; dirtyLow.delete(k); if (chunks.has(k)) { const p = k.split(","); buildChunk(+p[0], +p[1]); } }
   // unload far
   for (const k of Array.from(chunks.keys())) {
     const p = k.split(","); const dx = +p[0] - pcx, dz = +p[1] - pcz;
-    if (dx * dx + dz * dz > (R + 1.5) * (R + 1.5)) { const c = chunks.get(k); if (c.opaque) { scene.remove(c.opaque); c.opaque.geometry.dispose(); } if (c.water) { scene.remove(c.water); c.water.geometry.dispose(); } chunks.delete(k); }
+    if (dx * dx + dz * dz > (R + 1.5) * (R + 1.5)) { disposeChunk(chunks.get(k)); chunks.delete(k); dirtyLow.delete(k); }
   }
   updatePortalMesh();
 }
 function clearWorld() {
-  for (const c of chunks.values()) { if (c.opaque) { scene.remove(c.opaque); c.opaque.geometry.dispose(); } if (c.water) { scene.remove(c.water); c.water.geometry.dispose(); } }
-  chunks.clear(); dirty.clear(); generated.clear(); W.clear(); portalCells.length = 0; portalDest = {}; if (portalMesh) { scene.remove(portalMesh); portalMesh = null; }
+  for (const c of chunks.values()) disposeChunk(c);
+  chunks.clear(); dirty.clear(); dirtyLow.clear(); generated.clear(); W.clear(); CSTORE.clear(); portalCells.length = 0; portalDest = {}; if (portalMesh) { scene.remove(portalMesh); portalMesh = null; }
   torchCells.length = 0; if (torchMesh) { scene.remove(torchMesh); torchMesh = null; }
 }
 
@@ -946,8 +1250,7 @@ function physics(dt) {
     else if (primaryHeld && swing <= 0) { thomas.userData.armR.rotation.x = -1.1 + Math.sin(performance.now() * 0.018) * 0.5; }                                                                                  // mining/working swing
     thomas.scale.set(1, player._crouch ? 0.78 : 1, 1);
   } else thomas.visible = false;
-  sun.position.set(player.pos.x + lightDir.x * 80, player.pos.y + lightDir.y * 90 + 10, player.pos.z + lightDir.z * 80);
-  sun.target.position.set(player.pos.x, player.pos.y, player.pos.z);
+  positionSunShadow();
   if (player.hurtCd > 0) player.hurtCd -= dt;
 }
 function damage(n) {
@@ -1906,7 +2209,6 @@ function catCommand() {
 // ---------- DAY / NIGHT ----------
 let timeOfDay = 0.28, day = 1; const sunDir = new THREE.Vector3(0.5, 0.8, 0.3);
 function isNight() { return timeOfDay > 0.78 || timeOfDay < 0.22; }
-const SKY = { dayTop: new THREE.Color(0x2a6fd0), dayBot: new THREE.Color(0xcfeaff), setTop: new THREE.Color(0x3a3a6e), setBot: new THREE.Color(0xff8a4a), nightTop: new THREE.Color(0x04050d), nightBot: new THREE.Color(0x122038) };
 function updateDayNight(dt) {
   timeOfDay += dt / 180; if (timeOfDay >= 1) { timeOfDay -= 1; day++; }
   const ang = timeOfDay * Math.PI * 2 - Math.PI / 2;
@@ -1914,28 +2216,69 @@ function updateDayNight(dt) {
   sunDir.set(Math.cos(ang) * 0.85, sh, 0.32).normalize();
   if (sh >= 0) lightDir.copy(sunDir);                        // sun by day
   else lightDir.set(-sunDir.x, Math.max(0.28, -sh * 0.7 + 0.25), -sunDir.z).normalize(); // moon by night
-  if (DIM === "overworld") {
-    const dayF = THREE.MathUtils.clamp((sh - 0.04) / 0.3, 0, 1);
-    const nightF = THREE.MathUtils.clamp((-sh - 0.02) / 0.18, 0, 1);
-    const setF = THREE.MathUtils.clamp(1 - Math.abs(sh) / 0.2, 0, 1);
-    const top = SKY.nightTop.clone().lerp(SKY.dayTop, dayF).lerp(SKY.setTop, setF * 0.5);
-    const bot = SKY.nightBot.clone().lerp(SKY.dayBot, dayF).lerp(SKY.setBot, setF * 0.7);
-    skyUni.topC.value.copy(top); skyUni.botC.value.copy(bot);
-    scene.background = null; if (scene.fog) scene.fog.color.copy(bot);
-    sunSpr.position.set(sunDir.x * 380, sunDir.y * 380, sunDir.z * 380);
-    moonSpr.position.set(-sunDir.x * 380, -sunDir.y * 380, -sunDir.z * 380);
-    sunSpr.material.opacity = THREE.MathUtils.clamp(sh * 2 + 0.25, 0, 1);
-    moonSpr.material.opacity = THREE.MathUtils.clamp(-sh * 2 + 0.2, 0, 1);
-    starMat.opacity = THREE.MathUtils.clamp(-sh * 3 + 0.1, 0, 1) * 0.9;
-    cloudMat.opacity = 0.5 * dayF + 0.12;
-    if (sh >= 0) { sun.color.setHex(setF > 0.55 ? 0xffc69a : 0xfff4e0); sun.intensity = 0.28 + dayF * 0.95; }
-    else { sun.color.setHex(0x8aa2dc); sun.intensity = 0.22; }
-    hemi.color.setHex(0xbfe3ff); hemi.groundColor.setHex(0x4a4030);
-    hemi.intensity = 0.22 + dayF * 0.55 + nightF * 0.08;
-  }
   const phase = sh < 0 ? "Night" : (timeOfDay < 0.32 ? "Dawn" : timeOfDay < 0.5 ? "Morning" : timeOfDay < 0.7 ? "Afternoon" : "Dusk");
   document.getElementById("clockBig").textContent = "Day " + day;
   document.getElementById("clockSub").textContent = phase;
+}
+// ---------- ENVIRONMENT: sky, fog and light uniforms for every dimension, plus matching three.js lights for entities ----------
+const envLocal = { sky: 1, blk: 0, water: 0 };
+const vAmbient = new THREE.AmbientLight(0xffffff, 0.85); vScene.add(vAmbient);
+const torchAmb = new THREE.AmbientLight(0xffffff, 0); torchAmb.color.setRGB(1, 0.62, 0.32); scene.add(torchAmb);
+function setC(c, a, k) { const m = k == null ? 1 : k; c.r = a[0] * m; c.g = a[1] * m; c.b = a[2] * m; return c; }
+let envFogRef = null, envFogBase = [30, 100];
+function sstep(x, a, b) { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
+function updateEnv(dt) {
+  const clampF = THREE.MathUtils.clamp;
+  if (scene.fog !== envFogRef) { envFogRef = scene.fog; envFogBase = scene.fog ? [scene.fog.near, scene.fog.far] : [30, 100]; }
+  U.uTime.value += dt;
+  const ow = DIM === "overworld", bright = DIM === "realm" || DIM === "mario" || DIM === "sky";
+  let h;
+  if (ow) { U.uSunDir.value.copy(sunDir); U.uLightDir.value.copy(lightDir); h = sunDir.y; }
+  else if (bright) { U.uSunDir.value.set(0.42, 0.66, 0.36).normalize(); U.uLightDir.value.copy(U.uSunDir.value); h = U.uSunDir.value.y; }
+  else if (DIM === "fire") { U.uSunDir.value.set(0.3, 0.85, 0.25).normalize(); U.uLightDir.value.copy(U.uSunDir.value); h = 0.5; }
+  else { U.uSunDir.value.set(-0.45, 0.6, 0.5).normalize(); U.uLightDir.value.copy(U.uSunDir.value); h = 0.5; }
+  const e = GL.skyEnv(h), fade = ow ? sstep(Math.abs(h), 0.0, 0.07) : 1;
+  setC(U.uZenith.value, e.zen); setC(U.uHorizon.value, e.hor); setC(U.uGlow.value, e.glow);
+  setC(U.uSunCol.value, e.light, h > 0 ? 1 : 0); setC(U.uLightCol.value, e.light, fade);
+  setC(U.uSkyAmb.value, e.sky); setC(U.uGroundAmb.value, e.gnd);
+  setC(skyU.uCloudLit.value, e.cLit); setC(skyU.uCloudAmb.value, e.cAmb);
+  skyU.uStars.value = e.night; skyU.uSunVis.value = clampF(h * 10 + 0.4, 0, 1); skyU.uMode.value = 0;
+  skyU.uCloudCover.value = DIM === "sky" ? 0.3 : 0.46;
+  U.uEmis.value = 1.3 + e.night * 1.2; U.uSkyMul.value = 1; U.uMinLight.value = 0.012;
+  if (DIM === "fire") {
+    setC(U.uZenith.value, [0.05, 0.01, 0.006]); setC(U.uHorizon.value, [0.36, 0.075, 0.02]); setC(U.uGlow.value, [0, 0, 0]); setC(U.uSunCol.value, [0, 0, 0]);
+    setC(U.uLightCol.value, [0.85, 0.36, 0.13]); setC(U.uSkyAmb.value, [0.22, 0.085, 0.05]); setC(U.uGroundAmb.value, [0.36, 0.11, 0.03]);
+    skyU.uMode.value = 1; skyU.uStars.value = 0; U.uEmis.value = 1.6; U.uMinLight.value = 0.03;
+  } else if (DIM === "end") {
+    setC(U.uZenith.value, [0.006, 0.002, 0.012]); setC(U.uHorizon.value, [0.04, 0.016, 0.06]); setC(U.uGlow.value, [0, 0, 0]); setC(U.uSunCol.value, [0, 0, 0]);
+    setC(U.uLightCol.value, [0.55, 0.5, 0.78]); setC(U.uSkyAmb.value, [0.13, 0.1, 0.19]); setC(U.uGroundAmb.value, [0.04, 0.03, 0.06]);
+    skyU.uMode.value = 2; skyU.uStars.value = 0; U.uEmis.value = 1.8; U.uMinLight.value = 0.02;
+  }
+  // light where the camera is: drives underwater fog and the three.js lights used by entities and the held item
+  const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z;
+  const ls = lightAt(cx, cy, cz) / 15, lb = blockLightAt(cx, cy, cz) / 15, k = Math.min(1, dt * 3);
+  envLocal.sky += (ls - envLocal.sky) * k; envLocal.blk += (lb - envLocal.blk) * k;
+  const wb = getBlock(Math.floor(cx), Math.floor(cy), Math.floor(cz));
+  envLocal.water = wb === WATER && (getBlock(Math.floor(cx), Math.floor(cy) + 1, Math.floor(cz)) === WATER || cy - Math.floor(cy) < 0.875) ? 1 : 0;
+  let near = envFogBase[0], far = envFogBase[1];
+  if (ow || DIM === "realm" || DIM === "mario") { far = GFX[settings.gfx].dist * CH; near = far * 0.5; }
+  if (ow && envLocal.sky < 0.5) { const cave = 1 - envLocal.sky * 2; far = THREE.MathUtils.lerp(far, 48, cave); near = THREE.MathUtils.lerp(near, 4, cave); }   // caves close in
+  if (envLocal.water) {
+    const wl = 0.25 + 0.75 * envLocal.sky;
+    setC(U.uZenith.value, [0.012, 0.07, 0.085], wl * (0.3 + 0.7 * (1 - e.night))); U.uHorizon.value.copy(U.uZenith.value); U.uGlow.value.setRGB(0, 0, 0); U.uSunCol.value.setRGB(0, 0, 0);
+    near = 0.5; far = 22;
+  }
+  U.uFogNear.value = near; U.uFogFar.value = far;
+  if (scene.fog) { scene.fog.near = near; scene.fog.far = far; scene.fog.color.copy(U.uHorizon.value); }
+  scene.background = null;
+  // three.js lights for Lambert entities follow the same model, dimmed when the camera is under cover
+  const skyL = ow ? envLocal.sky * envLocal.sky : 1, sunVis = ow ? sstep(envLocal.sky, 0.45, 0.92) : 1;
+  sun.color.copy(U.uLightCol.value).multiplyScalar(sunVis); sun.intensity = 1;
+  hemi.color.copy(U.uSkyAmb.value).multiplyScalar(skyL * 1.15); hemi.groundColor.copy(U.uGroundAmb.value).multiplyScalar(skyL); hemi.intensity = 1;
+  const tb = envLocal.blk * envLocal.blk; torchAmb.color.setRGB(1.6 * tb + 0.012, 0.98 * tb + 0.012, 0.5 * tb + 0.014); torchAmb.intensity = 1;
+  vAmbient.color.copy(U.uSkyAmb.value).multiplyScalar(skyL * 1.3).add(torchAmb.color); vAmbient.intensity = 1;
+  vLight.color.copy(U.uLightCol.value).multiplyScalar(sunVis * 0.8); vLight.intensity = 1;
+  U.uShadowCenter.value.set(player.pos.x, player.pos.y, player.pos.z);
 }
 
 // ---------- PORTALS + DIMENSIONS ----------
@@ -3837,6 +4180,19 @@ function die() {
   deathT = performance.now(); show("death");
 }
 
+// every solid entity mesh casts and receives real sun shadows when shadow maps are on
+let shadowTagT = 0;
+function tagEntityShadows() {
+  const on = renderer.shadowMap.enabled;
+  for (const o of scene.children) {
+    if (o.userData.noShadowTag || o === skyGroup) continue;
+    o.traverse(m => {
+      if (!m.isMesh || m.userData.noShadowTag || m.isInstancedMesh) return;
+      const mt = m.material, solid = mt && !Array.isArray(mt) ? !mt.transparent && mt.visible !== false : true;
+      m.castShadow = on && solid; m.receiveShadow = on;
+    });
+  }
+}
 // ---------- MAIN LOOP ----------
 let last = performance.now(); let hungerT = 0, heatT = 0, droneT = 3;
 function loop() {
@@ -3870,9 +4226,11 @@ function loop() {
     updateTelegraphs(dt);
     updateViewItem(dt);
     updateDayNight(dt);
+    updateEnv(dt);
     updateSky(dt);
     updateAmbient(dt);
     mmT -= dt; if (mmT <= 0) { mmT = 0.2; drawMinimap(); }
+    shadowTagT -= dt; if (shadowTagT <= 0) { shadowTagT = 0.75; tagEntityShadows(); }
     loadChunks();
     checkPortal();
     // selection box
@@ -3946,5 +4304,18 @@ loop();
    - Audio: background music; Settings persistence via localStorage when hosted.
 =========================================================================== */
 // tiny dev hook so automated visual tests can start the game and jump between stages
-if (typeof window !== "undefined") window.DEV = { start: startGame, go: loadDimension };
+if (typeof window !== "undefined") window.DEV = { start: startGame, go: loadDimension,
+  look(yaw, pitch) { player.yaw = yaw; player.pitch = pitch; },
+  time(t) { timeOfDay = t; },
+  tp(x, y, z) { player.pos.set(x, y, z); player.vel.set(0, 0, 0); },
+  gfx(level) { settings.gfx = level; applyGfx(); },
+  third(on) { thirdPerson = !!on; },
+  nocine() { story.active = false; endCine(); },
+  place(x, y, z, id) { setRaw(x, y, z, id); markDirty(x, z); markDirty(x + 1, z); markDirty(x - 1, z); markDirty(x, z + 1); markDirty(x, z - 1); },
+  ids() { return { STONE, COBBLE, TORCH, WOOD, PLANKS, BRICK, GLASS: typeof GLASS !== 'undefined' ? GLASS : 0, LAVA, WATER, AIR }; },
+  stats() { let op = 0, cu = 0, wa = 0, wc = 0; for (const c of chunks.values()) { if (c.opaque) op += c.opaque.geometry.attributes.position.count; if (c.cutout) cu += c.cutout.geometry.attributes.position.count; if (c.water) { wa += c.water.geometry.attributes.position.count; wc++; } }
+    const px = Math.floor(player.pos.x), pz = Math.floor(player.pos.z); let wb = 0; for (let dx = -20; dx <= 20; dx++) for (let dz = -20; dz <= 20; dz++) if (getBlock(px + dx, SEA, pz + dz) === WATER) wb++;
+    return { chunks: chunks.size, op, cu, wa, wc, waterBlocksNear: wb, shadows: renderer.shadowMap.enabled, sunCast: sun.castShadow, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, progs: renderer.info.programs ? renderer.info.programs.length : 0 }; },
+  surf(x, z) { ensureGen(x, z, 2); return surfaceY(x, z); },
+  state() { return { x: player.pos.x, y: player.pos.y, z: player.pos.z, dim: DIM, t: timeOfDay }; } };
 })();
