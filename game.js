@@ -2767,18 +2767,63 @@ function updateVitals() {
   $("stamina").firstElementChild.style.width = (100 * player.stam / player.maxStam) + "%";
 }
 function colorHex(id) { if (isItem(id)) return null; const c = BLOCKS[id]; return "#" + new THREE.Color(c.top[0], c.top[1], c.top[2]).getHexString(); }
+// isometric block icons painted from the world atlas (top, left and right faces), cached as data URLs
+const ICON_URL = {};
+function blockIconURL(id) {
+  if (id in ICON_URL) return ICON_URL[id];
+  let url = null;
+  try {
+    const S = 96, cv = document.createElement("canvas"); cv.width = cv.height = S;
+    const cx = cv.getContext("2d"), img = cx && cx.createImageData ? cx.createImageData(S, S) : null;
+    if (img && img.data && TIL[id]) {
+      const D = img.data, A = ATL.data, AS = ATL.size, TS = GL.TILE, tl = TIL[id], bc = BCOL[id], kind = KIND[id];
+      const sample = (t, u, v, face) => {                       // u, v in 0..1 with v = 0 at the tile top
+        const px = Math.min(TS - 1, Math.floor(u * TS)), py = Math.min(TS - 1, Math.floor(v * TS));
+        const i = ((Math.round(t.v0 * AS) + TS - 1 - py) * AS + Math.round(t.u0 * AS) + px) * 4;
+        let r = A[i], g = A[i + 1], b = A[i + 2], a = A[i + 3];
+        if (bc) { const c = bc[face === 0 ? 0 : 1]; r *= c[0] * 1.15; g *= c[1] * 1.15; b *= c[2] * 1.15; }
+        if (id === WATER) { r = 40 + r * 0.1; g = 110 + g * 0.15; b = 200 + b * 0.2; a = 215; }
+        else if (id === LAVA) { const n = (px * 7 + py * 13) % 17 / 17; r = 255; g = 90 + n * 110; b = 20; a = 255; }
+        else if (kind !== 2 && kind !== 4) a = 255;              // opaque tiles keep alpha for glow, not holes
+        return [r, g, b, a];
+      };
+      const put = (x, y, c, sh) => { if (c[3] < 128) return; const o = (y * S + x) * 4; D[o] = Math.min(255, c[0] * sh); D[o + 1] = Math.min(255, c[1] * sh); D[o + 2] = Math.min(255, c[2] * sh); D[o + 3] = c[3]; };
+      if (kind === 4) {                                          // plants: the flat sprite
+        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) put(x, y, sample(tl[1], x / S, y / S, 1), 1);
+      } else {
+        const T = [48, 6], L = [8, 26], R = [88, 26], C = [48, 46], H = 44;   // cube corners, H = side height
+        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+          // top face: P = T + u (R - T) + v (L - T)
+          let ax = R[0] - T[0], ay = R[1] - T[1], bx = L[0] - T[0], by = L[1] - T[1], dx = x + 0.5 - T[0], dy = y + 0.5 - T[1], det = ax * by - ay * bx;
+          let u = (dx * by - dy * bx) / det, v = (ax * dy - ay * dx) / det;
+          if (u >= 0 && u < 1 && v >= 0 && v < 1) { put(x, y, sample(tl[0], u, v, 0), 1); continue; }
+          if (x < C[0]) { u = (x + 0.5 - L[0]) / (C[0] - L[0]); v = (y + 0.5 - L[1] - u * (C[1] - L[1])) / H; if (u >= 0 && u < 1 && v >= 0 && v < 1) put(x, y, sample(tl[1], u, v, 1), 0.8); }
+          else { u = (x + 0.5 - C[0]) / (R[0] - C[0]); v = (y + 0.5 - C[1] - u * (R[1] - C[1])) / H; if (u >= 0 && u < 1 && v >= 0 && v < 1) put(x, y, sample(tl[1], u, v, 1), 0.62); }
+        }
+      }
+      cx.putImageData(img, 0, 0); url = cv.toDataURL();
+      if (typeof url !== "string" || url.indexOf("data:") !== 0) url = null;
+    }
+  } catch (e) { url = null; }
+  return (ICON_URL[id] = url);
+}
+function blockSwatch(id) {
+  const sw = document.createElement("div"), url = blockIconURL(id);
+  if (url) { sw.className = "sw blk"; sw.style.backgroundImage = "url(" + url + ")"; } else { sw.className = "sw"; sw.style.background = colorHex(id); }
+  return sw;
+}
 function renderHotbar() {
   const hb = $("hotbar"); hb.innerHTML = "";
   for (let i = 0; i < 9; i++) {
     const s = hotbar[i]; const slot = document.createElement("div"); slot.className = "slot" + (i === selSlot ? " active" : "");
     const n = document.createElement("div"); n.className = "n"; n.textContent = i + 1; slot.appendChild(n);
-    if (s) { if (isItem(s.id)) { const ic = document.createElement("div"); ic.className = "ic"; ic.textContent = ITEMS[s.id].icon; slot.appendChild(ic); } else { const sw = document.createElement("div"); sw.className = "sw"; sw.style.background = colorHex(s.id); slot.appendChild(sw); } if (s.count > 1) { const ct = document.createElement("div"); ct.className = "ct"; ct.textContent = s.count; slot.appendChild(ct); } }
+    if (s) { if (isItem(s.id)) { const ic = document.createElement("div"); ic.className = "ic"; ic.textContent = ITEMS[s.id].icon; slot.appendChild(ic); } else { slot.appendChild(blockSwatch(s.id)); } if (s.count > 1) { const ct = document.createElement("div"); ct.className = "ct"; ct.textContent = s.count; slot.appendChild(ct); } }
     slot.addEventListener("pointerdown", e => { e.preventDefault(); selectSlot(i); });
     hb.appendChild(slot);
   }
 }
-function renderInv() { const g = $("invGrid"); g.innerHTML = ""; for (let i = 0; i < 9; i++) { const s = hotbar[i]; const c = document.createElement("div"); c.className = "cell"; if (s) { if (isItem(s.id)) { const ic = document.createElement("div"); ic.className = "ic"; ic.textContent = ITEMS[s.id].icon; c.appendChild(ic); } else { const sw = document.createElement("div"); sw.className = "sw"; sw.style.background = colorHex(s.id); c.appendChild(sw); } if (s.count > 1) { const ct = document.createElement("div"); ct.className = "ct"; ct.textContent = s.count; c.appendChild(ct); } } g.appendChild(c); } }
-function renderCraft() { const l = $("craftList"); l.innerHTML = ""; for (const r of RECIPES) { const ok = canCraft(r); const row = document.createElement("div"); row.className = "craftRow" + (ok ? "" : " no"); const need = r.need.map(([id, c]) => c + "x " + itemName(id)).join(", "); row.innerHTML = "<span>" + itemIcon(r.out) + " " + r.n + "x " + itemName(r.out) + "<br><span class='muted'>" + need + "</span></span>"; const b = document.createElement("button"); b.className = "mk"; b.textContent = "Make"; b.addEventListener("pointerdown", e => { e.preventDefault(); craft(r); }); row.appendChild(b); l.appendChild(row); } }
+function renderInv() { const g = $("invGrid"); g.innerHTML = ""; for (let i = 0; i < 9; i++) { const s = hotbar[i]; const c = document.createElement("div"); c.className = "cell"; if (s) { if (isItem(s.id)) { const ic = document.createElement("div"); ic.className = "ic"; ic.textContent = ITEMS[s.id].icon; c.appendChild(ic); } else { c.appendChild(blockSwatch(s.id)); } if (s.count > 1) { const ct = document.createElement("div"); ct.className = "ct"; ct.textContent = s.count; c.appendChild(ct); } } g.appendChild(c); } }
+function renderCraft() { const l = $("craftList"); l.innerHTML = ""; for (const r of RECIPES) { const ok = canCraft(r); const row = document.createElement("div"); row.className = "craftRow" + (ok ? "" : " no"); const need = r.need.map(([id, c]) => c + "x " + itemName(id)).join(", "); const bu = !isItem(r.out) && blockIconURL(r.out); row.innerHTML = "<span>" + (bu ? "<img class='bi' src='" + bu + "' alt=''>" : itemIcon(r.out)) + " " + r.n + "x " + itemName(r.out) + "<br><span class='muted'>" + need + "</span></span>"; const b = document.createElement("button"); b.className = "mk"; b.textContent = "Make"; b.addEventListener("pointerdown", e => { e.preventDefault(); craft(r); }); row.appendChild(b); l.appendChild(row); } }
 function toggleInv() { const el = $("inv"); if (el.classList.contains("hidden")) { renderInv(); renderCraft(); show("inv"); document.exitPointerLock(); } else { hide("inv"); if (!isTouch && running) canvas.requestPointerLock(); } }
 function renderSkills() {
   const wrap = $("skillList"); if (!wrap) return; $("skillPts").textContent = skills.pts; wrap.innerHTML = "";
@@ -2842,7 +2887,7 @@ function openChest(key) {
 }
 function cellEl(s, onClick) {
   const c = document.createElement("div"); c.className = "cell";
-  if (s) { if (isItem(s.id)) { const ic = document.createElement("div"); ic.className = "ic"; ic.textContent = ITEMS[s.id].icon; c.appendChild(ic); } else { const sw = document.createElement("div"); sw.className = "sw"; sw.style.background = colorHex(s.id); c.appendChild(sw); } if (s.count > 1) { const ct = document.createElement("div"); ct.className = "ct"; ct.textContent = s.count; c.appendChild(ct); } }
+  if (s) { if (isItem(s.id)) { const ic = document.createElement("div"); ic.className = "ic"; ic.textContent = ITEMS[s.id].icon; c.appendChild(ic); } else { c.appendChild(blockSwatch(s.id)); } if (s.count > 1) { const ct = document.createElement("div"); ct.className = "ct"; ct.textContent = s.count; c.appendChild(ct); } }
   c.addEventListener("pointerdown", e => { e.preventDefault(); onClick(); });
   return c;
 }
