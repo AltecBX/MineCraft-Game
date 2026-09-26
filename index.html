@@ -164,8 +164,8 @@
 <!-- Shop -->
 <div id="shop" class="overlay hidden">
   <div class="panel">
-    <h2>Traveling Merchant <span id="shopCoins" style="font-size:14px;opacity:.8"></span></h2>
-    <p class="muted">Coins drop from monsters. Tap Buy to trade.</p>
+    <h2><span id="shopTitle">Traveling Merchant</span> <span id="shopCoins" style="font-size:14px;opacity:.8"></span></h2>
+    <p class="muted">Coins drop from monsters and villagers pay for ores and goods. Tap Buy or Sell to trade.</p>
     <div class="craftList" id="shopList"></div>
     <button class="btn" id="closeShopBtn">Leave</button>
   </div>
@@ -218,7 +218,11 @@
 <div id="inv" class="overlay hidden">
   <div class="panel">
     <h2>Inventory</h2>
-    <div class="grid" id="invGrid"></div>
+    <div class="muted" style="font-size:12px">Hotbar. Tap an item to stow it in the backpack, or an empty slot to select it.</div>
+    <div class="grid g9" id="invGrid"></div>
+    <div class="muted" style="font-size:12px;margin-top:10px">Backpack. Tap an item to move it to the hotbar.</div>
+    <div class="grid g9" id="bagGrid"></div>
+    <div class="muted" id="armorLine" style="margin-top:8px;font-size:12px"></div>
     <h2 style="margin-top:16px">Crafting</h2>
     <div class="craftList" id="craftList"></div>
     <button class="btn" id="closeInvBtn">Close</button>
@@ -247,9 +251,9 @@
 <div id="chest" class="overlay hidden">
   <div class="panel">
     <h2>Chest</h2>
-    <div class="grid" id="chestGrid"></div>
+    <div class="grid g9" id="chestGrid"></div>
     <h2 style="margin-top:14px">Your items</h2>
-    <div class="grid" id="chestInv"></div>
+    <div class="grid g9" id="chestInv"></div>
     <p class="muted">Tap an item to move it between the chest and your bag.</p>
     <button class="btn" id="closeChestBtn">Close</button>
   </div>
