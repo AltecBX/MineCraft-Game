@@ -1,6 +1,7 @@
 const fs=require('fs'),vm=require('vm');
 const path=require('path');
-const script=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8');
+const SRC=path.join(__dirname,'..','src');
+const FILES=fs.readFileSync(path.join(SRC,'FILES'),'utf8').split('\n').map(f=>f.trim()).filter(Boolean);   // load order, shared with index.html
 const gfxScript=fs.readFileSync(path.join(__dirname,'..','gfx.js'),'utf8');
 const pi=process.argv.indexOf('--probe');
 const probeBody=pi>-1?fs.readFileSync(process.argv[pi+1],'utf8'):'';
@@ -109,5 +110,7 @@ let driver=`
 `;
 driver=driver.replace('/*__PROBE__*/', probeBody);
 vm.runInThisContext(gfxScript,{filename:'gfx.js'});
-const injected=script.replace(/\}\)\(\);\s*$/, driver+'\n})();');
-vm.runInThisContext(injected,{filename:'game.js'});
+// every src file is a classic script sharing one global scope, exactly like the <script> tags in index.html
+try { for (const f of FILES) vm.runInThisContext(fs.readFileSync(path.join(SRC,f),'utf8'),{filename:'src/'+f}); }
+catch(e){ console.log('RUNTIME_ERROR:', e.constructor.name, e.message); console.log(String(e.stack).split('\n').slice(0,4).join('\n')); process.exit(0); }
+vm.runInThisContext(driver,{filename:'driver.js'});

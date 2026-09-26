@@ -6,6 +6,6 @@
   "scripts": {
     "dev": "npx --yes serve .",
     "test": "node test/harness.cjs",
-    "check": "node --check game.js && node --check gfx.js"
+    "check": "node --check gfx.js && for f in src/*.js; do node --check \"$f\" || exit 1; done"
   }
 }

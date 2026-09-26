@@ -42,3 +42,7 @@ addItem(I_COAL, 70); let slots = 0; for (const arr of [hotbar, bag]) for (const 
 console.log("COAL_STACKS", slots, "count", countItem(I_COAL), "bowStack", stackMax(I_BOW), "arrowStack", stackMax(I_ARROW));
 renderCraft(); renderInv(); console.log("RENDER_OK");
 console.log("ICON", typeof itemIconURL(I_ARROW), "tiles", Object.keys(ATL.tiles).length, "atlas", ATL.w + "x" + ATL.h);
+// recipe discovery
+for (let i = 0; i < 9; i++) hotbar[i] = null; for (let i = 0; i < 27; i++) bag[i] = null; knownItems.clear();
+const vis0 = RECIPES.filter(recipeKnown).length; addItem(WOOD, 1); const vis1 = RECIPES.filter(recipeKnown).length; addItem(I_IRON, 1); const vis2 = RECIPES.filter(recipeKnown).length;
+console.log("DISCOVERY", vis0, vis1, vis2, vis0 === 0 && vis1 > 0 && vis2 > vis1 ? "PASS" : "FAIL");

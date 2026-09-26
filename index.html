@@ -137,6 +137,9 @@
       <div class="row"><span>Bow</span><b>Hold attack to draw, release to shoot (needs Arrows)</b></div>
       <div class="row"><span>Animals</span><b>E / Use with food to breed, Shears on sheep</b></div>
       <div class="row"><span>Crafting</span><b>I bag (2 x 2 grid) &nbsp;·&nbsp; E on a Crafting Table (3 x 3)</b></div>
+      <div class="row"><span>Shield</span><b>Hold right click (Build on mobile) to block</b></div>
+      <div class="row"><span>Buckets, gates</span><b>Right click to scoop, pour or swing a gate</b></div>
+      <div class="row"><span>Furnace</span><b>E on a Furnace, add something to smelt and fuel</b></div>
     </div>
     <div class="kbhead">Key bindings (desktop)</div>
     <div id="keybinds"></div>
@@ -261,6 +264,21 @@
 </div>
 
 <!-- Chest -->
+<div id="furnace" class="overlay hidden">
+  <div class="panel">
+    <h2>Furnace</h2>
+    <div class="furnaceRow">
+      <div class="fcol"><div class="muted">Smelt</div><div class="cell fslot" id="fIn"></div><div class="flame"><i id="fFlame"></i></div><div class="cell fslot" id="fFuel"></div><div class="muted">Fuel</div></div>
+      <div class="fprog"><div class="fbar"><i id="fProg"></i></div></div>
+      <div class="fcol"><div class="muted">Result</div><div class="cell fslot fout" id="fOut"></div></div>
+    </div>
+    <p class="muted" id="fHint">Ore, sand, cobblestone, logs and raw meat smelt here. Coal, wood, planks and sticks burn as fuel. The furnace keeps working while you are away.</p>
+    <h2 style="margin-top:10px">Your items</h2>
+    <div class="grid g9" id="furnaceInv"></div>
+    <button class="btn" id="closeFurnaceBtn">Close</button>
+  </div>
+</div>
+
 <div id="chest" class="overlay hidden">
   <div class="panel">
     <h2>Chest</h2>
@@ -289,6 +307,34 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="gfx.js"></script>
-<script src="game.js"></script>
+<!-- the game: classic scripts that share one global scope, loaded in order (list mirrored in src/FILES) -->
+<script src="src/01-engine.js"></script>
+<script src="src/02-audio.js"></script>
+<script src="src/03-blocks.js"></script>
+<script src="src/04-world.js"></script>
+<script src="src/05-villages.js"></script>
+<script src="src/06-mesher.js"></script>
+<script src="src/07-fluids.js"></script>
+<script src="src/08-player.js"></script>
+<script src="src/09-input.js"></script>
+<script src="src/10-mining.js"></script>
+<script src="src/11-inventory.js"></script>
+<script src="src/12-monsters.js"></script>
+<script src="src/13-animals.js"></script>
+<script src="src/14-combat.js"></script>
+<script src="src/15-viewmodel.js"></script>
+<script src="src/16-environment.js"></script>
+<script src="src/17-dimensions.js"></script>
+<script src="src/18-quests.js"></script>
+<script src="src/19-ui.js"></script>
+<script src="src/20-furnace.js"></script>
+<script src="src/21-save.js"></script>
+<script src="src/22-story.js"></script>
+<script src="src/23-realm.js"></script>
+<script src="src/24-mario.js"></script>
+<script src="src/25-hud.js"></script>
+<script src="src/26-weather.js"></script>
+<script src="src/27-post.js"></script>
+<script src="src/28-main.js"></script>
 </body>
 </html>

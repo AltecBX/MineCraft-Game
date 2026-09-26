@@ -9,20 +9,62 @@ A single screen browser voxel survival game, Minecraft style, built on Three.js 
 ## Files
 
 ```
-index.html        head, body DOM, loads three.min.js (CDN), gfx.js, then game.js
+index.html        head, body DOM, loads three.min.js (CDN), gfx.js, then every src/ file in order
 styles.css        all CSS
 gfx.js            renderer toolkit: procedural texture atlas, noise, detail maps, all GLSL, atmosphere model (window.GFXLIB)
-game.js           the entire game, wrapped in one IIFE (~6000 lines)
-test/harness.cjs  Node validation harness (stubs THREE + DOM + audio + storage, loads gfx.js first)
-test/probes/      small probe scripts the harness can inject and run (render.js, render2.js cover the renderer, gameplay.js the inventory, ores, villages and weather, crafting.js the grid, farmbow.js the bow and farm animals)
-package.json      dev server and test scripts
+src/NN-name.js    the game, split by system into 28 classic scripts (list below)
+src/FILES         the load order, one file per line; index.html and the harness both follow it
+test/harness.cjs  Node validation harness (stubs THREE + DOM + audio + storage, loads gfx.js, then src/ in order)
+test/probes/      probe scripts the harness injects and runs (render, render2: renderer; gameplay: inventory, ores, villages, weather;
+                  crafting: grid and recipe discovery; farmbow: bow and farm animals; fluids: water, lava, buckets, fences, shield, dodge;
+                  furnace: timed smelting)
+package.json      dev server, test and check scripts
 ```
 
-game.js is still one big file. Splitting it into modules is the first recommended task, see Roadmap below.
+The game source (`src/`):
+
+```
+  01-engine.js
+  02-audio.js
+  03-blocks.js
+  04-world.js
+  05-villages.js
+  06-mesher.js
+  07-fluids.js
+  08-player.js
+  09-input.js
+  10-mining.js
+  11-inventory.js
+  12-monsters.js
+  13-animals.js
+  14-combat.js
+  15-viewmodel.js
+  16-environment.js
+  17-dimensions.js
+  18-quests.js
+  19-ui.js
+  20-furnace.js
+  21-save.js
+  22-story.js
+  23-realm.js
+  24-mario.js
+  25-hud.js
+  26-weather.js
+  27-post.js
+  28-main.js
+```
+
+### How the split works (read before adding files)
+
+The src files are classic scripts, not ES modules. Top level `const`, `let` and `function` declarations in one file are visible to every later file because classic scripts share one global scope, so the game still runs with no bundler and GitHub Pages serves it as is. Each file starts with `"use strict"`.
+
+The one rule that is new since the split: function declarations only hoist inside their own file. Code that runs at load time (top level statements, `addEventListener(..., fn)` with a bare function name, top level `if` blocks) must only name functions from the same or an earlier file. Wrap forward references in an arrow (`() => laterFn()`), which is resolved when it is called. Runtime calls inside functions are fine in any direction. Adding a file: create it with the next number, add it to `src/FILES` and a `<script>` tag in index.html at the same position.
+
+Vite was considered and left out on purpose: it would add a build step to the Pages deploy for a dev server nicety, while the ordered script split already gives small, focused files.
 
 ## How to run
 
-No bundler required. Any static server works because game.js is a classic script and Three.js comes from the CDN.
+No bundler required. Any static server works because the src files are classic scripts and Three.js comes from the CDN.
 
 ```
 npx --yes serve .            # then open the printed URL
@@ -36,7 +78,7 @@ Opening index.html directly mostly works, but a server is better so localStorage
 
 `node --check` only catches syntax. It does NOT catch undeclared references or runtime errors. A real bug once shipped that way (see Hard lessons). So after any edit:
 
-1. Syntax: `node --check game.js` and `node --check gfx.js`
+1. Syntax: `npm run check` (runs `node --check` on gfx.js and every src file)
 2. Smoke boot: `node test/harness.cjs` and confirm it prints `BOOT_OK ...` with no `RUNTIME_ERROR`.
 3. Feature probe: write a short probe in `test/probes/foo.js` that drives the thing you changed, then run `node test/harness.cjs --probe test/probes/foo.js`. The probe runs inside the game right after `startGame()`, so it has access to all internals (player, monsters, loadDimension, spawnMonster, settings, etc.).
 
@@ -66,7 +108,7 @@ Other rules:
 - In prose, no em dashes and no hyphens except technical tokens like `node --check`. Periods and commas only.
 - Validate after every change using the harness above. Say plainly if something failed or was not tested.
 
-## Rendering (see gfx.js and the RENDER sections of game.js)
+## Rendering (see gfx.js, src/01-engine.js, src/06-mesher.js, src/27-post.js)
 
 Realistic look, all procedural, no image assets.
 - Texture atlas: `GFXLIB.buildAtlas()` paints every block tile at 64px from seeded periodic noise into 128px cells with wrap padding (no mip bleeding). The atlas is 16 x 8 cells (2048 x 1024, 128 tiles max, 67 used), so tiles carry separate u and v scales (`s`, `sv`) and pixel lookups use `ATL.w`/`ATL.h`. Uploaded once as `atlasTex` (nearest mag, trilinear min, anisotropy). Opaque tiles use alpha < 255 to mark emissive texels (crystals, heal cross, frost). Cutout tiles (leaves, plants) use alpha for holes.
@@ -101,14 +143,25 @@ Realistic look, all procedural, no image assets.
 - Farm animals (`FARM`, `farm`, `spawnFarmAnimal`, `updateFarm`): cows, pigs, sheep and chickens with block collision (`animalCellOk`: a two block wall pens them, they step up one block, avoid cliffs and water), idle, walk, graze, panic when hit (the herd scatters), follow their food in Thomas's hand, breed after both are fed (`animalInteract`, `breedAnimals`), babies grow in 180 s. Shears give wool (sheep regrow it by grazing), chickens lay eggs, deaths drop meat, leather and feathers as `groundItems` that drift to Thomas. Fed, bred and sheared animals are `kept`: never despawned, saved (`serializeFarm` in the save's `farm`), stashed across dimension trips (`stashFarm`, `restoreFarm`). Wild herds spawn by biome 26 to 48 blocks away and despawn past 110. Each model's static boxes are merged into one vertex coloured mesh per moving part (`mergeParts`, colours linearized by hand).
 - Villages now include a Fletcher (arrows, bows, flint, feathers) and animals near the farm; the Farmer sells Shears and buys meat, wool and eggs.
 
+## Fluids, fences, furnaces and combat extras
+
+- Fluids (`src/07-fluids.js`): water and lava keep their block id; the flow level lives in `FSTORE` (a Uint8Array per column like `CSTORE`, created only where something flows): 0 source, 1 to 7 flowing, 8 falling. `setRaw` resets a cell's level. `fluidSet` writes a change, remeshes, records it (`editsByDim` plus `flowEditsByDim` for levels) and wakes neighbours. `updateFluids` ticks water every 0.25 s and lava every 0.9 s with a 500 cell budget. Rules: fall first, spread only on solid ground or a source below, water reaches 7 blocks and lava 3, flows drain when unfed, two water sources make a spring, lava next to water becomes obsidian (source) or cobblestone (flow), lava falling on water makes stone. Only edits wake fluids (`recordEdit` calls `fluidNotify`), so generated seas stay still. Currents (`flowVec`) push Thomas and dropped items. Flows are saved (`flows`) and resume on load.
+- Fluid meshing: `rF` carries levels into the padded region. Water tops use shared corner heights (`fluidCorners`: average of the up to four water cells around a corner, 1 when water sits above) so flows slope and meet without gaps. Flowing lava is drawn by `cubeFace` with lowered corner heights (`hts`) and does not occlude neighbours.
+- Buckets: empty buckets scoop a still source (`voxelRaycast(reach, true)` stops on water), water and lava buckets pour a source, water boils away in the fire dimension, a bucket on a cow gives milk, drinking it returns the bucket (`returns`).
+- Fences and gates (`FENCE`, `GATE`, `GATE_OPEN`): mesh kind 5 built from boxes (`fenceModel`, `boxPart`), rails link to fences, gates and solid blocks. `isTall` blocks stand 1.5 high: `aabbHit` checks the half block above them, `tallBelow` lands Thomas on top, `animalCellOk` refuses to step over them. Right click or E swings a gate (`toggleGate`), never shut on Thomas.
+- Furnaces (`src/20-furnace.js`): per furnace input, fuel and result slots in `furnaceStore` keyed by dimension and position. `tickFurnace` advances by real elapsed time (capped at an hour), so furnaces work while Thomas is away and across reloads. `SMELT_T` 4 s per item, `SMELTS` recipes, `FUELS` in items per fuel (coal 8, lava bucket 50 and returns the bucket, wood and planks 1.5, stick 0.5). Breaking a furnace spills its contents. The recipe book's instant smelting still works too.
+- Shield (`I_SHIELD`): right click (Build on mobile) raises it while held (`blocking`), 80% of a hit is soaked and wears the shield, movement slows. Dodge rolls grant 0.35 s of invulnerability (`dodge.iframe`).
+- Monster skins: `mobSkin(type)` paints a grayscale pattern per creature (scales, hide, spots, stripes, rock, magma, plate, bone, mist) that tints with the monster colour; fire creatures get a glow mask for burning magma veins.
+- Recipe discovery: the book shows a recipe once any ingredient has been held (`knownItems`, `learnItem` from `giveItems`, saved as `known`), with a count of recipes still hidden. The grid crafts anything regardless.
+
 ## Architecture
 
-One IIFE, `"use strict"`. Global state lives in closures, not modules yet.
+Ordered classic scripts in `src/` sharing one global scope (see Files). `"use strict"` in each.
 
 - Blocks: global Map `W` keyed `"x,y,z"` mirrored into typed arrays (see Rendering). Chunk streaming by render distance with a per frame time budget. Substepped AABB physics.
 - Player constants: `HW=0.3` half width, `PH=1.8` height, `EYE=1.62`. Declared near `const player`. (These once went missing and the physics threw every frame, black screen. If you refactor, keep them.)
-- Block ids: AIR0 GRASS1 DIRT2 STONE3 WOOD4 LEAVES5 SAND6 WATER7 LAVA8 FIRESTONE9 ENDSTONE10 PORTAL11 PLANKS12 COBBLE13 TORCH14 CHEST15 SNOW16 BRICK17 BED18 FIRE_CRYSTAL19 ... PIPE33 COAL_ORE34 IRON_ORE35 GOLD_ORE36 DIAMOND_ORE37 FURNACE38 GLASS39 BIRCH_WOOD40 BIRCH_LEAVES41 SPRUCE_WOOD42 SPRUCE_LEAVES43 GRAVEL44 HAY45 PATH46 LANTERN47 STONEBRICK48 CRAFT_TABLE49 WOOL50. The atlas holds 128 tiles and has 67 used; `buildAtlas` throws if it overflows.
-- Item ids (>=100): I_HAND100 I_WPICK101 I_SPICK102 I_SWORD103 I_AXE104 I_FIRECHARM105 I_FIRESWORD106 I_APPLE110 I_STICK111 ... I_COAL115 I_IRON116 I_GOLD117 I_DIAMOND118 I_IPICK119 I_DPICK120 I_ISWORD121 I_DSWORD122 I_IAXE123 I_DAXE124 I_IARMOR125 I_DARMOR126 I_BREAD127 I_GAPPLE128 I_BOW129 I_ARROW130 I_FLINT131 I_FEATHER132 I_STRING133 I_SHEARS134 I_LEATHER135 I_LARMOR136 I_RAWBEEF137 I_STEAK138 I_RAWPORK139 I_PORKCHOP140 I_RAWMUTTON141 I_MUTTON142 I_RAWCHICKEN143 I_CHICKEN144 I_EGG145 I_PIE146.
+- Block ids: AIR0 GRASS1 DIRT2 STONE3 WOOD4 LEAVES5 SAND6 WATER7 LAVA8 FIRESTONE9 ENDSTONE10 PORTAL11 PLANKS12 COBBLE13 TORCH14 CHEST15 SNOW16 BRICK17 BED18 FIRE_CRYSTAL19 ... PIPE33 COAL_ORE34 IRON_ORE35 GOLD_ORE36 DIAMOND_ORE37 FURNACE38 GLASS39 BIRCH_WOOD40 BIRCH_LEAVES41 SPRUCE_WOOD42 SPRUCE_LEAVES43 GRAVEL44 HAY45 PATH46 LANTERN47 STONEBRICK48 CRAFT_TABLE49 WOOL50 OBSIDIAN51 FENCE52 GATE53 GATE_OPEN54. The atlas holds 128 tiles and has 68 used; `buildAtlas` throws if it overflows.
+- Item ids (>=100): I_HAND100 I_WPICK101 I_SPICK102 I_SWORD103 I_AXE104 I_FIRECHARM105 I_FIRESWORD106 I_APPLE110 I_STICK111 ... I_COAL115 I_IRON116 I_GOLD117 I_DIAMOND118 I_IPICK119 I_DPICK120 I_ISWORD121 I_DSWORD122 I_IAXE123 I_DAXE124 I_IARMOR125 I_DARMOR126 I_BREAD127 I_GAPPLE128 I_BOW129 I_ARROW130 I_FLINT131 I_FEATHER132 I_STRING133 I_SHEARS134 I_LEATHER135 I_LARMOR136 I_RAWBEEF137 I_STEAK138 I_RAWPORK139 I_PORKCHOP140 I_RAWMUTTON141 I_MUTTON142 I_RAWCHICKEN143 I_CHICKEN144 I_EGG145 I_PIE146 I_BUCKET147 I_WBUCKET148 I_LBUCKET149 I_MILK150 I_SHIELD151.
 - Noise: `hsh`/`hsh3` uniform hashes via Math.imul (do not use plain big int multiply, it overflows to float and biases terrain), `vn`/`vn3` value noise, `fbm`. Shared `biomeAt`, `heightAt`, `caveAt`.
 - Dimensions: `loadDimension(name)` for overworld, fire, end. Fire has heat damage unless you hold a Flame Charm. End gates dragon damage behind four crystals (`crystalsLeft`).
 - Audio: WebAudio synth, no asset files. `blip`, `noiseHit`, `SFX`, generative `playPad`/`updateMusic`. Master gains `sfxGain`, `musicGain`.
@@ -125,30 +178,14 @@ One IIFE, `"use strict"`. Global state lives in closures, not modules yet.
 - `surfaceY` treats leaves as ground. Anything placed "on the surface" in a forest lands on the canopy; the spawn camp clears a glade first, and `spawnHerd` only accepts grass, dirt, snow or path under an animal.
 - The harness `Raycaster` always returns no hits and `camera.getWorldDirection` is a stub, so anything that must be tested headless (arrow hits) uses plain geometry tests instead of raycasts.
 - Vertex colours are not touched by `linearizeBuiltinColors`; linearize them yourself (pow 2.2) or merged models look washed out.
+- After the split, a touch only binding (`bind("bUse", interact)`) named a function from a later file and would have thrown on phones only; the harness never runs touch code. Wrap forward references in arrows, and when touching load time code scan for them (see How the split works).
+- The spawn glade cleared only oak leaves and logs, so after birch and spruce forests arrived the whole camp (fire, chest, table) was built on a birch canopy and Thomas woke in the treetops. Clear by `LEAFY` and every log id, and place Thomas with `surfaceY` after the glade is cut.
+- Lava and water meeting over a wide area fired dozens of steam puffs a second and drew white smears. Effects triggered by simulations need a rate limit (`fizz` allows one per 150 ms).
 
 ## Roadmap
 
-First task, recommended: split game.js into ES modules and add Vite for dev with hot reload. Suggested layout:
-
-```
-src/
-  main.js          boot, loop
-  engine.js        scene, camera, renderer, lights, sky
-  audio.js         actx, SFX, music
-  settings.js      settings, persistence, syncSettingsUI
-  blocks.js        block + item tables, recipes
-  noise.js         hsh, vn, fbm, biomeAt, heightAt, caveAt
-  world.js         chunks, genChunk, meshing, save/load
-  player.js        physics, mining, building, inventory
-  input.js         keyboard, mouse, touch, keymap
-  entities/monsters.js, entities/animals.js, bosses.js
-  ui/hud.js, ui/menus.js, quests.js, achievements.js
-```
-
-Do the split incrementally, one system at a time, running the harness after each move. The harness can be ported to load the bundled output or to import modules directly.
-
-Then, in priority order: flowing water and lava, fences and gates for animal pens, a furnace UI with fuel, more mob textures. Block icons in the hotbar, inventory, chest and crafting list are painted from the atlas by `blockIconURL` (cached data URLs, colour swatch fallback).
+Block icons in the hotbar, inventory, chest and crafting list are painted from the atlas by `blockIconURL` (cached data URLs, colour swatch fallback); items and fence shaped blocks use `ITEM_PAINT`. Deeper follow ups live as TODO notes at the end of `src/28-main.js`.
 
 ## Deploy
 
-GitHub Pages serves static files. `.github/workflows/deploy.yml` validates and deploys on every push to main. Ship index.html, styles.css, gfx.js, game.js and assets (and the bundled output once Vite is added). The CDN Three.js means no asset hosting is needed.
+GitHub Pages serves static files. `.github/workflows/deploy.yml` validates and deploys on every push to main. Ship index.html, styles.css, gfx.js, src/ and assets. The workflow runs `node --check` on gfx.js and every src file, then the harness boot. The CDN Three.js means no asset hosting is needed.
