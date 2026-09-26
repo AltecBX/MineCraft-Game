@@ -197,6 +197,52 @@ function flower(B, s, petal, center, kind) {
   }
 }
 
+function paintOre(B, s, col, hi, thr, g) {                 // chunky mineral nuggets in 4px cells, clustered by cellular noise
+  paintStone(B, s + 3);
+  for (let cy = 0; cy < 16; cy++) for (let cx = 0; cx < 16; cx++) {
+    const w = worley((cx + 0.5) / 16, (cy + 0.5) / 16, 4, s);
+    if (w.id < thr || w.f1 > 0.42 || ih(cx, cy, s + 9) < 0.35) continue;
+    const tone = 0.8 + ih(cx, cy, s + 10) * 0.35;
+    for (let py = 0; py < 4; py++) for (let px = 0; px < 4; px++) {
+      if ((px === 0 || px === 3) && (py === 0 || py === 3) && ih(cx * 4 + px, cy * 4 + py, s) < 0.6) continue;
+      const edge = px === 0 || py === 0 ? 1.18 : px === 3 || py === 3 ? 0.7 : 1;
+      const c = mixc(col, hi, (px + py) < 3 ? 0.6 : 0.1);
+      put(B, cx * 4 + px, cy * 4 + py, mulc(c, tone * edge));
+      if (g) glow(B, cx * 4 + px, cy * 4 + py, g * (px + py < 3 ? 1 : 0.5));
+    }
+  }
+}
+function paintStoneBrick(B, s, base) {
+  const bc = base || [128, 128, 130];
+  fill(B, (u, v, x, y) => {
+    const row = y >> 4, ry = y & 15, sx = (x + (row & 1) * 16) & 63, bx = sx & 31;
+    const n = fbm(u, v, 8, 3, s), g = (ih(x, y, s + 1) - 0.5) * 0.1;
+    if (ry >= 14 || bx >= 31) return mulc(bc, 0.45 + n * 0.15);
+    let f = 0.86 + n * 0.24 + g + (ih(row, (x + (row & 1) * 16) >> 5, s + 2) - 0.5) * 0.12;
+    if (ry === 0 || bx === 0) f *= 1.14; else if (ry === 13 || bx === 30) f *= 0.8;
+    if (pn(u, v, 12, 12, s + 4) > 0.78) f *= 0.88;
+    return mulc(bc, f);
+  });
+}
+function paintLeafCluster(B, s, pal, holes, needles) {
+  fill(B, () => [26, 44, 22, 0]);
+  if (needles) {
+    for (let k = 0; k < 900; k++) {
+      const x0 = ih(k, 1, s) * T, y0 = ih(k, 2, s) * T, ang = 1.2 + (ih(k, 3, s) - 0.5) * 1.4, len = 3 + ih(k, 4, s) * 3, pc = mulc(pal[(ih(k, 5, s) * pal.length) | 0], 0.8 + ih(k, 6, s) * 0.35);
+      for (let t = 0; t < len; t++) put(B, x0 + Math.cos(ang) * t, y0 + Math.sin(ang) * t, pc, 1, 255);
+    }
+  } else for (let pass = 0; pass < 2; pass++) for (let k = 0; k < 170; k++) {
+    const cx = ih(k, 1 + pass * 9, s) * T, cy = ih(k, 2 + pass * 9, s) * T, a = 1.8 + ih(k, 3, s) * 1.5, b = 1.2 + ih(k, 4, s) * 1.0, ang = ih(k, 5, s) * 3.1416;
+    const pc = mulc(pal[(ih(k, 6 + pass, s) * pal.length) | 0], pass === 0 ? 0.72 : 0.95 + ih(k, 8, s) * 0.2), ca = Math.cos(ang), sa = Math.sin(ang);
+    for (let oy = -4; oy <= 4; oy++) for (let ox = -4; ox <= 4; ox++) { const lx = (ox * ca + oy * sa) / a, ly = (-ox * sa + oy * ca) / b; if (lx * lx + ly * ly > 1) continue; put(B, cx + ox, cy + oy, mulc(pc, 1 + (-ox - oy) * 0.035), 1, 255); }
+  }
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
+    const i = (y * T + x) * 4; if (B[i + 3] > 0) continue;
+    if (pn(x / T, y / T, 16, 16, s + 40) > holes && ih(x, y, s + 41) > 0.25) continue;
+    const dk = mulc(pal[0], 0.45); B[i] = dk[0]; B[i + 1] = dk[1]; B[i + 2] = dk[2]; B[i + 3] = 255;
+  }
+}
+
 // ---------- every tile ----------
 const PAINT = {
   grass_top(B, s) { paintGrassTop(B, s); },
@@ -461,11 +507,68 @@ const PAINT = {
   flower_red(B, s) { fill(B, () => [40, 70, 26, 0]); flower(B, s, [206, 32, 30], [30, 20, 18], "round"); },
   flower_yellow(B, s) { fill(B, () => [40, 70, 26, 0]); flower(B, s, [250, 208, 44], [214, 150, 20], "puff"); },
   flower_blue(B, s) { fill(B, () => [40, 70, 26, 0]); flower(B, s, [74, 112, 232], [36, 44, 120], "star"); },
-  flower_white(B, s) { fill(B, () => [40, 70, 26, 0]); flower(B, s, [242, 240, 234], [240, 196, 40], "daisy"); }
+  flower_white(B, s) { fill(B, () => [40, 70, 26, 0]); flower(B, s, [242, 240, 234], [240, 196, 40], "daisy"); },
+  coal_ore(B, s) { paintOre(B, s, [34, 34, 36], [80, 80, 86], 0.35, 0); },
+  iron_ore(B, s) { paintOre(B, s, [196, 150, 118], [236, 206, 178], 0.4, 0); },
+  gold_ore(B, s) { paintOre(B, s, [236, 186, 40], [255, 244, 150], 0.45, 0.25); },
+  diamond_ore(B, s) { paintOre(B, s, [70, 214, 214], [210, 255, 252], 0.5, 0.4); },
+  furnace_front(B, s) {
+    paintStoneBrick(B, s, [118, 118, 120]);
+    for (let y = 30; y < 56; y++) for (let x = 14; x < 50; x++) {
+      const e = x === 14 || x === 49 || y === 30 || y === 55;
+      if (e) { put(B, x, y, [52, 52, 54]); continue; }
+      const heat = Math.max(0, (y - 38) / 17) * (0.7 + ih(x, y, s) * 0.5), c = mixc([40, 14, 8], [255, 170, 60], Math.min(1, heat));
+      put(B, x, y, c); if (heat > 0.25) glow(B, x, y, Math.min(0.9, heat));
+    }
+    for (let x = 12; x < 52; x++) { put(B, x, 28, [96, 96, 98]); put(B, x, 29, [70, 70, 72]); }
+  },
+  furnace_side(B, s) { paintStoneBrick(B, s + 1, [118, 118, 120]); },
+  furnace_top(B, s) { fill(B, (u, v, x, y) => { const e = Math.min(x, y, 63 - x, 63 - y); let f = 0.9 + fbm(u, v, 6, 3, s) * 0.2 + (ih(x, y, s) - 0.5) * 0.06; if (e < 3) f *= 0.72; return mulc([128, 128, 130], f); }); },
+  glass(B, s) {
+    fill(B, () => [200, 230, 240, 0]);
+    for (let i = 0; i < T; i++) for (let k = 0; k < 3; k++) { const c = k === 1 ? [238, 246, 250] : [186, 206, 214]; put(B, i, k, c, 1, 255); put(B, k, i, c, 1, 255); put(B, i, T - 1 - k, c, 1, 255); put(B, T - 1 - k, i, c, 1, 255); }
+    for (let t = 0; t < 14; t++) { put(B, 10 + t, 24 - t, [255, 255, 255], 1, 255); put(B, 11 + t, 24 - t, [236, 246, 250], 1, 255); }
+    for (let t = 0; t < 7; t++) put(B, 40 + t, 50 - t, [255, 255, 255], 1, 255);
+  },
+  birch_log(B, s) {
+    fill(B, (u, v, x, y) => { const n = fbm(u, v, 4, 3, s, 2); return mulc([226, 222, 206], 0.88 + n * 0.14 + (ih(x, y, s) - 0.5) * 0.05); });
+    for (let k = 0; k < 26; k++) { const y = (ih(k, 1, s) * T) | 0, x0 = (ih(k, 2, s) * T) | 0, len = 4 + ih(k, 3, s) * 12; for (let t = 0; t < len; t++) { put(B, x0 + t, y, [36, 32, 30]); if (ih(k, t, s) > 0.5) put(B, x0 + t, y + 1, [60, 56, 52]); } }
+    for (let k = 0; k < 3; k++) { const cx = ih(k, 7, s) * T, cy = ih(k, 8, s) * T; for (let oy = -2; oy <= 2; oy++) for (let ox = -3; ox <= 3; ox++) if (ox * ox / 9 + oy * oy / 4 < 1) put(B, cx + ox, cy + oy, [48, 40, 34]); }
+  },
+  birch_leaves(B, s) { paintLeafCluster(B, s, [[112, 150, 60], [128, 166, 70], [98, 136, 52], [140, 176, 80]], 0.62, false); },
+  spruce_log(B, s) { paintBark(B, s + 7, [70, 50, 32]); },
+  spruce_top(B, s) { PAINT.log_top(B, s + 9); for (let i = 0; i < T * T; i++) { B[i * 4] *= 0.72; B[i * 4 + 1] *= 0.66; B[i * 4 + 2] *= 0.6; } },
+  spruce_leaves(B, s) { paintLeafCluster(B, s, [[48, 90, 56], [58, 104, 64], [40, 78, 48], [68, 116, 72]], 0.66, true); },
+  gravel(B, s) {
+    fill(B, (u, v, x, y) => {
+      const w = worley(u, v, 9, s), e = w.f2 - w.f1, tone = 0.7 + w.id * 0.5, warm = ih(w.id * 1000, 1, s) > 0.6;
+      if (e < 0.08) return mulc([70, 66, 62], 0.8 + ih(x, y, s) * 0.3);
+      const sh = 1 + (-w.cx - w.cy) * 0.8;
+      return mulc(warm ? [150, 132, 116] : [132, 128, 126], tone * sh * (0.95 + (ih(x, y, s + 1) - 0.5) * 0.1));
+    });
+  },
+  hay_top(B, s) { fill(B, (u, v, x, y) => { const r = Math.hypot(x - 31.5, y - 31.5), ring = Math.sin(r * 0.9 + fbm(u, v, 4, 2, s) * 6) * 0.5 + 0.5; return mulc(mixc([196, 150, 44], [232, 196, 84], ring), 0.9 + (ih(x, y, s) - 0.5) * 0.18); }); },
+  hay_side(B, s) {
+    fill(B, (u, v, x, y) => { const st = pn(u, v, 24, 2, s); let c = mixc([186, 142, 40], [236, 200, 90], st); c = mulc(c, 0.88 + (ih(x, y, s) - 0.5) * 0.2); if ((y >= 12 && y < 16) || (y >= 48 && y < 52)) c = mulc([150, 44, 30], 0.9 + (ih(x, y, s + 3) - 0.5) * 0.2); return c; });
+  },
+  path_top(B, s) {
+    fill(B, (u, v, x, y) => { const n = fbm(u, v, 6, 3, s), m = pn(u, v, 20, 20, s + 1); let c = mulc([150, 116, 72], 0.82 + n * 0.28 + (m - 0.5) * 0.1); if (ih(x, y, s + 4) > 0.985) c = [168, 150, 124]; return c; });
+    for (let i = 0; i < T; i++) for (let k = 0; k < 2; k++) { scale(B, i, k, 0.85); scale(B, k, i, 0.85); scale(B, i, 63 - k, 0.85); scale(B, 63 - k, i, 0.85); }
+  },
+  lantern(B, s) {
+    fill(B, (u, v, x, y) => {
+      const e = Math.min(x, y, 63 - x, 63 - y), bar = (x > 29 && x < 34) || (y > 29 && y < 34);
+      if (e < 5 || bar) return mulc([52, 54, 62], 0.85 + (ih(x, y, s) - 0.5) * 0.2 + (e < 2 ? 0.2 : 0));
+      const r = Math.hypot(x - 31.5, y - 31.5) / 32, c = mixc([255, 236, 170], [255, 150, 50], r);
+      return [c[0], c[1], c[2], 255 * 0.12];
+    });
+  },
+  stonebrick(B, s) { paintStoneBrick(B, s); }
 };
 const CLAMP_PAD = { tallgrass: 1, tuft: 1, flower_red: 1, flower_yellow: 1, flower_blue: 1, flower_white: 1 };
 
 function buildAtlas() {
+  if (Object.keys(PAINT).length > COLS * COLS) throw new Error("texture atlas is full (" + Object.keys(PAINT).length + " tiles, max " + COLS * COLS + ")");
   const names = Object.keys(PAINT), data = new Uint8Array(SIZE * SIZE * 4), tiles = {};
   names.forEach((name, n) => {
     const B = newBuf(); PAINT[name](B, 101 + n * 977);
@@ -568,9 +671,11 @@ const TERRAIN_VERT = `
 #include <shadowmap_pars_vertex>
 attribute vec4 aTint;
 attribute vec4 aLight;
+attribute vec4 aBCol;
 uniform float uTime;
 uniform float uWave;
 varying vec2 vUv;
+varying vec3 vBCol;
 varying vec3 vTint;
 varying vec4 vL;
 varying vec3 vN;
@@ -594,6 +699,7 @@ void main() {
   vec3 transformedNormal = normalMatrix * n;
   #include <shadowmap_vertex>
   vUv = uv;
+  vBCol = aBCol.rgb;
   vTint = aTint.rgb * 1.5;
   vL = vec4(aLight.xyz, mod(flags, 16.0));
   vN = n;
@@ -604,7 +710,9 @@ const TERRAIN_FRAG = `
 uniform sampler2D uAtlas;
 uniform sampler2D uNoise;
 uniform float uEmis;
+uniform float uWet;
 varying vec2 vUv;
+varying vec3 vBCol;
 varying vec3 vTint;
 varying vec4 vL;
 varying vec3 vN;
@@ -651,9 +759,18 @@ void main() {
   float skyVis = smoothstep(0.45, 0.92, sky);
   vec3 direct = uLightCol * ndl * shadowTerm(vWPos) * skyVis;
   vec3 amb = mix(uGroundAmb, uSkyAmb, N.y * 0.5 + 0.5) * (sky * sky);
-  vec3 torch = uBlockCol * (blk * blk * (0.55 + 0.45 * blk));
+  vec3 torch = uBlockCol * vBCol * vBCol * (blk * blk * (0.55 + 0.45 * blk));
   vec3 light = (amb + torch + vec3(uMinLight)) * ao + direct * (0.35 + 0.65 * ao);
+  float wet = uWet * skyVis * step(0.5, N.y) * (1.0 - fLava) * (1.0 - fPlant);
+  if (wet > 0.0) alb *= 1.0 - 0.3 * wet;
   vec3 col = alb * light * (1.0 - fLava) + alb * emis * uEmis;
+  if (wet > 0.0) {                                                // rain soaked ground: darker, glossy, with puddles that mirror the sky
+    vec3 Vd = normalize(vWPos - cameraPosition);
+    float puddle = smoothstep(0.52, 0.68, texture2D(uNoise, vWPos.xz * 0.07).r);
+    float fr = 0.04 + 0.96 * pow(1.0 - max(dot(-Vd, N), 0.0), 5.0);
+    vec3 R = reflect(Vd, N);
+    col += skyBase(R) * fr * wet * mix(0.3, 1.0, puddle) + uLightCol * pow(max(dot(R, uLightDir), 0.0), 60.0) * wet * 0.5 * shadowTerm(vWPos);
+  }
   gl_FragColor = vec4(applyFog(col, vWPos), 1.0);
   #include <tonemapping_fragment>
   #include <encodings_fragment>
@@ -719,7 +836,7 @@ void main() {
   vec3 H = normalize(uLightDir + V);
   float spec = pow(max(dot(N, H), 0.0), 260.0) * 7.0 * sh * skyVis * (1.0 - under);
   float depth = mix(mix(vDep.x, vDep.y, vLoc.x), mix(vDep.z, vDep.w, vLoc.x), vLoc.y);   // 0 at the shore .. 1 at 8 blocks deep
-  vec3 amb = mix(uGroundAmb, uSkyAmb, 0.85) * (sky * sky) + uBlockCol * blk * blk + vec3(uMinLight);
+  vec3 amb = mix(uGroundAmb, uSkyAmb, 0.85) * (sky * sky) + uBlockCol * vec3(1.0, 0.4, 0.13) * blk * blk + vec3(uMinLight);
   vec3 wcol = mix(vec3(0.06, 0.32, 0.30), uWaterCol, smoothstep(0.05, 0.6, depth));
   vec3 body = wcol * (amb + uLightCol * max(uLightDir.y, 0.0) * 0.5 * sh * skyVis);
   vec3 col = mix(body, refl, fres * (1.0 - under * 0.6)) + uLightCol * spec;

@@ -2,7 +2,9 @@
 
 A browser voxel survival game built on Three.js r128. Single screen, desktop and mobile, no build step. Three dimensions, two bosses, survival, crafting, companions, quests, achievements.
 
-The renderer is fully procedural: 64px painted block textures, smooth lighting with ambient occlusion, torch and lava light, sun shadows with dappled leaf shade, a physical sky with raymarched clouds, stars and moon, clear shallow water that deepens to blue, swaying grass and wildflowers, bloom, god rays and eye adaptation. No image assets are needed.
+The renderer is fully procedural: 64px painted block textures, smooth lighting with ambient occlusion, torch and lava light, sun shadows with dappled leaf shade, a physical sky with raymarched clouds, stars and moon, clear shallow water that deepens to blue, swaying grass and wildflowers, bloom, god rays and eye adaptation. Coloured torch, lava and crystal light, rain, thunderstorms and snow with wet reflective ground, fireflies, falling leaves and birds. No image assets are needed.
+
+Gameplay includes a 36 slot inventory, coal, iron, gold and diamond ores with pickaxe tiers, a furnace for smelting, iron and diamond tools and armor with durability, rivers and cave mouths, birch and spruce forests, and villages with trading villagers.
 
 ## Quick start
 

@@ -12,9 +12,9 @@ A single screen browser voxel survival game, Minecraft style, built on Three.js 
 index.html        head, body DOM, loads three.min.js (CDN), gfx.js, then game.js
 styles.css        all CSS
 gfx.js            renderer toolkit: procedural texture atlas, noise, detail maps, all GLSL, atmosphere model (window.GFXLIB)
-game.js           the entire game, wrapped in one IIFE (~4500 lines)
+game.js           the entire game, wrapped in one IIFE (~5200 lines)
 test/harness.cjs  Node validation harness (stubs THREE + DOM + audio + storage, loads gfx.js first)
-test/probes/      small probe scripts the harness can inject and run (render.js, render2.js cover the renderer)
+test/probes/      small probe scripts the harness can inject and run (render.js, render2.js cover the renderer, gameplay.js the inventory, ores, villages and weather)
 package.json      dev server and test scripts
 ```
 
@@ -59,6 +59,7 @@ Code change responses use this exact format, nothing else for non code:
 Then a confidence level. If confidence is below 0.90, do not ship, state what is missing.
 
 Other rules:
+- When a task is finished and validated, open the PR and merge it to main yourself, then confirm the Pages deploy. Do not ask first (owner's standing instruction). Do the whole job in one pass instead of proposing follow ups.
 - Never rewrite the file from scratch. Edit in place. Keep all working features.
 - Fix feel and performance before adding content.
 - Build in stages, leave TODO comments for deferred depth.
@@ -77,7 +78,19 @@ Realistic look, all procedural, no image assets.
 - Shadows: `positionSunShadow` keeps the sun shadow map centred on Thomas, snapped to texels. `tagEntityShadows` (every 0.75 s) makes solid entity meshes cast and receive shadows and gives flat Lambert materials a subtle fur detail map.
 - Post: `renderFrame` renders into a HalfFloat multisampled target, then bloom chain, god rays, eye adaptation (`POST.exposure`), ACES, grade, vignette. Needs WebGL2 + EXT_color_buffer_float; off on touch and the Low tier, in which case materials tone map directly. r128 does not recompile on a tone mapping change, so `setPost` marks materials dirty.
 - Quality tiers (`GFX`): dist, shadows, pixel ratio, cloud raymarch steps, shadow map size and radius. `updateDynRes` lowers the pixel ratio when fps drops under 45 and restores it with headroom.
-- Dev hooks for automated visual tests: `window.DEV` (start, go, look, time, tp, gfx, third, nocine, place, slot, ids, stats, surf, state).
+- Block light colour: `rC` carries a palette index (`LPAL`, `LCOL`) through the block light flood fill; vertices get the light weighted colour in `aBCol`.
+- Weather (`weather`, `updateWeather`, `applyWeatherEnv`): clear, rain, storm cycles in the overworld; snow where the biome is cold or high. Rain streaks and snow points stop on the highest block of each column (`colTop`, cached 2 s). `U.uWet` makes top faces darker and glossy with puddles that reflect the sky; lightning flashes plus delayed thunder in storms; looped rain noise.
+- Ambient life (`updateAmbientLife`): fireflies at night, falling leaves under canopies, bird flocks and birdsong by day.
+- Dev hooks for automated visual tests: `window.DEV` (start, go, look, time, tp, gfx, third, nocine, place, slot, ids, stats, surf, state, weather, crack).
+
+## Gameplay systems added with the renderer
+
+- Inventory: `hotbar` (9) plus `bag` (27). Use `addItem`/`giveItems`/`countItem`/`consumeItem`, which span both. Stacks cap at 64, tools stack 1 and carry `dur` (`toolMaxDur`, `wearTool`). Saves store `bag`.
+- Ores and tiers: coal, iron, gold, diamond ores by depth (about 1.4% of stone). `minTier` on a block needs a pickaxe of that tier (wood 1, stone 2, iron 3, diamond 4) or it drops nothing (`canHarvest`). Smelting recipes carry `furnace: 1` and need a placed Furnace within 4 blocks (`nearFurnace`).
+- Armor: the best armor item carried is worn automatically (`bestArmor`), reducing damage in `damage()`.
+- Mining feel: `updateCrack` crack overlay, `blockParticles` chips sampled from the atlas, `popDrop` item that flies to Thomas.
+- World gen: `riverAt` carves rivers in `heightAt` (kept 28+ blocks from spawn), cave mouths (`caveMouthAt`), gravel pockets, birch and spruce trees by biome, snowy taiga ground, boulders.
+- Villages: one possible village per 144 block cell (`villageInCell`, deterministic `layoutVillage`), built per chunk and clipped to it (`buildVillagePart`) so generation order never matters. Wells, plaza, paths, houses with glass, lanterns, beds, job blocks and loot chests, lamp posts, farm. `VKEEP` keeps villages off Creature Valley, portals and spawn. Villagers (`villagers`, `updateVillagers`) spawn within 70 blocks, wander between the well and their doors, and trade through `openShop(list, title)` using `VSHOPS` (buy rows have `cost`, sell rows have `sell` and `gain`).
 
 ## Architecture
 
@@ -85,8 +98,8 @@ One IIFE, `"use strict"`. Global state lives in closures, not modules yet.
 
 - Blocks: global Map `W` keyed `"x,y,z"` mirrored into typed arrays (see Rendering). Chunk streaming by render distance with a per frame time budget. Substepped AABB physics.
 - Player constants: `HW=0.3` half width, `PH=1.8` height, `EYE=1.62`. Declared near `const player`. (These once went missing and the physics threw every frame, black screen. If you refactor, keep them.)
-- Block ids: AIR0 GRASS1 DIRT2 STONE3 WOOD4 LEAVES5 SAND6 WATER7 LAVA8 FIRESTONE9 ENDSTONE10 PORTAL11 PLANKS12 COBBLE13 TORCH14 CHEST15 SNOW16 BRICK17 BED18 FIRE_CRYSTAL19.
-- Item ids (>=100): I_HAND100 I_WPICK101 I_SPICK102 I_SWORD103 I_AXE104 I_FIRECHARM105 I_FIRESWORD106 I_APPLE110 I_STICK111.
+- Block ids: AIR0 GRASS1 DIRT2 STONE3 WOOD4 LEAVES5 SAND6 WATER7 LAVA8 FIRESTONE9 ENDSTONE10 PORTAL11 PLANKS12 COBBLE13 TORCH14 CHEST15 SNOW16 BRICK17 BED18 FIRE_CRYSTAL19 ... PIPE33 COAL_ORE34 IRON_ORE35 GOLD_ORE36 DIAMOND_ORE37 FURNACE38 GLASS39 BIRCH_WOOD40 BIRCH_LEAVES41 SPRUCE_WOOD42 SPRUCE_LEAVES43 GRAVEL44 HAY45 PATH46 LANTERN47 STONEBRICK48. The atlas holds 64 tiles and has 63 used; `buildAtlas` throws if it overflows.
+- Item ids (>=100): I_HAND100 I_WPICK101 I_SPICK102 I_SWORD103 I_AXE104 I_FIRECHARM105 I_FIRESWORD106 I_APPLE110 I_STICK111 ... I_COAL115 I_IRON116 I_GOLD117 I_DIAMOND118 I_IPICK119 I_DPICK120 I_ISWORD121 I_DSWORD122 I_IAXE123 I_DAXE124 I_IARMOR125 I_DARMOR126 I_BREAD127 I_GAPPLE128.
 - Noise: `hsh`/`hsh3` uniform hashes via Math.imul (do not use plain big int multiply, it overflows to float and biases terrain), `vn`/`vn3` value noise, `fbm`. Shared `biomeAt`, `heightAt`, `caveAt`.
 - Dimensions: `loadDimension(name)` for overworld, fire, end. Fire has heat damage unless you hold a Flame Charm. End gates dragon damage behind four crystals (`crystalsLeft`).
 - Audio: WebAudio synth, no asset files. `blip`, `noiseHit`, `SFX`, generative `playPad`/`updateMusic`. Master gains `sfxGain`, `musicGain`.
@@ -123,7 +136,7 @@ src/
 
 Do the split incrementally, one system at a time, running the harness after each move. The harness can be ported to load the bundled output or to import modules directly.
 
-Then, in priority order: surface cave mouths and rivers, a village with simple traders, chest storage UI, armor and durability, bow and arrows, full crafting table grid. Rendering follow ups: coloured block light, mob textures. Block icons in the hotbar, inventory, chest and crafting list are painted from the atlas by `blockIconURL` (cached data URLs, colour swatch fallback).
+Then, in priority order: bow and arrows with an ammo item, full crafting table grid, farm animals and cooking, flowing water and lava. Rendering follow ups: coloured block light, mob textures. Block icons in the hotbar, inventory, chest and crafting list are painted from the atlas by `blockIconURL` (cached data URLs, colour swatch fallback).
 
 ## Deploy
 
