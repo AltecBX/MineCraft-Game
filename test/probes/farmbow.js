@@ -36,7 +36,8 @@ ok(m.hp === hp0 - 7 || m.dead, "arrow hits a monster for 7, hp " + hp0 + " -> " 
 // archers shoot real arrows at Thomas
 spawnMonster(0, -12, "archer"); const ar = monsters[monsters.length - 1]; ar.g.position.set(0.5, gy, -12);
 ok(ar.archer && ar.hr > 0.3, "archer type spawns");
-player.hp = 20; player.hurtCd = 0; const na = arrows.length; mobShootArrow(ar); ok(arrows.length === na + 1, "archer looses an arrow");
+player.hp = 20; player.hurtCd = 0; const na = arrows.length; { const R = Math.random; Math.random = () => 0.5; mobShootArrow(ar); Math.random = R; }   // no spread: archers really do miss sometimes
+ok(arrows.length === na + 1, "archer looses an arrow");
 const a2 = arrows[arrows.length - 1]; let hurt = false;
 for (let i = 0; i < 120 && arrows.includes(a2); i++) { updateArrows(1 / 60); if (player.hp < 20) hurt = true; }
 ok(hurt || !arrows.includes(a2), "archer arrow reaches Thomas (hp " + player.hp.toFixed(1) + ")");

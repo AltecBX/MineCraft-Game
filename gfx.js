@@ -587,6 +587,15 @@ const PAINT = {
     for (let t = 0; t < 32; t++) { put(B, 20 + t, 50 - t, [110, 70, 36]); put(B, 21 + t, 50 - t, [86, 54, 28]); }                                                        // pickaxe handle
     for (let t = -12; t <= 12; t++) { const x = 44 + t, y = 20 + Math.round(t * t * 0.05) - Math.abs(t) * 0.2; for (let w = 0; w < 3; w++) put(B, x, y + w, mulc([150, 154, 162], 0.8 + w * 0.12)); }   // pick head
   },
+  obsidian(B, s) {                                            // glassy black volcanic glass with purple sheen and bright conchoidal edges
+    fill(B, (u, v, x, y) => {
+      const w = worley(u, v, 6, s), e = w.f2 - w.f1, n = fbm(u, v, 5, 3, s + 1);
+      let c = mixc([18, 12, 30], [44, 26, 70], n * 0.8 + w.id * 0.3);
+      if (e < 0.05) c = mixc(c, [120, 90, 170], 0.6 - e * 8);
+      if ((-w.cx - w.cy) > 0.25 && w.f1 < 0.3) c = mulc(c, 1.35);
+      return mulc(c, 0.92 + (ih(x, y, s) - 0.5) * 0.12);
+    });
+  },
   wool(B, s) {
     fill(B, (u, v, x, y) => {
       const w = worley(u, v, 10, s), curl = Math.sin(w.f1 * 22 + w.id * 6), n = fbm(u, v, 8, 3, s + 1);
