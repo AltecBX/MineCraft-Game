@@ -123,7 +123,7 @@ src/
 
 Do the split incrementally, one system at a time, running the harness after each move. The harness can be ported to load the bundled output or to import modules directly.
 
-Then, in priority order: surface cave mouths and rivers, a village with simple traders, chest storage UI, armor and durability, bow and arrows, full crafting table grid. Rendering follow ups: coloured block light, textured item icons in the hotbar, mob textures.
+Then, in priority order: surface cave mouths and rivers, a village with simple traders, chest storage UI, armor and durability, bow and arrows, full crafting table grid. Rendering follow ups: coloured block light, mob textures. Block icons in the hotbar, inventory, chest and crafting list are painted from the atlas by `blockIconURL` (cached data URLs, colour swatch fallback).
 
 ## Deploy
 
