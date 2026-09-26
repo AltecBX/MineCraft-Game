@@ -1,6 +1,7 @@
 const fs=require('fs'),vm=require('vm');
 const path=require('path');
 const script=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8');
+const gfxScript=fs.readFileSync(path.join(__dirname,'..','gfx.js'),'utf8');
 const pi=process.argv.indexOf('--probe');
 const probeBody=pi>-1?fs.readFileSync(process.argv[pi+1],'utf8'):'';
 
@@ -19,7 +20,7 @@ class Col{constructor(h){this.r=1;this.g=1;this.b=1;if(typeof h==='number')this.
  set(h){return typeof h==='number'?this.setHex(h):this;} setHSL(){return this;} offsetHSL(){return this;} getHex(){return ((this.r*255)<<16)|((this.g*255)<<8)|(this.b*255);} setRGB(r,g,b){this.r=r;this.g=g;this.b=b;return this;}
  clone(){const c=new Col();c.r=this.r;c.g=this.g;c.b=this.b;return c;} copy(c){this.r=c.r;this.g=c.g;this.b=c.b;return this;}
  lerp(c,a){this.r+=(c.r-this.r)*a;this.g+=(c.g-this.g)*a;this.b+=(c.b-this.b)*a;return this;}
- multiplyScalar(s){this.r*=s;this.g*=s;this.b*=s;return this;} getHexString(){return '000000';} }
+ multiplyScalar(s){this.r*=s;this.g*=s;this.b*=s;return this;} add(c){this.r+=c.r;this.g+=c.g;this.b+=c.b;return this;} getHexString(){return '000000';} }
 
 // ---- permissive THREE object factory ----
 function perm(extra={}){
@@ -48,7 +49,9 @@ const THREE=new Proxy({},{get(t,name){
  if(name==='CanvasTexture'||name==='Texture')return ctor({needsUpdate:false});
  if(name==='Vector2')return function(x=0,y=0){return {x,y,set(a,b){this.x=a;this.y=b;return this;}}};
  if(name==='PCFSoftShadowMap'||name==='sRGBEncoding'||name==='ACESFilmicToneMapping'||name==='DoubleSide'||name==='FrontSide'||name==='BackSide'||name==='AdditiveBlending')return 1;
- if(name==='MathUtils')return {clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),lerp:(a,b,t)=>a+(b-a)*t,degToRad:d=>d*Math.PI/180};
+ if(name==='UniformsUtils')return {merge:(arr)=>Object.assign({},...arr.map(u=>Object.assign({},u))),clone:(u)=>Object.assign({},u)};
+ if(name==='UniformsLib')return {lights:{},fog:{},common:{}};
+ if(name==='MathUtils')return {clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),lerp:(a,b,t)=>a+(b-a)*t,degToRad:d=>d*Math.PI/180,smoothstep:(x,a,b)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);}};
 if(name==='HemisphereLight')return ctor({color:new Col(),groundColor:new Col(),intensity:1,position:new V3()});
  if(name==='DirectionalLight')return ctor({color:new Col(),intensity:1,position:new V3(),target:perm(),castShadow:false,shadow:{mapSize:{set(){}},camera:{},bias:0}});
  if(name==='AmbientLight'||name==='PointLight')return ctor({color:new Col(),intensity:1,position:new V3(),distance:0,decay:0});
@@ -104,5 +107,6 @@ let driver=`
 }catch(e){ console.log('RUNTIME_ERROR:', e.constructor.name, e.message); console.log(e.stack.split('\\n').slice(0,4).join('\\n')); }
 `;
 driver=driver.replace('/*__PROBE__*/', probeBody);
+vm.runInThisContext(gfxScript,{filename:'gfx.js'});
 const injected=script.replace(/\}\)\(\);\s*$/, driver+'\n})();');
 vm.runInThisContext(injected,{filename:'game.js'});

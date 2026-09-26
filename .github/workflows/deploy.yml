@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: 20
       - name: Syntax check
-        run: node --check game.js
+        run: node --check game.js && node --check gfx.js
       - name: Boot smoke test
         run: node test/harness.cjs
 
