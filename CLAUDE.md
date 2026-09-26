@@ -12,9 +12,9 @@ A single screen browser voxel survival game, Minecraft style, built on Three.js 
 index.html        head, body DOM, loads three.min.js (CDN), gfx.js, then game.js
 styles.css        all CSS
 gfx.js            renderer toolkit: procedural texture atlas, noise, detail maps, all GLSL, atmosphere model (window.GFXLIB)
-game.js           the entire game, wrapped in one IIFE (~5200 lines)
+game.js           the entire game, wrapped in one IIFE (~6000 lines)
 test/harness.cjs  Node validation harness (stubs THREE + DOM + audio + storage, loads gfx.js first)
-test/probes/      small probe scripts the harness can inject and run (render.js, render2.js cover the renderer, gameplay.js the inventory, ores, villages and weather)
+test/probes/      small probe scripts the harness can inject and run (render.js, render2.js cover the renderer, gameplay.js the inventory, ores, villages and weather, crafting.js the grid, farmbow.js the bow and farm animals)
 package.json      dev server and test scripts
 ```
 
@@ -69,7 +69,7 @@ Other rules:
 ## Rendering (see gfx.js and the RENDER sections of game.js)
 
 Realistic look, all procedural, no image assets.
-- Texture atlas: `GFXLIB.buildAtlas()` paints every block tile at 64px from seeded periodic noise into 128px cells with wrap padding (no mip bleeding). Uploaded once as `atlasTex` (nearest mag, trilinear min, anisotropy). Opaque tiles use alpha < 255 to mark emissive texels (crystals, heal cross, frost). Cutout tiles (leaves, plants) use alpha for holes.
+- Texture atlas: `GFXLIB.buildAtlas()` paints every block tile at 64px from seeded periodic noise into 128px cells with wrap padding (no mip bleeding). The atlas is 16 x 8 cells (2048 x 1024, 128 tiles max, 67 used), so tiles carry separate u and v scales (`s`, `sv`) and pixel lookups use `ATL.w`/`ATL.h`. Uploaded once as `atlasTex` (nearest mag, trilinear min, anisotropy). Opaque tiles use alpha < 255 to mark emissive texels (crystals, heal cross, frost). Cutout tiles (leaves, plants) use alpha for holes.
 - World store: `W` (Map, source of truth) is mirrored by `CSTORE`, one Uint8Array per 16x16 column, index `y*256 + lz*16 + lx`. Every write must go through `setRaw` (and `clearWorld`). `getBlock` reads the typed mirror.
 - Mesher (`buildChunk`): copies the chunk plus a 7 block margin (`LM`) into a padded region, floods sky light (columns then BFS, 2 levels per block) and block light (EMIT table: torch, lava, crystals, portal), then emits faces with per vertex AO, averaged light, biome tint and shader flags. Three meshes per chunk: opaque, cutout (leaf shell, tall grass, grass tufts and flowers, double sided, alpha tested, dappled leaf shadows via `depthCutout`), water (surface lowered to 0.875, per corner depth for clear shallows). Chunk record also keeps `sky`/`blk` light arrays; `lightAt`/`blockLightAt` read them. Edits call `markDirty`, which queues the chunk now and relights neighbours via `dirtyLow`.
 - Vertex attributes: `uv` (Uint16 normalized), `aTint` (rgb tint x1.5 + flags byte), `aLight` (ao, sky, block, face id). Flags: 1 grass side tint mask, 2 emissive texels, 4 lava, 8 plant, 16 waving leaves, 32 waving plant tip.
@@ -81,7 +81,7 @@ Realistic look, all procedural, no image assets.
 - Block light colour: `rC` carries a palette index (`LPAL`, `LCOL`) through the block light flood fill; vertices get the light weighted colour in `aBCol`.
 - Weather (`weather`, `updateWeather`, `applyWeatherEnv`): clear, rain, storm cycles in the overworld; snow where the biome is cold or high. Rain streaks and snow points stop on the highest block of each column (`colTop`, cached 2 s). `U.uWet` makes top faces darker and glossy with puddles that reflect the sky; lightning flashes plus delayed thunder in storms; looped rain noise.
 - Ambient life (`updateAmbientLife`): fireflies at night, falling leaves under canopies, bird flocks and birdsong by day.
-- Dev hooks for automated visual tests: `window.DEV` (start, go, look, time, tp, gfx, third, nocine, place, slot, ids, stats, surf, state, weather, crack).
+- Dev hooks for automated visual tests: `window.DEV` (start, go, look, time, tp, gfx, third, nocine, place, slot, ids, items, stats, surf, state, weather, crack, give, mob, herd, animal, draw, shoot, grid).
 
 ## Gameplay systems added with the renderer
 
@@ -92,14 +92,23 @@ Realistic look, all procedural, no image assets.
 - World gen: `riverAt` carves rivers in `heightAt` (kept 28+ blocks from spawn), cave mouths (`caveMouthAt`), gravel pockets, birch and spruce trees by biome, snowy taiga ground, boulders.
 - Villages: one possible village per 144 block cell (`villageInCell`, deterministic `layoutVillage`), built per chunk and clipped to it (`buildVillagePart`) so generation order never matters. Wells, plaza, paths, houses with glass, lanterns, beds, job blocks and loot chests, lamp posts, farm. `VKEEP` keeps villages off Creature Valley, portals and spawn. Villagers (`villagers`, `updateVillagers`) spawn within 70 blocks, wander between the well and their doors, and trade through `openShop(list, title)` using `VSHOPS` (buy rows have `cost`, sell rows have `sell` and `gain`).
 
+## Crafting, bow and farm animals
+
+- Crafting grid: `RECIPES` entries are `shaped(out, n, pattern)` (letters from `CK`), `shapeless(out, n, need)` or `smelt(out, n, need)`. A shaped recipe's `need` is derived from its pattern at startup, so the recipe book (Make) and the grid always cost the same. Recipes wider or taller than 2 (or shapeless with more than 4 items) set `table` and need a Crafting Table within 4 blocks (`nearTable`); smelting and cooking need a Furnace (`nearFurnace`). The bag shows a 2 x 2 grid, a table shows 3 x 3 (`gridSize`). `cgrid` holds item ids reserved from the inventory; nothing is taken until `craftFromGrid`. `matchGrid` trims the grid, compares shaped patterns and their mirror, then shapeless multisets. The book's Grid button lays a pattern out (`gridShow`). The spawn camp has a table so the first pickaxe works.
+- Stacking: tools, weapons, armor and charms stack 1 (`stackMax`), every other item stacks to 64.
+- Item icons: new items are painted on a canvas by `ITEM_PAINT` (`itemIconURL`, cached); items without a painter keep their emoji. Dropped items use the same painter.
+- Bow (`I_BOW`, `draw: 1`): `updateBow` runs first in `updateMining`. Holding attack draws (`bowDraw`, full power at 0.9 s, slows Thomas and zooms the FOV), releasing calls `loosePlayerArrow`, which needs an `I_ARROW`. Arrows (`arrows`, `spawnArrow`, `updateArrows`) fly with gravity (`ARROW_G`), drag in water, hit targets from `arrowTargets` (cylinders and spheres, no raycaster), stick in blocks, drop when the block is mined, and are picked back up. The Ice Bow and Slime Launcher keep their instant magic shots. Skeleton archers (`MTYPE.archer`) spawn at night and shoot real arrows via `mobShootArrow` with gravity lead.
+- Farm animals (`FARM`, `farm`, `spawnFarmAnimal`, `updateFarm`): cows, pigs, sheep and chickens with block collision (`animalCellOk`: a two block wall pens them, they step up one block, avoid cliffs and water), idle, walk, graze, panic when hit (the herd scatters), follow their food in Thomas's hand, breed after both are fed (`animalInteract`, `breedAnimals`), babies grow in 180 s. Shears give wool (sheep regrow it by grazing), chickens lay eggs, deaths drop meat, leather and feathers as `groundItems` that drift to Thomas. Fed, bred and sheared animals are `kept`: never despawned, saved (`serializeFarm` in the save's `farm`), stashed across dimension trips (`stashFarm`, `restoreFarm`). Wild herds spawn by biome 26 to 48 blocks away and despawn past 110. Each model's static boxes are merged into one vertex coloured mesh per moving part (`mergeParts`, colours linearized by hand).
+- Villages now include a Fletcher (arrows, bows, flint, feathers) and animals near the farm; the Farmer sells Shears and buys meat, wool and eggs.
+
 ## Architecture
 
 One IIFE, `"use strict"`. Global state lives in closures, not modules yet.
 
 - Blocks: global Map `W` keyed `"x,y,z"` mirrored into typed arrays (see Rendering). Chunk streaming by render distance with a per frame time budget. Substepped AABB physics.
 - Player constants: `HW=0.3` half width, `PH=1.8` height, `EYE=1.62`. Declared near `const player`. (These once went missing and the physics threw every frame, black screen. If you refactor, keep them.)
-- Block ids: AIR0 GRASS1 DIRT2 STONE3 WOOD4 LEAVES5 SAND6 WATER7 LAVA8 FIRESTONE9 ENDSTONE10 PORTAL11 PLANKS12 COBBLE13 TORCH14 CHEST15 SNOW16 BRICK17 BED18 FIRE_CRYSTAL19 ... PIPE33 COAL_ORE34 IRON_ORE35 GOLD_ORE36 DIAMOND_ORE37 FURNACE38 GLASS39 BIRCH_WOOD40 BIRCH_LEAVES41 SPRUCE_WOOD42 SPRUCE_LEAVES43 GRAVEL44 HAY45 PATH46 LANTERN47 STONEBRICK48. The atlas holds 64 tiles and has 63 used; `buildAtlas` throws if it overflows.
-- Item ids (>=100): I_HAND100 I_WPICK101 I_SPICK102 I_SWORD103 I_AXE104 I_FIRECHARM105 I_FIRESWORD106 I_APPLE110 I_STICK111 ... I_COAL115 I_IRON116 I_GOLD117 I_DIAMOND118 I_IPICK119 I_DPICK120 I_ISWORD121 I_DSWORD122 I_IAXE123 I_DAXE124 I_IARMOR125 I_DARMOR126 I_BREAD127 I_GAPPLE128.
+- Block ids: AIR0 GRASS1 DIRT2 STONE3 WOOD4 LEAVES5 SAND6 WATER7 LAVA8 FIRESTONE9 ENDSTONE10 PORTAL11 PLANKS12 COBBLE13 TORCH14 CHEST15 SNOW16 BRICK17 BED18 FIRE_CRYSTAL19 ... PIPE33 COAL_ORE34 IRON_ORE35 GOLD_ORE36 DIAMOND_ORE37 FURNACE38 GLASS39 BIRCH_WOOD40 BIRCH_LEAVES41 SPRUCE_WOOD42 SPRUCE_LEAVES43 GRAVEL44 HAY45 PATH46 LANTERN47 STONEBRICK48 CRAFT_TABLE49 WOOL50. The atlas holds 128 tiles and has 67 used; `buildAtlas` throws if it overflows.
+- Item ids (>=100): I_HAND100 I_WPICK101 I_SPICK102 I_SWORD103 I_AXE104 I_FIRECHARM105 I_FIRESWORD106 I_APPLE110 I_STICK111 ... I_COAL115 I_IRON116 I_GOLD117 I_DIAMOND118 I_IPICK119 I_DPICK120 I_ISWORD121 I_DSWORD122 I_IAXE123 I_DAXE124 I_IARMOR125 I_DARMOR126 I_BREAD127 I_GAPPLE128 I_BOW129 I_ARROW130 I_FLINT131 I_FEATHER132 I_STRING133 I_SHEARS134 I_LEATHER135 I_LARMOR136 I_RAWBEEF137 I_STEAK138 I_RAWPORK139 I_PORKCHOP140 I_RAWMUTTON141 I_MUTTON142 I_RAWCHICKEN143 I_CHICKEN144 I_EGG145 I_PIE146.
 - Noise: `hsh`/`hsh3` uniform hashes via Math.imul (do not use plain big int multiply, it overflows to float and biases terrain), `vn`/`vn3` value noise, `fbm`. Shared `biomeAt`, `heightAt`, `caveAt`.
 - Dimensions: `loadDimension(name)` for overworld, fire, end. Fire has heat damage unless you hold a Flame Charm. End gates dragon damage behind four crystals (`crystalsLeft`).
 - Audio: WebAudio synth, no asset files. `blip`, `noiseHit`, `SFX`, generative `playPad`/`updateMusic`. Master gains `sfxGain`, `musicGain`.
@@ -113,7 +122,9 @@ One IIFE, `"use strict"`. Global state lives in closures, not modules yet.
 - The harness Mesh stub once dropped the material arg, so `body.material.emissive` was undefined in tests. That was a stub gap, not a game bug. Fix the stub, not the game.
 - r128 feeds material hex colours to shaders unconverted while outputting sRGB, which washed every model out. Keep `linearizeBuiltinColors` and decode textures yourself in custom shaders.
 - AO quads must split through the darker diagonal (`b0 + b2 > b1 + b3` flips), otherwise corners show hard triangles.
-- `surfaceY` treats leaves as ground. Anything placed "on the surface" in a forest lands on the canopy; the spawn camp clears a glade first.
+- `surfaceY` treats leaves as ground. Anything placed "on the surface" in a forest lands on the canopy; the spawn camp clears a glade first, and `spawnHerd` only accepts grass, dirt, snow or path under an animal.
+- The harness `Raycaster` always returns no hits and `camera.getWorldDirection` is a stub, so anything that must be tested headless (arrow hits) uses plain geometry tests instead of raycasts.
+- Vertex colours are not touched by `linearizeBuiltinColors`; linearize them yourself (pow 2.2) or merged models look washed out.
 
 ## Roadmap
 
@@ -136,7 +147,7 @@ src/
 
 Do the split incrementally, one system at a time, running the harness after each move. The harness can be ported to load the bundled output or to import modules directly.
 
-Then, in priority order: bow and arrows with an ammo item, full crafting table grid, farm animals and cooking, flowing water and lava. Rendering follow ups: coloured block light, mob textures. Block icons in the hotbar, inventory, chest and crafting list are painted from the atlas by `blockIconURL` (cached data URLs, colour swatch fallback).
+Then, in priority order: flowing water and lava, fences and gates for animal pens, a furnace UI with fuel, more mob textures. Block icons in the hotbar, inventory, chest and crafting list are painted from the atlas by `blockIconURL` (cached data URLs, colour swatch fallback).
 
 ## Deploy
 
