@@ -9,7 +9,8 @@
 // ---------- atlas layout ----------
 // 64px tiles stored in 128px cells. The 32px border around each tile repeats the tile
 // (wrap padding), so mipmapping never bleeds a neighbouring tile into a block face.
-const T = 64, PAD = 32, CELL = T + PAD * 2, COLS = 8, SIZE = CELL * COLS;
+// The atlas is 16 x 8 cells (2048 x 1024), so tiles carry separate u and v scales (s, sv).
+const T = 64, PAD = 32, CELL = T + PAD * 2, COLS = 16, ROWS = 8, SIZE = CELL * COLS, HGT = CELL * ROWS;
 
 // ---------- seeded, tile periodic noise ----------
 function ih(x, y, s) { let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul((s | 0) + 1013, 1442695041); h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967295; }
@@ -563,13 +564,42 @@ const PAINT = {
       return [c[0], c[1], c[2], 255 * 0.12];
     });
   },
-  stonebrick(B, s) { paintStoneBrick(B, s); }
+  stonebrick(B, s) { paintStoneBrick(B, s); },
+  // crafting table: a framed plank top scored into a 3 x 3 grid, sides with a lip and hanging tools
+  craft_top(B, s) {
+    paintPlanks(B, s, [176, 132, 80]);
+    for (let i = 0; i < T; i++) for (let k = 0; k < 5; k++) { const c = k < 4 ? [104, 70, 40] : [80, 52, 28]; put(B, i, k, c); put(B, k, i, c); put(B, i, T - 1 - k, mulc(c, 0.9)); put(B, T - 1 - k, i, mulc(c, 0.9)); }
+    for (const g of [22, 41]) for (let i = 7; i < 57; i++) { put(B, g, i, [70, 46, 26]); put(B, g + 1, i, [196, 156, 104]); put(B, i, g, [70, 46, 26]); put(B, i, g + 1, [196, 156, 104]); }
+  },
+  craft_side(B, s) {
+    paintPlanks(B, s + 2, [160, 118, 70]);
+    for (let x = 0; x < T; x++) for (let y = 0; y < 9; y++) put(B, x, y, mulc([118, 82, 48], y === 8 ? 0.6 : 0.9 + (ih(x, y, s) - 0.5) * 0.1));
+    for (let x = 0; x < T; x++) put(B, x, 9, [70, 46, 26]);
+    for (let y = 10; y < T; y++) for (let k = 0; k < 4; k++) { put(B, k, y, [110, 76, 44]); put(B, T - 1 - k, y, [96, 66, 38]); }
+    for (let y = 16; y < 50; y++) for (let x = 12; x < 26; x++) { if (x - 12 > (y - 16) * 0.42) continue; put(B, x, y, mulc([188, 192, 198], 0.85 + (x - 12) * 0.012)); if (x === 12 && (y & 3) === 0) put(B, x - 1, y, [120, 124, 130]); }   // saw blade with teeth
+    for (let y = 12; y < 18; y++) for (let x = 10; x < 20; x++) put(B, x, y, [92, 56, 30]);                                                                              // saw handle
+    for (let y = 18; y < 54; y++) { put(B, 44, y, [110, 70, 36]); put(B, 45, y, [86, 54, 28]); }                                                                         // hammer shaft
+    for (let y = 14; y < 22; y++) for (let x = 36; x < 54; x++) put(B, x, y, mulc([120, 122, 128], 0.9 + (y - 14) * 0.02));                                              // hammer head
+  },
+  craft_front(B, s) {
+    PAINT.craft_side(B, s);
+    for (let y = 14; y < 56; y++) for (let x = 10; x < 56; x++) { const e = Math.min(x - 10, 55 - x, y - 14, 55 - y); if (e < 2) put(B, x, y, [84, 56, 32]); }                // framed panel
+    for (let t = 0; t < 32; t++) { put(B, 20 + t, 50 - t, [110, 70, 36]); put(B, 21 + t, 50 - t, [86, 54, 28]); }                                                        // pickaxe handle
+    for (let t = -12; t <= 12; t++) { const x = 44 + t, y = 20 + Math.round(t * t * 0.05) - Math.abs(t) * 0.2; for (let w = 0; w < 3; w++) put(B, x, y + w, mulc([150, 154, 162], 0.8 + w * 0.12)); }   // pick head
+  },
+  wool(B, s) {
+    fill(B, (u, v, x, y) => {
+      const w = worley(u, v, 10, s), curl = Math.sin(w.f1 * 22 + w.id * 6), n = fbm(u, v, 8, 3, s + 1);
+      const f = 0.8 + n * 0.16 + curl * 0.05 - w.f1 * 0.12 + (ih(x, y, s) - 0.5) * 0.05;
+      return mulc([238, 236, 230], f);
+    });
+  }
 };
 const CLAMP_PAD = { tallgrass: 1, tuft: 1, flower_red: 1, flower_yellow: 1, flower_blue: 1, flower_white: 1 };
 
 function buildAtlas() {
-  if (Object.keys(PAINT).length > COLS * COLS) throw new Error("texture atlas is full (" + Object.keys(PAINT).length + " tiles, max " + COLS * COLS + ")");
-  const names = Object.keys(PAINT), data = new Uint8Array(SIZE * SIZE * 4), tiles = {};
+  if (Object.keys(PAINT).length > COLS * ROWS) throw new Error("texture atlas is full (" + Object.keys(PAINT).length + " tiles, max " + COLS * ROWS + ")");
+  const names = Object.keys(PAINT), data = new Uint8Array(SIZE * HGT * 4), tiles = {};
   names.forEach((name, n) => {
     const B = newBuf(); PAINT[name](B, 101 + n * 977);
     const gc = n % COLS, gr = (n / COLS) | 0, clampPad = !!CLAMP_PAD[name];
@@ -578,9 +608,9 @@ function buildAtlas() {
       const si = (sy * T + sx) * 4, di = ((gr * CELL + (CELL - 1 - cy)) * SIZE + gc * CELL + cx) * 4;   // image row 0 is the tile top (high v)
       data[di] = clamp(B[si], 0, 255); data[di + 1] = clamp(B[si + 1], 0, 255); data[di + 2] = clamp(B[si + 2], 0, 255); data[di + 3] = clamp(B[si + 3], 0, 255);
     }
-    tiles[name] = { u0: (gc * CELL + PAD) / SIZE, v0: (gr * CELL + PAD) / SIZE, s: T / SIZE, i: n };
+    tiles[name] = { u0: (gc * CELL + PAD) / SIZE, v0: (gr * CELL + PAD) / HGT, s: T / SIZE, sv: T / HGT, i: n };
   });
-  return { data, size: SIZE, tiles, tile: T };
+  return { data, size: SIZE, w: SIZE, h: HGT, tiles, tile: T, max: COLS * ROWS };
 }
 
 // RGBA tileable noise: r,g,b = fbm at 4, 8, 16 cells; a = cellular
@@ -1085,6 +1115,6 @@ function buildDetail(kind) {
   return { data: d, size: T };
 }
 
-window.GFXLIB = { buildAtlas, buildNoise, buildDetail, skyEnv, TILE: T, ATLAS: SIZE,
+window.GFXLIB = { buildAtlas, buildNoise, buildDetail, skyEnv, TILE: T, ATLAS: SIZE, ATLAS_H: HGT,
   shaders: { TERRAIN_VERT, TERRAIN_FRAG, WATER_VERT, WATER_FRAG, SKYDOME_VERT, SKYDOME_FRAG, POST_VERT, BRIGHT_FRAG, DOWN_FRAG, UP_FRAG, COMPOSITE_FRAG } };
 })();
